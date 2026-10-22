@@ -1,0 +1,12 @@
+{
+  "workspace_package": "1.1.0",
+  "status": "PENDING_REVIEW",
+  "contract_version": null,
+  "openapi_path": "contracts/openapi.json",
+  "openapi_sha256": null,
+  "approved_scopes": [],
+  "approved_by": null,
+  "approved_at": null,
+  "first_scope_proposal": "project-assets-ports",
+  "note": "문서 초안만 있음. 실제 OpenAPI 및 endpoint는 미생성."
+}

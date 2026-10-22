@@ -1,0 +1,44 @@
+# 비밀값
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+
+# Python / Node
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+build/
+*.egg-info/
+coverage/
+.coverage
+htmlcov/
+playwright-report/
+test-results/
+
+# 임시 산출물, 공장 원본
+backend/artifacts/*
+!backend/artifacts/README.md
+data/local/*
+!data/local/README.md
+*.dwg
+*.dxf
+*.bak
+*.log
+*.sql.gz
+
+# IDE 개인 설정
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json

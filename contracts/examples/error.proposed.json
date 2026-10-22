@@ -1,0 +1,17 @@
+{
+  "error": {
+    "code": "RUN_VALIDATION_FAILED",
+    "message": "필수 실행 조건이 미정입니다.",
+    "request_id": "req-demo",
+    "details": [
+      {
+        "severity": "error",
+        "rule_id": "VAL-TIME-003",
+        "entity_id": "00000000-0000-4000-8000-000000000001",
+        "field_path": "/timing_rule/processing/output_schedule",
+        "message": "멀티신선 산출 방식이 미정입니다.",
+        "resolution": "확정값 입력 또는 시나리오 가정 승인"
+      }
+    ]
+  }
+}

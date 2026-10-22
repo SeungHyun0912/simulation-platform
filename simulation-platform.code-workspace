@@ -1,0 +1,37 @@
+{
+  "folders": [
+    {
+      "name": "simulation-platform",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.encoding": "utf8",
+    "files.eol": "\n",
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/node_modules": true
+    },
+    "search.exclude": {
+      "**/data/local/**": true,
+      "**/docs/reference/*.zip": true
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "workspace: check documents",
+        "type": "process",
+        "command": "python",
+        "args": [
+          "tools/check_workspace.py"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "problemMatcher": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "filename": "file-GEhxrXfCDTtLYHBiyK29eC-a546bdf9-e8fd-4575-9fd1-31fcfeb50d41_1792711269828_26e060fa-974c-4766-a1bf-63095e194277.zip.zip",
+    "bytes": 143039,
+    "sha256": "900ff08f0dd6b3557f8a770c1dcaf3ac93835e3edfcb9ebe2b2abcfb324d8700",
+    "role": "original_specs",
+    "included_in_workspace": true
+  },
+  {
+    "filename": "file-B13YW26GVBBupUU1hmvJJn-7445a868-6766-4d18-909d-600759018fb5_1792651415991_0dec9f06-c3fc-4b93-9896-322cfa53fd9e.zip.zip",
+    "bytes": 722082,
+    "sha256": "fc20162414b6a1b40c9dda665a954d038c8127a8819bb0073740302c3ade3f4b",
+    "role": "cad_extract",
+    "included_in_workspace": false
+  },
+  {
+    "filename": "file-UuEJd4ye3SYRo72gS7e6mS-aade194a-bfd5-482e-a114-4f5a39aa7e80_1792649766968_c4e41280-3652-46a3-8373-68c028e17816.dwg.dwg",
+    "bytes": 93720517,
+    "sha256": "9a5e0005fc11a50389a35ff0262fc806038a4df5ccf0c99c135d7b538380bde3",
+    "role": "cad_source",
+    "included_in_workspace": false
+  }
+]

@@ -1,0 +1,18 @@
+name: Workspace documents only
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate workspace documents
+        run: python tools/check_workspace.py
+# 서비스 CI가 아닙니다. 앱 lint/test/build/DB/계약 검증은 구현 후 별도 추가하세요.
+# 실제 호스팅 정책에 따라 action 허용 목록·불변 commit 고정을 검토하세요.
