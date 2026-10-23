@@ -1,0 +1,20 @@
+.notice {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.title {
+  font-size: var(--text-md);
+}
+
+.body {
+  font-size: var(--text-sm);
+}
+
+.neutral { color: var(--status-neutral-fg); background: var(--status-neutral-bg); }
+.info { color: var(--status-info-fg); background: var(--status-info-bg); }
+.warning { color: var(--status-warning-fg); background: var(--status-warning-bg); }
+.danger { color: var(--status-danger-fg); background: var(--status-danger-bg); }
