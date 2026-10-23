@@ -113,7 +113,7 @@ def test_default_spec_schema_is_closed_and_keeps_measures_separate():
 
 def test_me_projects_include_status_and_products_have_no_process_summary_yet():
     schemas = _schema()["components"]["schemas"]
-    assert "status" in schemas["MeProject"]["properties"]
+    assert {"status", "timezone"} <= set(schemas["MeProject"]["properties"])
     assert "latest_process_version" not in schemas["ProductOut"]["properties"]  # 공정 CR에서 추가
 
 
@@ -154,4 +154,4 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials"]
-    assert status["contract_version"] == "0.3.0"
+    assert status["contract_version"] == "0.3.1"

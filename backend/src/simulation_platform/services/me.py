@@ -23,5 +23,6 @@ def get_me(session: Session, principal: Principal) -> MeOut:
         user=MeUser(id=principal.user_id, display_name=principal.display_name),
         organizations=[MeOrganization(id=o.id, code=o.code, name=o.name, role=r) for o, r in orgs],
         projects=[MeProject(id=p.id, organization_id=p.organization_id, code=p.code,
-                            name=p.name, status=p.status, role=r) for p, r in projects],
+                            name=p.name, status=p.status, timezone=p.timezone, role=r)
+                  for p, r in projects],
     )

@@ -207,7 +207,7 @@ submitted_at|by, rejection_reason|null, rejected_at|null, approved_at|by, create
 **자산 응답 추가 필드** (비파괴): `current_revision`(현재 승인본 `{id, revision_no, status, approved_at}`), `latest_revision`(가장 최근 버전 같은 형태). 없으면 `null`.
 자산을 만들어도 버전은 자동 생성되지 않는다(`latest_revision=null`). 용량 입력을 시작하려면 `POST …/revisions`를 호출한다.
 
-### 3.3 승인 scope `products-materials` (contract 0.3.0)
+### 3.3 승인 scope `products-materials` (contract 0.3.0, 패치 0.3.1)
 
 정본은 [openapi.json](openapi.json), 예제는 [examples/first-scope](examples/first-scope/)의 `product.*`·`material.*`·`me.get`. 근거 CR:
 [CR-backend-20261023-be03-products-materials](../docs/change-requests/CR-backend-20261023-be03-products-materials.md).
@@ -230,7 +230,7 @@ submitted_at|by, rejection_reason|null, rejected_at|null, approved_at|by, create
   - 길이·중량·단위 수·가닥 수는 서로 환산하지 않으며 서로 다른 필드다. 알 수 없는 키는 거부한다.
 - PATCH: `code, name, form, default_spec, notes`. `default_spec`은 **보낸 필드만 교체**하고 나머지는 유지한다(빈 객체·`null`·필드의 `null`은 422). 확정값을 다시 미정으로 되돌리려면 `{mode: "unknown"}`을 보낸다.
 
-**`GET /me` 보강(0.3.0)**: `projects[]`에 `status`(`active|archived`)가 추가되었다(`GET /projects`의 `Project.status`와 같은 값, 비파괴). 보관된 프로젝트도 목록에 포함하며 제외 여부는 클라이언트가 정한다.
+**`GET /me` 보강**: `projects[]`에 `status`(`active|archived`, 0.3.0)와 `timezone`(IANA 이름, 0.3.1)이 추가되었다(`GET /projects`의 `Project.status`·`Project.timezone`과 같은 값, 비파괴). 보관된 프로젝트도 목록에 포함하며 제외 여부는 클라이언트가 정한다. 시각은 항상 UTC(`Z`)로 오므로 화면은 `timezone`으로 변환해 보여 준다. 현재 계약 버전은 0.3.1이다(0.3.0은 `main`에 게시된 뒤 불변).
 
 ## 4. 공정 버전·그래프 API
 

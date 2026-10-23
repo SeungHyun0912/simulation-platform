@@ -5,7 +5,13 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
-## 0.3.0 — 2026-10-23 · scope `products-materials` · sha256 `a4610740…8b48` · 기준 commit `6f07b53`
+## 0.3.1 — 2026-10-23 · scope `products-materials`(패치) · sha256 `4821718a…3b5c` · 기준 commit `64e66c0`
+- **호환성: 0.3.0 클라이언트와 호환(필드 추가만).** operation은 그대로이고 `GET /me`의 `projects[]`에 `timezone`이 늘었다.
+- **`GET /me`:** `projects[].timezone`(IANA 이름, 예 `Asia/Seoul`, `GET /projects/{id}`의 `timezone`과 같은 값) 추가. 서버 시각은 항상 UTC(`Z`)이므로 화면은 이 값으로 변환해 보여 준다. FE 요청 R-FE-14.
+- **프런트가 해야 할 일:** 생성 타입을 0.3.1 해시로 재생성하고(`pnpm gen:api` 류, 해시가 `contract-status.json`과 다르면 중단), 시각 표시 기준을 `/me.projects[].timezone`으로 바꾼다(`GET /projects/{id}` 추가 호출 불필요).
+- **정정 기록:** 이 필드를 처음에는 0.3.0 안에서 해시를 바꿔 넣으려 했으나 0.3.0이 이미 `main`에 게시된 뒤라 **게시된 버전은 바꾸지 않고** 0.3.1로 분리했다.
+
+## 0.3.0 — 2026-10-23 · scope `products-materials` · sha256 `a4610740…8b48` · 기준 commit `6f07b53` (PR #15로 `main`에 게시, 불변)
 - **호환성: 0.2.0 클라이언트와 호환(추가만).** 기존 operation의 요청·응답 필드는 그대로이며 `GET /me`의 프로젝트 항목에 `status`가 늘었다.
 - **추가 operation 8개:** 제품 목록/생성/조회/수정, 재료 목록/생성/조회/수정(`/projects/{p}/products`, `/projects/{p}/materials`).
 - **`GET /me`:** `projects[].status`(`active|archived`) 추가. 보관된 프로젝트도 목록에 포함하며 제외 여부는 클라이언트가 정한다(현재 archive 기능이 없어 모두 `active`).

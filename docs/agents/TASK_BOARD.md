@@ -8,7 +8,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | WS-02 | 첫 project/assets scope 승인 | 조정자 | DONE (첫 scope만) | WS-01 전체 검토와 별개 | contract 0.1.0 / 82eb6a2 | contracts/contract-status.json, CR-backend-20261023-be01c |
 | BE-01 | Python 환경·migration·최초 API | Backend | REVIEW | WS-02 | 82eb6a2 / contract 0.1.0 | HANDOFF-backend-20261023-BE-01a·01b·01c |
 | BE-02 | 자산 버전·포트 정책(용량)·승인 흐름 | Backend | REVIEW | BE-01 | e2f3bba / contract 0.2.0 | HANDOFF-backend-20261023-BE-02, CR-backend-20261023-be02 |
-| BE-03 | 제품·재료 기준정보 + `/me` 프로젝트 status | Backend | REVIEW | BE-02 | 6f07b53 / contract 0.3.0 | HANDOFF-backend-20261023-BE-03, CR-backend-20261023-be03 |
+| BE-03 | 제품·재료 기준정보 + `/me` 프로젝트 status·timezone | Backend | REVIEW | BE-02 | 6f07b53 / contract 0.3.0(게시), 64e66c0 / 0.3.1(머지 대기) | HANDOFF-backend-20261023-BE-03, CR-backend-20261023-be03 |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |

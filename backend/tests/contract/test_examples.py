@@ -96,7 +96,8 @@ def test_success_examples_carry_etag_and_errors_do_not_expose_internals():
 def test_catalog_examples_show_unknown_vs_value_and_separate_units():
     me = _load("me.get")["response"]["body"]["data"]
     assert {p["status"] for p in me["projects"]} == {"active"}
-    material = _load("material.create")["response"]["body"]["data"]["default_spec"]
+    assert {p["timezone"] for p in me["projects"]} == {"Asia/Seoul"}
+    material =_load("material.create")["response"]["body"]["data"]["default_spec"]
     assert material["length_m"] == {"mode": "known", "value": "3000"}
     assert material["unit_count"] == {"mode": "unknown", "value": None}  # 미정은 0이 아니다
     patched = _load("material.patch")["response"]["body"]["data"]["default_spec"]
