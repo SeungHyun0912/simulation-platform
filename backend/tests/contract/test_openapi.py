@@ -154,4 +154,4 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials"]
-    assert status["contract_version"] == "0.3.0"
+    assert status["contract_version"] == "0.3.1"

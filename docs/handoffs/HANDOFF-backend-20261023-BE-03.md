@@ -3,7 +3,8 @@
 - 역할 / 작업 ID / 관련 로드맵 ID: Backend(+단일 DB 담당) / BE-03 / A 단계(제품·재료 기준정보, ERD §5·§16)
 - workspace 버전: 1.1.0
 - branch / 시작 commit / 종료 commit: worktree-backend-core / 6beca72(origin/main) / 코드 6f07b53, 시험 시드 확장·계약·문서 후속 커밋은 `git log`로 확인
-- 계약 버전 / OpenAPI hash / 승인 scope: **0.3.0** / `4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c`(기준 commit `64e66c0`; 처음 승격한 `a4610740…`/`6f07b53`에서 FE 요청 R-FE-14로 `/me.projects[].timezone`을 같은 0.3.0에 추가해 바뀜 — 0.3.0이 main에 머지·FE 반영되기 전이라 새 버전을 만들지 않음) / `project-assets-ports`, `asset-revisions`, `products-materials`
+- 계약 버전 / OpenAPI hash / 승인 scope: **0.3.0**(PR #15로 main 게시, sha256 `a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48`, 기준 commit `6f07b53`, 불변) + **0.3.1 패치**(FE 요청 R-FE-14의 `/me.projects[].timezone`, sha256 `4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c`, 기준 commit `64e66c0`, 새 PR 머지 대기) / `project-assets-ports`, `asset-revisions`, `products-materials`
+- **정정 기록:** `timezone`을 처음에는 0.3.0의 해시를 바꿔 넣으려 했으나 0.3.0이 이미 main에 머지된 뒤였다(머지 여부를 gh로 확인하지 않고 "머지 전"이라 가정한 Backend의 실수). 게시된 버전은 바꾸지 않고 0.3.1로 분리해 바로잡았다.
 - 승인 근거: CR be03(FE 의견 반영본)을 제시한 뒤 사용자가 "다음 개발 진행해주고"(2026-10-23)라고 지시 → 승인으로 해석해 구현·승격. 명시적 "승인" 문구는 없었으므로 사용자가 정정할 수 있다(`contract-status.json` approval_record에 기록).
 - 수정 파일: backend/{migrations/versions/0003…, src/simulation_platform/{models/catalog.py, schemas/catalog.py, repositories/catalog.py, services/catalog.py, api/v1/{products,materials}.py, domain/errors.py, schemas/me.py, services/me.py, api/app.py}, scripts/{seed_demo_data,generate_contract_examples}.py, tests/**, README}, contracts/{openapi.json, contract-status.json, CHANGELOG.md, 04_api_contract.md(§3.3), examples/first-scope/*(8개 추가)}, docs/{change-requests/CR-…-be03, planning/STATUS.md, agents/TASK_BOARD.md(BE-03 행), communication/request-from-backend.md}
 - 실제 구현 내용:
@@ -23,7 +24,7 @@
 |---|---|---|---|---|
 | `$env:REQUIRE_DB="1"; python -m pytest -q` (전체, 마지막) | backend/ (.venv) | Python 3.12.10, SQLAlchemy 2.1.6, PostgreSQL 16(WSL Docker) | 0 | **219 passed**, 경고 4건(아래) |
 | `python -m ruff check .` | backend/ | ruff 0.17.2 | 0 | All checks passed |
-| `python -m simulation_platform.api.export_openapi` → `contracts/openapi.json` 비교·해시 | backend/ | — | 0 | sha256 4821718a… 일치(R-FE-14 반영 후, 이전 a4610740…) |
+| `python -m simulation_platform.api.export_openapi` → `contracts/openapi.json` 비교·해시 | backend/ | — | 0 | sha256 4821718a… 일치(0.3.1, R-FE-14 반영 후). 0.3.0 게시본은 a4610740… |
 | `python scripts/generate_contract_examples.py ../contracts/examples/first-scope` | backend/ | test DB | 0 | 30 examples |
 | `alembic upgrade head` (개발 DB) | backend/ | — | 0 | 0002 → 0003 |
 | `python scripts/seed_demo_data.py --yes` (개발 DB) 2회 | backend/ | — | 0 | 1회: `catalog: {'skipped': False, 'products': 8, 'materials': 4}`, 2회: `skipped: True`(멱등) |
