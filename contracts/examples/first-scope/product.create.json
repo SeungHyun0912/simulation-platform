@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/products",
+    "body": {
+      "code": "P-001",
+      "name": "[시험] 제품 예시",
+      "specification": "규격은 자유 텍스트입니다(null이면 미정)."
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "ETag": "\"1\"",
+      "Location": "/api/v1/projects/00000000-0000-4000-8000-000000000002/products/00000000-0000-4000-8000-000000000013"
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "code": "P-001",
+        "name": "[시험] 제품 예시",
+        "specification": "규격은 자유 텍스트입니다(null이면 미정).",
+        "notes": null,
+        "archived_at": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": null,
+        "row_version": 1
+      }
+    }
+  }
+}

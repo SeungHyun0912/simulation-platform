@@ -187,6 +187,40 @@ def main(out_dir: Path) -> None:
     record("revision.list", "GET", f"{revisions_url}?limit=1", r)
     r = client.get(target, headers=base)
     record("asset.get", "GET", target, r)
+
+    # --- products-materials, /me status (contract 0.3.0) --------------------------------
+    r = client.get(f"{api}/me", headers=base)
+    record("me.get", "GET", f"{api}/me", r)
+
+    products = f"{api}/projects/{pid}/products"
+    product_body = {"code": "P-001", "name": "[시험] 제품 예시",
+                    "specification": "규격은 자유 텍스트입니다(null이면 미정)."}
+    r = client.post(products, json=product_body, headers=base)
+    record("product.create", "POST", products, r, product_body)
+    product_path = f"{products}/{r.json()['data']['id']}"
+    r = client.post(products, json=product_body, headers=base)
+    record("error.product-code-conflict", "POST", products, r, product_body)
+    client.post(products, json={"code": "P-002", "name": "[시험] 제품 2"}, headers=base)
+    r = client.get(f"{products}?limit=1", headers=base)
+    record("product.list", "GET", f"{products}?limit=1", r)
+    product_patch = {"name": "[시험] 제품 예시(수정)", "specification": None}
+    r = client.patch(product_path, json=product_patch, headers=match(1))
+    record("product.patch", "PATCH", product_path, r, product_patch, {"If-Match": '"1"'})
+
+    materials = f"{api}/projects/{pid}/materials"
+    material_body = {"code": "M-001", "name": "[시험] 원자재 롤", "form": "롤",
+                     "default_spec": {"length_m": {"mode": "known", "value": "3000"},
+                                      "weight_kg": {"mode": "known", "value": "2000"}}}
+    r = client.post(materials, json=material_body, headers=base)
+    record("material.create", "POST", materials, r, material_body)
+    material_path = f"{materials}/{r.json()['data']['id']}"
+    zero_length = {"default_spec": {"length_m": {"mode": "known", "value": "0"}}}
+    r = client.patch(material_path, json=zero_length, headers=match(1))
+    record("error.validation-default-spec", "PATCH", material_path, r, zero_length,
+           {"If-Match": '"1"'})
+    material_patch = {"default_spec": {"unit_count": {"mode": "known", "value": 10}}}
+    r = client.patch(material_path, json=material_patch, headers=match(1))
+    record("material.patch", "PATCH", material_path, r, material_patch, {"If-Match": '"1"'})
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 

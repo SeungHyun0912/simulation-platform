@@ -1,26 +1,28 @@
 {
   "workspace_package": "1.1.0",
   "status": "PARTIALLY_APPROVED",
-  "contract_version": "0.2.0",
+  "contract_version": "0.3.0",
   "openapi_path": "contracts/openapi.json",
-  "openapi_sha256": "da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a",
-  "approved_scopes": ["project-assets-ports", "asset-revisions"],
+  "openapi_sha256": "a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48",
+  "approved_scopes": ["project-assets-ports", "asset-revisions", "products-materials"],
   "approved_by": "SeungHyun0912",
   "approved_at": "2026-10-23",
-  "baseline_commit": "e2f3bba",
-  "approval_record": "사용자가 대화에서 CR-backend-20261023-be01c(0.1.0)와 CR-backend-20261023-be02(0.2.0)를 각각 승인하고 계약 문서 반영을 위임(2026-10-23). BE-02는 '전체 승인'이며 CR §4의 결정 5건은 Backend 제안안대로 승인된 것으로 기록. 승인 시각의 시·분은 기록되지 않음.",
+  "baseline_commit": "6f07b53",
+  "approval_record": "사용자가 대화에서 CR-backend-20261023-be01c(0.1.0)와 be02(0.2.0)를 각각 승인하고 계약 문서 반영을 위임(2026-10-23). BE-03(0.3.0)은 CR be03을 제시한 뒤 사용자가 '다음 개발 진행해주고'라고 지시한 것을 승인으로 해석해 구현·승격함(명시적 문구로 'be03 승인'을 말한 기록은 없으므로 사용자가 정정할 수 있음). FE 의견(request-from-frontend.md BE-REQ-010·011)은 CR be03 §4-1에 반영. 승인 시각의 시·분은 기록되지 않음.",
   "approved_change_requests": [
     "docs/change-requests/CR-backend-20261023-be01c-first-scope-api.md",
-    "docs/change-requests/CR-backend-20261023-be02-asset-revision-capacity.md"
+    "docs/change-requests/CR-backend-20261023-be02-asset-revision-capacity.md",
+    "docs/change-requests/CR-backend-20261023-be03-products-materials.md"
   ],
   "scope_excludes": [
     "group, alias, 장비 가동 달력·처리 능력(asset_revision의 나머지 속성)",
-    "project archive/clone/members, asset archive",
+    "공정 버전·그래프·단계, 제품 목록의 latest_process_version 요약(공정 버전 CR에서 추가 필드로 도입)",
+    "project archive/clone/members, asset·product·material archive endpoint",
     "운영 인증 adapter(TECH-002), 역할 정책 확정(TECH-006), RLS",
-    "공정·시나리오·실행·위키·CAD API 전체(PROPOSED 유지)"
+    "시나리오·실행·위키·CAD API 전체(PROPOSED 유지)"
   ],
   "examples_path": "contracts/examples/first-scope",
   "changelog_path": "contracts/CHANGELOG.md",
   "first_scope_proposal": "project-assets-ports",
-  "note": "승인 scope는 openapi.json의 operation 전체(0.1.0: 11개, 0.2.0: +7개). 그 밖의 04 문서 항목은 PROPOSED. 프런트 영향은 contracts/CHANGELOG.md가 정본."
+  "note": "승인 scope는 openapi.json의 operation 전체(0.1.0: 11개, 0.2.0: +7개, 0.3.0: +8개). 그 밖의 04 문서 항목은 PROPOSED. 프런트 영향은 contracts/CHANGELOG.md가 정본."
 }

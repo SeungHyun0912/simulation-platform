@@ -1,5 +1,6 @@
 from simulation_platform.models.asset import Asset, AssetPort, EquipmentDetail, SpaceDetail
 from simulation_platform.models.base import Base
+from simulation_platform.models.catalog import MaterialDefinition, Product
 from simulation_platform.models.identity import (
     AppUser,
     AuditLog,
@@ -18,9 +19,11 @@ __all__ = [
     "AuditLog",
     "Base",
     "EquipmentDetail",
+    "MaterialDefinition",
     "Organization",
     "OrganizationMember",
     "PortPolicy",
+    "Product",
     "Project",
     "ProjectMember",
     "SpaceDetail",

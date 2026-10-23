@@ -45,7 +45,7 @@ python -m venv .venv
   세션 시작 시 테스트 DB를 `downgrade base → upgrade head`로 재생성한다. DB 이름이 `_test`로 끝나지
   않으면 거부한다. 다른 대상은 `TEST_DATABASE_URL`로 지정. `REQUIRE_DB`가 없으면 DB 미연결 시 skip된다.
 - Migration 수동 적용(대상 DB를 반드시 확인): `$env:DATABASE_URL="..."; .\.venv\Scripts\python.exe -m alembic upgrade head`
-  (현재 head `0002`). 개발/공유 DB에는 자동 적용하지 않는다.
+  (현재 head `0003`). 개발/공유 DB에는 자동 적용하지 않는다.
 - 의존성 정확한 버전은 `requirements.lock`(pip freeze 산출)이 기준이다. 패키지 매니저 확정은 ADR 대기.
 - 로컬 PostgreSQL: 루트 `docker-compose.yml`(WSL에서 `docker compose up -d postgres`).
 - 앱 import 경로: `simulation_platform.api.app:app`.
@@ -54,7 +54,8 @@ python -m venv .venv
 - OpenAPI 후보 생성: `python -m simulation_platform.api.export_openapi` → `artifacts/openapi.candidate.json`(Git 제외, 정식 계약 아님).
 - 구현된 API(`/api/v1`, 정본은 `contracts/openapi.json`): `GET /me`, 프로젝트 `GET·POST /projects`, `GET·PATCH /projects/{p}`,
   자산 `GET·POST /projects/{p}/assets`, `GET·PATCH .../assets/{id}`, `GET .../assets/{id}/ports`(0.1.0),
-  자산 버전 `GET·POST .../assets/{id}/revisions`, `GET·PATCH /projects/{p}/asset-revisions/{rid}`, `POST .../submit|reject|approve`(0.2.0).
+  자산 버전 `GET·POST .../assets/{id}/revisions`, `GET·PATCH /projects/{p}/asset-revisions/{rid}`, `POST .../submit|reject|approve`(0.2.0),
+  제품 `GET·POST /projects/{p}/products`, `GET·PATCH .../products/{id}`, 재료 `GET·POST /projects/{p}/materials`, `GET·PATCH .../materials/{id}`(0.3.0, `GET /me` 프로젝트에 `status` 추가).
   사양: `contracts/04_api_contract.md` §3.1·§3.2, 변경 기록: `contracts/CHANGELOG.md`.
 - 개발용 시드(조직·사용자 3·프로젝트 1, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_dev_data.py --yes`. 개발 DB에는 migration을 먼저 적용해야 한다.
 - **시험 데이터 시드**(프로젝트 3·사용자 추가·자산 60+·버전 상태/용량/규칙 케이스, "[시험]" 표시, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_demo_data.py --yes`.

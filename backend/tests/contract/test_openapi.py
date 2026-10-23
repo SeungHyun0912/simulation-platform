@@ -27,6 +27,15 @@ EXPECTED = {
     ("post", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}/submit"),
     ("post", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}/reject"),
     ("post", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}/approve"),
+    # scope products-materials (contract 0.3.0)
+    ("get", "/api/v1/projects/{project_id}/products"),
+    ("post", "/api/v1/projects/{project_id}/products"),
+    ("get", "/api/v1/projects/{project_id}/products/{product_id}"),
+    ("patch", "/api/v1/projects/{project_id}/products/{product_id}"),
+    ("get", "/api/v1/projects/{project_id}/materials"),
+    ("post", "/api/v1/projects/{project_id}/materials"),
+    ("get", "/api/v1/projects/{project_id}/materials/{material_id}"),
+    ("patch", "/api/v1/projects/{project_id}/materials/{material_id}"),
 }
 
 
@@ -56,6 +65,8 @@ def test_mutating_operations_declare_if_match_and_precondition_errors():
         ("post", f"{REVISION}/submit"),
         ("post", f"{REVISION}/reject"),
         ("post", f"{REVISION}/approve"),
+        ("patch", "/api/v1/projects/{project_id}/products/{product_id}"),
+        ("patch", "/api/v1/projects/{project_id}/materials/{material_id}"),
     ]
     for method, path in targets:
         op = paths[path][method]
@@ -82,6 +93,28 @@ def test_capacity_schema_is_closed_and_uses_contract_units():
     status = capacity["properties"]["status"]
     assert next(x for x in status.get("anyOf", [status]) if "enum" in x)["enum"] == [
         "unknown", "confirmed"]
+
+
+def test_default_spec_schema_is_closed_and_keeps_measures_separate():
+    schemas = _schema()["components"]["schemas"]
+    spec = schemas["DefaultSpec"]
+    assert spec.get("additionalProperties") is False
+    assert set(spec["properties"]) == {"length_m", "weight_kg", "unit_count", "strand_count"}
+    for name in ("DecimalMeasure", "CountMeasure"):
+        measure = schemas[name]
+        assert measure.get("additionalProperties") is False
+        assert measure["properties"]["mode"]["enum"] == ["unknown", "known", "not_applicable"]
+    # 길이·중량은 decimal 문자열, 개수는 정수로 서로 다른 형식이다.
+    decimal = schemas["DecimalMeasure"]["properties"]["value"]
+    assert any(x.get("type") == "string" for x in decimal.get("anyOf", [decimal]))
+    count = schemas["CountMeasure"]["properties"]["value"]
+    assert any(x.get("type") == "integer" for x in count.get("anyOf", [count]))
+
+
+def test_me_projects_include_status_and_products_have_no_process_summary_yet():
+    schemas = _schema()["components"]["schemas"]
+    assert "status" in schemas["MeProject"]["properties"]
+    assert "latest_process_version" not in schemas["ProductOut"]["properties"]  # 공정 CR에서 추가
 
 
 def test_asset_response_adds_revision_summaries_without_breaking_0_1_fields():
@@ -119,5 +152,6 @@ def test_contract_status_hash_matches_snapshot():
     digest = hashlib.sha256((REPO / "contracts" / "openapi.json").read_bytes()).hexdigest()
     assert status["openapi_sha256"] == digest
     assert status["status"] == "PARTIALLY_APPROVED"
-    assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions"]
-    assert status["contract_version"] == "0.2.0"
+    assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
+                                         "products-materials"]
+    assert status["contract_version"] == "0.3.0"

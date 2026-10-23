@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0)와 `asset-revisions`(§3.2, contract 0.2.0)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -74,6 +74,8 @@ NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE
 | INVALID_CURSOR | 422 | cursor가 올바르지 않거나 정렬·필터와 맞지 않음 |
 | PROJECT_CODE_CONFLICT | 409 | 같은 조직에 같은 프로젝트 코드 |
 | ASSET_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 자산 코드 |
+| PRODUCT_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 제품 코드(0.3.0) |
+| MATERIAL_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 재료 코드(0.3.0) |
 | INTERNAL_ERROR | 500 | 예기치 않은 서버 오류(상세 비노출, `request_id`로 추적) |
 | VERSION_IMMUTABLE | 409 | 초안이 아닌 버전(검토 중·승인·대체됨)의 내용을 수정하려 함(0.2.0) |
 | REVISION_DRAFT_EXISTS | 409 | 자산에 이미 열린 버전(draft/in_review)이 있어 새 초안을 만들 수 없음(0.2.0) |
@@ -114,7 +116,8 @@ NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE
 위 표 중 **승인된 operation은 `/me`, `/projects`(GET·POST), `/projects/{p}`(GET·PATCH),
 `/projects/{p}/assets`(GET·POST), `/projects/{p}/assets/{id}`(GET·PATCH), `/projects/{p}/assets/{id}/ports`(GET)**
 (0.1.0)와 **`/projects/{p}/assets/{id}/revisions`(GET·POST), `/projects/{p}/asset-revisions/{id}`(GET·PATCH),
-`.../submit`, `.../reject`, `.../approve`**(0.2.0, §3.2)뿐이다. 나머지 행(archive, clone, members, groups, materials, products)은 PROPOSED.
+`.../submit`, `.../reject`, `.../approve`**(0.2.0, §3.2)와 **`/projects/{p}/products`(GET·POST), `/projects/{p}/products/{id}`(GET·PATCH),
+`/projects/{p}/materials`(GET·POST), `/projects/{p}/materials/{id}`(GET·PATCH)**(0.3.0, §3.3)뿐이다. 나머지 행(archive, clone, members, groups)은 PROPOSED.
 
 ### 3.1 승인 scope `project-assets-ports` (contract 0.1.0)
 
@@ -203,6 +206,31 @@ submitted_at|by, rejection_reason|null, rejected_at|null, approved_at|by, create
 
 **자산 응답 추가 필드** (비파괴): `current_revision`(현재 승인본 `{id, revision_no, status, approved_at}`), `latest_revision`(가장 최근 버전 같은 형태). 없으면 `null`.
 자산을 만들어도 버전은 자동 생성되지 않는다(`latest_revision=null`). 용량 입력을 시작하려면 `POST …/revisions`를 호출한다.
+
+### 3.3 승인 scope `products-materials` (contract 0.3.0)
+
+정본은 [openapi.json](openapi.json), 예제는 [examples/first-scope](examples/first-scope/)의 `product.*`·`material.*`·`me.get`. 근거 CR:
+[CR-backend-20261023-be03-products-materials](../docs/change-requests/CR-backend-20261023-be03-products-materials.md).
+제품·재료 정의는 **버전이 없는 기준정보**다(공정 정의가 버전을 가진다). 자산 기본 정보처럼 항상 수정할 수 있고 `If-Match`가 필수이며, 응답 규약(래퍼·cursor·ETag·404 정책)은 §1·§3.1과 같다.
+
+- 권한(잠정): project admin·editor = 생성·수정, viewer = 조회. 코드(`code`)는 프로젝트 안에서 유일(다른 프로젝트는 같은 코드 가능), 제품과 재료의 코드는 서로 독립이다. 중복은 409 `PRODUCT_CODE_CONFLICT`/`MATERIAL_CODE_CONFLICT`(`field_path=/code`).
+- 목록: `q`(code/name 부분 일치, `%`·`_`는 문자), `include_archived`(기본 false), `sort`(`code|name`, `-` 접두, 단일 필드, **기본 `code`**), `limit`·`cursor`. 정렬·필터·프로젝트가 바뀐 cursor는 422 `INVALID_CURSOR`.
+- 보관: `archived_at`·`include_archived`만 있고 archive endpoint는 없다. 참조된 기준정보의 hard delete는 지원하지 않는다(DELETE endpoint 없음).
+
+**Product**: `{id, project_id, code, name, specification|null, notes|null, archived_at|null, created_at, updated_at|null, row_version}`
+- 생성 `{code, name, specification?, notes?}` → 201 + ETag + Location. `specification`은 **자유 텍스트**(최대 4000자)이며 `null`이 미정, 빈 문자열은 422.
+- PATCH 가능: `code, name, specification(null로 지움), notes(null로 지움)`.
+- 제품 목록의 `latest_process_version` 요약은 **아직 없다**(공정 버전 CR에서 추가 필드로 도입).
+
+**Material**: `{id, project_id, code, name, form, default_spec, notes|null, archived_at|null, created_at, updated_at|null, row_version}`
+- 생성 `{code, name, form, default_spec?, notes?}`. `form`은 **자유 텍스트**(1~100자, 허용값 목록 없음 — 확정된 목록이 생기면 enum으로 좁히는 계약 변경).
+- `default_spec`은 `{length_m, weight_kg, unit_count, strand_count}` 각각 `{mode: unknown|known|not_applicable, value}`이다.
+  - `known`만 `value`를 가지며, 나머지 mode에 `value`를 보내면 422. **기본값은 모두 `unknown`(0이 아님).**
+  - `length_m`·`weight_kg`: **decimal 문자열**, 0 초과, 소수 6자리까지(`"3000"`, `"2000.500000"`). `unit_count`·`strand_count`: **JSON 정수**, 1 이상(문자열·소수·불리언은 422).
+  - 길이·중량·단위 수·가닥 수는 서로 환산하지 않으며 서로 다른 필드다. 알 수 없는 키는 거부한다.
+- PATCH: `code, name, form, default_spec, notes`. `default_spec`은 **보낸 필드만 교체**하고 나머지는 유지한다(빈 객체·`null`·필드의 `null`은 422). 확정값을 다시 미정으로 되돌리려면 `{mode: "unknown"}`을 보낸다.
+
+**`GET /me` 보강(0.3.0)**: `projects[]`에 `status`(`active|archived`)가 추가되었다(`GET /projects`의 `Project.status`와 같은 값, 비파괴). 보관된 프로젝트도 목록에 포함하며 제외 여부는 클라이언트가 정한다.
 
 ## 4. 공정 버전·그래프 API
 

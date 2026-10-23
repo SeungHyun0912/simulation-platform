@@ -11,6 +11,7 @@
 - 자산 60건(설비 25·저장 25·도킹 10) + 보관된 자산 1건 → 기본 limit 50에서 next_cursor가 나온다
 - 버전 상태별 샘플(없음/draft/in_review/approved/approved+draft/superseded 이력/approved+in_review)과 용량·규칙 케이스
 - 프로젝트 B에 같은 코드(EQ-001) 자산 1건(프로젝트 격리 확인)
+- 제품 8건(규격 입력/미정 혼합)·재료 4건(default_spec 확정/미정/해당 없음 혼합), 프로젝트 B에 같은 코드(P-001) 제품 1건
 """
 
 import argparse
@@ -215,11 +216,41 @@ def seed_assets(seeder: Seeder, project_a: uuid.UUID, project_b: uuid.UUID, engi
     return {"skipped": False, "assets": len(ids)}
 
 
+def seed_catalog(seeder: Seeder, project_a: uuid.UUID, project_b: uuid.UUID) -> dict:
+    """제품·재료 시험 데이터(프로젝트 A, 같은 코드 한 쌍은 B). 이미 있으면 건너뛴다."""
+    products = f"{API}/projects/{project_a}/products"
+    response = seeder.client.get(f"{products}?q=P-001", headers=seeder.headers)
+    if any(p["code"] == "P-001" for p in response.json()["data"]):
+        return {"skipped": True}
+    for n in range(1, 9):
+        body = {"code": f"P-{n:03d}", "name": f"[시험] 제품 {n}"}
+        if n % 2:  # 홀수는 규격 입력, 짝수는 미정(null)
+            body["specification"] = f"[시험] 규격 텍스트 {n}"
+        seeder.post(products, body)
+    materials = f"{API}/projects/{project_a}/materials"
+    known = {"mode": "known"}
+    samples = [
+        ("M-001", "[시험] 원자재 롤", "롤", {"length_m": {**known, "value": "3000"},
+                                          "weight_kg": {**known, "value": "2000"}}),
+        ("M-002", "[시험] 보빈 반제품", "보빈", {"length_m": {**known, "value": "1000"},
+                                           "unit_count": {**known, "value": 3},
+                                           "weight_kg": {"mode": "not_applicable"}}),
+        ("M-003", "[시험] 모두 미정", "롤", {}),
+        ("M-004", "[시험] 가닥 수만 확정", "다발", {"strand_count": {**known, "value": 12}}),
+    ]
+    for code, name, form, spec in samples:
+        seeder.post(materials, {"code": code, "name": name, "form": form, "default_spec": spec})
+    seeder.post(f"{API}/projects/{project_b}/products", {"code": "P-001", "name": "[시험] B의 P-001"})
+    return {"skipped": False, "products": 8, "materials": len(samples)}
+
+
 def seed(engine: Engine) -> dict:
     fixtures = seed_fixtures(engine)
     seeder = Seeder(engine, fixtures["users"]["admin"])
-    result = seed_assets(seeder, fixtures["projects"]["A"], fixtures["projects"]["B"], engine)
-    return {**fixtures, "assets": result}
+    projects = fixtures["projects"]
+    result = seed_assets(seeder, projects["A"], projects["B"], engine)
+    catalog = seed_catalog(seeder, projects["A"], projects["B"])
+    return {**fixtures, "assets": result, "catalog": catalog}
 
 
 def main(argv: list[str]) -> int:
@@ -244,6 +275,7 @@ def main(argv: list[str]) -> int:
     for name, user_id in result["users"].items():
         print(f"X-Debug-User ({name}) = {user_id}")
     print(f"assets: {result['assets']}")
+    print(f"catalog: {result['catalog']}")
     return 0
 
 

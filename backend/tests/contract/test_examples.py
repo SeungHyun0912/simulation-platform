@@ -9,7 +9,16 @@ from pathlib import Path
 import pytest
 
 from simulation_platform.schemas.asset import AssetCreate, AssetOut, AssetPatch
+from simulation_platform.schemas.catalog import (
+    MaterialCreate,
+    MaterialOut,
+    MaterialPatch,
+    ProductCreate,
+    ProductOut,
+    ProductPatch,
+)
 from simulation_platform.schemas.common import ErrorEnvelope, ListOut, Single
+from simulation_platform.schemas.me import MeOut
 from simulation_platform.schemas.project import ProjectCreate, ProjectOut
 from simulation_platform.schemas.revision import AssetRevisionOut, RejectBody, RevisionPatch
 
@@ -43,6 +52,15 @@ EXPECTED = {
     "error.validation-capacity": (None, ERROR, 422),
     "error.version-immutable": (None, ERROR, 409),
     "error.invalid-state-transition": (None, ERROR, 409),
+    # contract 0.3.0
+    "me.get": (None, Single[MeOut], 200),
+    "product.create": (ProductCreate, Single[ProductOut], 201),
+    "product.list": (None, ListOut[ProductOut], 200),
+    "product.patch": (ProductPatch, Single[ProductOut], 200),
+    "material.create": (MaterialCreate, Single[MaterialOut], 201),
+    "material.patch": (MaterialPatch, Single[MaterialOut], 200),
+    "error.product-code-conflict": (None, ERROR, 409),
+    "error.validation-default-spec": (None, ERROR, 422),
 }
 
 
@@ -73,6 +91,21 @@ def test_success_examples_carry_etag_and_errors_do_not_expose_internals():
         body = _load(name)["response"]["body"]["error"]
         assert body["request_id"] == "req-example"
         assert "Traceback" not in json.dumps(body)
+
+
+def test_catalog_examples_show_unknown_vs_value_and_separate_units():
+    me = _load("me.get")["response"]["body"]["data"]
+    assert {p["status"] for p in me["projects"]} == {"active"}
+    material = _load("material.create")["response"]["body"]["data"]["default_spec"]
+    assert material["length_m"] == {"mode": "known", "value": "3000"}
+    assert material["unit_count"] == {"mode": "unknown", "value": None}  # 미정은 0이 아니다
+    patched = _load("material.patch")["response"]["body"]["data"]["default_spec"]
+    assert patched["unit_count"] == {"mode": "known", "value": 10}  # 개수는 JSON 정수
+    assert patched["length_m"]["value"] == "3000"  # 보내지 않은 필드는 유지
+    product = _load("product.patch")["response"]["body"]["data"]
+    assert product["specification"] is None and product["row_version"] == 2
+    listing = _load("product.list")["response"]["body"]
+    assert listing["page"]["next_cursor"] == "opaque-cursor-example"
 
 
 def test_revision_examples_show_the_documented_workflow():
