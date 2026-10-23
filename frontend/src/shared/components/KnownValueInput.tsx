@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { RadioGroup } from "radix-ui";
 import styles from "./KnownValueInput.module.css";
+import { getUnit } from "../units/units";
 import { QuantityRow, validateQuantity } from "./QuantityInput";
 
 /**
@@ -32,6 +33,15 @@ const PATTERNS: Record<NumberKind, RegExp> = {
   decimal: /^\d+(\.\d+)?$/,
   integer: /^\d+$/,
 };
+
+/** 목록·요약용 문구. 미정을 0이나 빈칸으로 보이지 않게 한다. defaultUnit은 unit이 없을 때만 쓴다. */
+export function knownValueText(v: KnownValue, defaultUnit?: string): string {
+  if (v.mode === "value") {
+    const id = v.unit ?? defaultUnit;
+    return id ? `${v.value} ${getUnit(id)?.label ?? id}` : v.value;
+  }
+  return MODE_LABELS[v.mode];
+}
 
 const EMPTY_MESSAGE = "값을 입력하세요. 모르는 값이면 '미정'을 선택하세요.";
 

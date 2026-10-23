@@ -1,0 +1,9 @@
+.rowActions {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.rowActions button {
+  white-space: nowrap;
+}
+

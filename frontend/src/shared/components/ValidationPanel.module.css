@@ -26,6 +26,15 @@
   margin: 0;
 }
 
+.details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.details .list {
+  margin-top: var(--space-2);
+}
+
 .error {
   color: var(--status-danger-fg);
 }

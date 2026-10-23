@@ -21,6 +21,8 @@ type Props<T> = {
   onSortChange?: (next: SortState) => void;
   /** 행 선택 상태를 색 외에 글자로도 알리기 위해 현재 행 키를 받는다. */
   currentRowKey?: string;
+  /** 열이 많은 표에서 셀 글자를 줄바꿈해 가로 스크롤을 줄인다. 기본은 한 줄 유지. */
+  wrapCells?: boolean;
 };
 
 function ariaSort(sort: SortState | undefined, key: string) {
@@ -42,10 +44,11 @@ export function DataTable<T>({
   sort,
   onSortChange,
   currentRowKey,
+  wrapCells,
 }: Props<T>) {
   return (
     <div className={styles.scroll} tabIndex={0} role="region" aria-label={`${caption} 표 영역`}>
-      <table className={styles.table}>
+      <table className={`${styles.table} ${wrapCells ? styles.wrap : ""}`}>
         <caption className="visually-hidden">{caption}</caption>
         <thead>
           <tr>

@@ -19,6 +19,14 @@
   border-bottom: var(--border-width) solid var(--color-border);
 }
 
+.wrap th,
+.wrap td {
+  white-space: normal;
+  /* 한글이 단어 중간에서 끊기지 않고 공백 단위로 줄바꿈되게 한다 */
+  word-break: keep-all;
+  vertical-align: top;
+}
+
 .table th {
   position: sticky;
   top: 0;
