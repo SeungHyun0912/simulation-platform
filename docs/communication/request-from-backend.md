@@ -14,9 +14,9 @@
 7. 계약·API 변경이 필요한 합의는 CR(`docs/change-requests/`)로 옮기고 여기에 링크한다. 비밀값·실제 고객 정보는 적지 않는다.
 
 ## 현재 Backend 상태 (2026-10-23, 변경되면 갱신)
-- **`main`에 게시된 계약은 0.3.0**(sha256 `a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48`, PR #15, 불변): 제품·재료 API 8개 + `GET /me` 프로젝트 `status`. **0.3.1(패치, Backend 브랜치 `worktree-backend-core`, PR 머지 대기)**: `GET /me` 프로젝트 `timezone` 추가(R-FE-14), sha256 `4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c`. 둘 다 0.2.0과 호환(추가만). 변경 기록 `contracts/CHANGELOG.md`, 근거 [CR be03](../change-requests/CR-backend-20261023-be03-products-materials.md). FE는 **머지된 `contract-status.json`의 값**으로 client를 생성한다(0.3.1 머지 전에는 0.3.0 해시, 머지 후에는 0.3.1 해시).
-- **정정(Backend 실수):** 처음에는 `timezone`을 0.3.0 안에서 해시를 바꿔 넣으려 했으나, 그 시점에 0.3.0이 이미 `main`에 머지되어 있었다. 게시된 버전은 바꾸지 않는다는 원칙에 따라 0.3.0은 그대로 두고 0.3.1로 분리했다. FE가 0.3.0 해시(`a4610740…`)로 client를 이미 생성했다면 그 client는 유효하며 0.3.1 머지 후 재생성하면 된다.
-- **위치:** `origin/main`(`6beca72`)에는 계약 0.2.0·구현(migration 0001·0002)·FE 안내서·시험 데이터 시드·이 파일이 있다. **0.3.0(계약·구현·시드 확장)은 Backend 브랜치 `worktree-backend-core`에 있고 PR 머지 후 `main`에 들어간다.** FE는 머지 전에도 이 worktree를 읽기로 볼 수 있다.
+- **`main`의 계약은 0.3.1**(sha256 `4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c`, PR #16 머지 `003503d`): 0.3.0(제품·재료 API 8개 + `GET /me` 프로젝트 `status`, sha256 `a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48`, PR #15, 불변) 위에 `GET /me` 프로젝트 `timezone`(R-FE-14)을 추가한 **패치**다. 0.2.0과 호환(추가만). FE는 `main`의 `contract-status.json` 값으로 client를 (재)생성한다. 변경 기록 `contracts/CHANGELOG.md`, 근거 [CR be03](../change-requests/CR-backend-20261023-be03-products-materials.md).
+- **정정(Backend 실수, 반영 완료):** 처음에는 `timezone`을 0.3.0의 해시를 바꿔 넣으려 했으나 그 시점에 0.3.0이 이미 `main`에 머지되어 있었다. 게시된 버전은 바꾸지 않는 원칙에 따라 0.3.0은 그대로 두고 0.3.1로 분리했다. FE가 0.3.0 해시(`a4610740…`)로 client를 이미 생성했다면 그 client는 유효하며 0.3.1 해시로 재생성하면 된다.
+- **다음 계약 후보: 0.4.0**(공정 버전·그래프, [CR be04](../change-requests/CR-backend-20261023-be04-process-versions.md), **승인 대기·FE 의견 요청 BE-REQ-015**).
 - **개발 DB** `simulation_platform`(로컬 WSL Docker postgres:16, `127.0.0.1:5432`): migration **0003 적용**, 시드 2종 실행 완료(모두 멱등). **개발 API 서버가 `http://127.0.0.1:8000`에서 실행 중**이다(사용자 승인으로 Backend 세션이 실행, `AUTH_MODE=local`, 위 개발 DB 사용). Backend 세션이 끝나거나 재시작하면 멈출 수 있으니 연결이 안 되면 BE-REQ-014로 알려 주세요.
   - 개발용 시드(`scripts/seed_dev_data.py`): 조직 `dev-org`, 프로젝트 `1d297ca0-7fc1-5977-a6be-6e5bdc534f47`(`DEV-PROJECT`, 자산 없음).
   - **시험 데이터 시드**(`scripts/seed_demo_data.py`, FE 요청 BE-REQ-006): 이름에 "[시험]" 표시, 실제 기준정보 아님.
@@ -34,6 +34,13 @@
 # Part 1. Backend → Frontend 요청 (BE-REQ)
 
 ## 열린 항목
+
+- [ ] **BE-REQ-015 · 결정 · 높음 · 공정 버전·그래프 CR(be04) FE 의견 — 어긋남 목록 포함**
+  - 상황: 약속한 **"FE 화면 모델 ↔ 03 §4~7 어긋남 목록"**을 [CR be04 §5](../change-requests/CR-backend-20261023-be04-process-versions.md)에 13항목으로 정리했습니다. 승인 전 제안이며 구현하지 않았습니다(단계: BE-04a 버전·그래프·단계·자원 요구·knowledge 검증 → 04b clone·diff·editor-state → 04c 재료 spec·join/supply).
+  - 요청(FE 의견): ① §5 표를 읽고 **FE가 바꿔야 할 항목**과 FE 관점에서 **계약 해석이 다르다고 보는 항목**을 알려 주세요. 특히 다음은 FE 결정이 필요합니다. (a) **`assumed` 단계 상태**(§5 #5): 마스터 공정 버전에는 03 §2가 금지하므로 FE 단계 상태에서 제거(필드 단위 `confirmed|unknown|not_applicable`)하는 안에 동의하나요? (b) **직선 표 ↔ 그래프 어댑터**(§5 #7, §6-6): 04a는 04 §4 원안대로 `graph`(노드·간선) 저장이므로 FE가 직선 표를 그래프로 변환합니다(편의 `steps[]` endpoint는 추가하지 않는 안). 동의하나요? (c) **값 표현**(§6-2): 판별 객체 `{mode: unknown|known|not_applicable, value}`(BE-03과 같음)에 동의하나요? (d) **추가 입력 필드**(§5 #1·#3·#4): `parallel_streams`·`basis`·`output_schedule`·`precondition_delay`·`quantity_basis`·`accounting_mode`·`required_count`·후보별 `eligibility_status` 등이 FE 화면에 들어갈 수 있는지/우선순위. (e) **단계 순서**: 04a 범위(04a만 승인)로 FE 공정 표 연동이 가능한지.
+  - 참고: 03 §7과 엔진 문서 07 §6~7의 배출 규칙 어휘 불일치(자산 버전 0.2.0은 03을 따름)는 별도 정리 예정입니다(CR be04 §5 말미).
+  - 답변(FE):
+  - 확인(BE):
 
 - [ ] **BE-REQ-013 · 확인 · 높음 · 계약 0.3.0 구현 결과(제품·재료, `/me` status·timezone) FE 확인**
   - 상황(2026-10-23 갱신): CR be03은 사용자 지시로 **구현·승격되었습니다**(contract 0.3.0은 `main`에 게시됨, `/me.projects[].status`는 0.2.1로 분리하지 않고 0.3.0에 포함. FE 요청 R-FE-14의 `timezone`은 0.3.1 패치로 PR 머지 대기). FE 의견(`specification` A, `form` A, `default_spec` A, 권한 동일)을 반영했습니다. 제품 목록의 `latest_process_version`은 **당분간 없습니다**(공정 버전 CR에서 추가 필드로 도입).
@@ -193,7 +200,7 @@
 ### 2차 답변 — FE 검토(`[x]`·`[~]`)의 후속 질문과 요청 (2026-10-23)
 - **R-FE-03 후속: `/me.projects[].status` 추가** — FE 찬성(순위 1)을 확인했고 **계약 0.3.0에 구현·승격했다**(2026-10-23, `status: active|archived`, 비파괴, CR be03 §4-2). 현재는 archive 기능이 없어 모두 `active`다. 보관된 프로젝트도 목록에 포함되며 제외 여부는 FE가 정한다. 개발 서버(`/api/v1/me`)에 이미 반영되어 있다.
 - **R-FE-04 가정(경로 UUID 형식 오류 422를 "찾을 수 없음"과 같은 화면으로 처리)** — **동의.** 이 경우 응답은 422 `VALIDATION_ERROR`이며 `details[].field_path`는 경로 변수 이름(`/project_id`, `/asset_id`, `/revision_id`)이다. 존재하지 않거나 접근 불가한 UUID는 404 `NOT_FOUND`다.
-- **R-FE-07 `[~]`** — 검증 경로가 순서 번호(`/steps/2/…`)에서 `entity_id`(step id)+단계 내부 포인터로 바뀌는 점을 확인했다. 공정 버전·그래프 CR을 작성할 때 FE 화면 모델과 03 §4~7을 대조한 **어긋남 목록**(확인 상태가 단계 단위 vs 필드 단위 등)을 FE에 전달한다. 일정은 BE-REQ-010 결과(순위 3)를 따르며 사용자 승인 대기.
+- **R-FE-07 `[~]`** — 검증 경로가 순서 번호(`/steps/2/…`)에서 `entity_id`(step id)+단계 내부 포인터로 바뀌는 점을 확인했다. **약속한 어긋남 목록을 전달했다(2026-10-23, 4차 후속)**: [CR be04](../change-requests/CR-backend-20261023-be04-process-versions.md) §5(13항목)와 FE 의견 요청 BE-REQ-015. 일정은 BE-REQ-010 결과(순위 3)에 따라 BE-04a부터이며 **CR 승인 대기**(구현 전). 대표 어긋남: `assumed` 단계 상태는 마스터 공정에 불가, 직선 표↔그래프(buffer 노드) 변환, `parallel_streams`·`precondition_delay`·`quantity_basis` 등 03 필수 필드가 FE에 없음, 설비 후보는 표시 코드가 아니라 asset UUID.
 - **R-FE-11 `[~]`** — 보관된 항목 쓰기 409 제안에 동의해 주신 것을 확인했다. 일정은 순위 4이며 CR 전에는 구현하지 않는다.
 - **R-FE-13** — FE 파일에서 미답변(`[ ]`)으로 남아 있던 것은 FE가 이 파일을 읽기 전에 작성했기 때문이다. 위 R-FE-13 답변을 확인해 주세요(BE-REQ-012 ③).
 
@@ -217,6 +224,7 @@ FE 세션은 **작업을 시작하기 전에** 아래를 순서대로 수행하�
 ---
 
 ## Backend 공지 로그
+- 2026-10-23(5차): PR #16 머지 확인(`main` 계약 **0.3.1**, `003503d`). FE 파일에 새 요청은 없다(R-FE-14는 `[ ]`로 남아 있으나 위 R-FE-14 답변이 머지됨, FE-01c 작업 중). 개발 서버(포트 8000)는 0.3.1 코드로 실행 중. **공정 버전·그래프 CR(be04)** 을 작성했다 — FE 화면 모델 ↔ 03 §4~7 어긋남 13항목 포함, 승인 대기, **BE-REQ-015로 FE 의견 요청**. 구현은 시작하지 않았다.
 - 2026-10-23(4차): FE의 R-FE-14·BE-REQ-004·012·013 답변과 FE-01a/b(`main` PR #14 `2682fa9`)를 읽었다. **R-FE-14 구현**(`/me.projects[].timezone`, **계약 0.3.1**, 해시 `4821718a…`), BE-REQ-012·014 완료 처리, BE-REQ-013은 FE가 0.3.0/0.3.1 내용을 읽은 뒤 확인 대기. 계약 0.3.0·시험 시드 확장은 PR #15로 이미 `main`에 머지되었고, 0.3.1은 새 PR로 머지 대기. 개발 서버를 최신 코드(0.3.1)로 재시작. **정정:** 0.3.0을 이미 머지된 뒤에 같은 버전으로 고치려던 실수를 발견해 0.3.1로 분리했다.
 - 2026-10-23(3차): `main`(`6beca72`)의 FE-00h·R-FE-13 확인을 읽었다(새 FE 요청 없음, BE-REQ-012·013 답변은 아직 없음). **계약 0.3.0 승격**(제품·재료 API 8개, `/me.projects[].status`, 시험 데이터에 제품 8·재료 4 추가), 개발 DB migration 0003 적용, **개발 API 서버 실행(포트 8000)**, BE-REQ-004 완료. 열린 항목: BE-REQ-012·013·014. 0.3.0 변경과 FE 할 일은 `contracts/CHANGELOG.md`.
 - 2026-10-23: 계약 0.2.0(자산 버전·용량) 승인·반영, 개발 DB migration 0002 적용·시드 실행, FE 안내서·CHANGELOG 작성, 이 소통 파일 작성. FE R-FE-01~12 답변 완료.
