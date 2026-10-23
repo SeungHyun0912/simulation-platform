@@ -1,4 +1,8 @@
-import { NavLink, Outlet, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
+import { SAMPLE_PROJECTS } from "../../features/projects/sampleProjects";
+import { ProjectSwitcher } from "../../shared/components/ProjectSwitcher";
 import styles from "./AppShell.module.css";
 
 const MENU = [
@@ -11,6 +15,26 @@ const MENU = [
 
 export function AppShell() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const queryClient = useQueryClient();
+
+  // 프로젝트가 바뀌거나 벗어나면 이전 프로젝트의 요청을 취소하고 캐시를 버린다.
+  useEffect(() => {
+    if (!projectId) return;
+    return () => {
+      const queryKey = ["project", projectId];
+      void queryClient.cancelQueries({ queryKey });
+      queryClient.removeQueries({ queryKey });
+    };
+  }, [projectId, queryClient]);
+
+  function switchProject(nextId: string) {
+    if (nextId === projectId) return;
+    // 자산·버전 ID는 프로젝트에 속하므로 상세 경로를 유지하지 않고 같은 메뉴의 목록으로 이동한다.
+    const section = pathname.split("/")[3] || "assets";
+    navigate(`/projects/${nextId}/${section}`);
+  }
 
   return (
     <div className={styles.shell}>
@@ -22,14 +46,11 @@ export function AppShell() {
       </div>
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>
-        <div className={styles.project} aria-label="현재 프로젝트">
-          <span className={styles.projectLabel}>프로젝트</span>
-          {projectId ? (
-            <code className={styles.projectId}>{projectId}</code>
-          ) : (
-            <span>선택 안 됨 (프로젝트 목록 계약 필요)</span>
-          )}
-        </div>
+        <ProjectSwitcher
+          projects={SAMPLE_PROJECTS}
+          currentId={projectId ?? null}
+          onSelect={switchProject}
+        />
       </header>
       <div className={styles.body}>
         {projectId && (

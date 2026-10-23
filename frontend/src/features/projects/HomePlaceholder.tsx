@@ -6,7 +6,8 @@ export function HomePlaceholder() {
     <>
       <PageHeader title="프로젝트" />
       <StateNotice kind="contract-pending">
-        프로젝트 목록·생성·선택은 승인된 API 계약(project-assets-ports 범위)이 필요합니다.
+        프로젝트 목록·생성·선택은 승인된 API 계약(project-assets-ports 범위)이 필요합니다. 상단
+        프로젝트 전환 메뉴의 목록은 화면 확인용 예시입니다.
       </StateNotice>
     </>
   );

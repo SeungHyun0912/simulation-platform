@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { routes } from "../../src/app/router";
+import { renderApp } from "../renderApp";
 import { StateNotice } from "../../src/shared/components/StateNotice";
 import { VersionStatusBadge } from "../../src/shared/components/VersionStatusBadge";
 import { projectKey } from "../../src/shared/api/queryKeys";
@@ -39,17 +38,15 @@ describe("projectKey", () => {
 
 describe("AppShell", () => {
   it("프로젝트 경로에서는 현재 프로젝트 ID와 계약 미승인 안내를 상시 표시한다", () => {
-    const router = createMemoryRouter(routes, { initialEntries: ["/projects/demo-1/assets"] });
-    render(<RouterProvider router={router} />);
+    renderApp("/projects/demo-1/assets");
     expect(screen.getByLabelText("현재 프로젝트")).toHaveTextContent("demo-1");
     expect(screen.getByRole("note")).toHaveTextContent("PENDING_REVIEW");
     expect(screen.getByRole("heading", { level: 1, name: "설비·공간" })).toBeInTheDocument();
   });
 
   it("프로젝트가 없으면 선택 안 됨과 계약 필요를 표시한다", () => {
-    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
-    render(<RouterProvider router={router} />);
-    expect(screen.getByLabelText("현재 프로젝트")).toHaveTextContent("선택 안 됨");
+    renderApp("/");
+    expect(screen.getByLabelText("현재 프로젝트")).toHaveTextContent("프로젝트 선택");
     expect(screen.getByText("계약 필요")).toBeInTheDocument();
   });
 });

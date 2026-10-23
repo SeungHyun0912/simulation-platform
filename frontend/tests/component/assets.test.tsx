@@ -1,14 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { routes } from "../../src/app/router";
+import { renderApp } from "../renderApp";
 import { SAMPLE_ASSETS } from "../../src/features/assets/sampleAssets";
 import { capacityText } from "../../src/features/assets/assetView";
 
 function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
-  return router;
+  return renderApp(path).router;
 }
 
 const DRAFT = SAMPLE_ASSETS.find((a) => a.status === "draft" && a.kind === "equipment")!;

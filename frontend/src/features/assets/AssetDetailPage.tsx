@@ -18,6 +18,8 @@ import { SAMPLE_ASSETS } from "./sampleAssets";
 import { usePreviewState } from "./usePreviewState";
 
 const CAPACITY_MODES: KnownValueMode[] = ["unknown", "value", "unlimited", "not_allowed"];
+/** 03 계약 §3의 지원 단위. 초기 실행 엔진은 item만 지원한다. */
+const CAPACITY_UNITS = ["item", "bobbin_slot", "pallet_slot", "kg", "m2"];
 
 export function AssetDetailPage() {
   const { projectId = "", assetId = "" } = useParams();
@@ -81,7 +83,8 @@ function AssetForm({
   const dirty = JSON.stringify(draft) !== JSON.stringify(base);
   const guard = useUnsavedChangesGuard(dirty);
 
-  const capacityError = validateKnownValue(draft.capacity, "integer");
+  const capacityUnit = draft.capacity.unit ?? CAPACITY_UNITS[0]!;
+  const capacityError = validateKnownValue({ ...draft.capacity, unit: capacityUnit });
   const nameError = draft.name.trim() === "" ? "이름을 입력하세요." : null;
   const codeError = draft.code.trim() === "" ? "표시 코드를 입력하세요." : null;
 
@@ -90,6 +93,12 @@ function AssetForm({
   if (codeError) issues.push({ severity: "error", message: codeError, field_path: "/code" });
   if (capacityError)
     issues.push({ severity: "error", message: capacityError, field_path: "/capacity" });
+  if (draft.capacity.mode === "value" && capacityUnit !== "item")
+    issues.push({
+      severity: "warning",
+      message: "등록은 가능하지만 현재 실행 엔진은 개(item) 단위 용량만 지원합니다.",
+      field_path: "/capacity/unit",
+    });
   if (draft.capacity.mode === "unknown")
     issues.push({
       severity: "warning",
@@ -228,7 +237,7 @@ function AssetForm({
           {isStorage ? "저장 용량" : "대기 용량"}
         </h2>
         <p className={styles.note}>
-          단위: 개(item). 미정은 0이나 무제한이 아닙니다.
+          단위를 확인하세요. 개수 계열은 정수만 입력할 수 있습니다. 미정은 0이나 무제한이 아닙니다.
           {base.kind === "dock" && " 도킹이라는 이유로 용량을 무제한으로 가정하지 않습니다."}
         </p>
         <KnownValueInput
@@ -236,8 +245,7 @@ function AssetForm({
           value={draft.capacity}
           onChange={(capacity) => setDraft({ ...draft, capacity })}
           allowedModes={CAPACITY_MODES}
-          numberKind="integer"
-          unit="개"
+          units={CAPACITY_UNITS}
           disabled={readOnly}
         />
         {draft.capacity.mode === "not_allowed" && (

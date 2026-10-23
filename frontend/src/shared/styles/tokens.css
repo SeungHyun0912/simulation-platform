@@ -39,6 +39,12 @@
   --color-primary-text: #ffffff;
   --color-primary-hover: #1e40af;
 
+  /* 프로젝트 구분 띠. 이름·코드를 항상 함께 표시하므로 색만으로 구분하지 않는다. */
+  --project-accent-1: #1d4ed8;
+  --project-accent-2: #047857;
+  --project-accent-3: #b45309;
+  --project-accent-4: #7e22ce;
+
   /* 상태 (글자 색은 배경 위에서 4.5:1 이상). 상태는 색 외에 글자·기호도 함께 쓴다. */
   --status-neutral-bg: #e8ebf0;
   --status-neutral-fg: #2f3745;
