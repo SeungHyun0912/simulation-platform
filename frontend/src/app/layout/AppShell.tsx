@@ -1,9 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
-import { toProjectOption } from "../../features/projects/projectView";
-import { SAMPLE_PROJECTS } from "../../features/projects/sampleProjects";
-import { ProjectSwitcher } from "../../shared/components/ProjectSwitcher";
+import { useMe } from "../../features/projects/queries";
+import { ProjectSwitcher, type ProjectOption } from "../../shared/components/ProjectSwitcher";
+import { accentFor } from "../../features/projects/projectView";
+import { useDataSource } from "../../shared/api/ApiContext";
+import { Button } from "../../shared/components/Button";
 import styles from "./AppShell.module.css";
 
 const MENU = [
@@ -19,6 +21,8 @@ export function AppShell() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
+  const source = useDataSource();
+  const me = useMe();
 
   // 프로젝트가 바뀌거나 벗어나면 이전 프로젝트의 요청을 취소하고 캐시를 버린다.
   useEffect(() => {
@@ -37,21 +41,32 @@ export function AppShell() {
     navigate(`/projects/${nextId}/${section}`);
   }
 
+  const options: ProjectOption[] =
+    me.status === "success"
+      ? me.data.projects.map((p) => ({ id: p.id, code: p.code, name: p.name, accent: accentFor(p.id) }))
+      : [];
+
   return (
     <div className={styles.shell}>
       <a href="#main" className={styles.skip}>
         본문으로 건너뛰기
       </a>
-      <div className={styles.banner} role="note">
-        정적 화면입니다. API 계약이 아직 승인되지 않아(PENDING_REVIEW) 서버와 연결되어 있지 않습니다.
+      <div className={styles.banner} role="note" data-source={source}>
+        {source === "static"
+          ? "정적 예시 화면입니다. 서버에 연결되어 있지 않으며 표시된 데이터는 실제 데이터가 아닙니다."
+          : "API 연동 모드입니다(계약 0.2.0, 읽기 위주). 제품·공정 화면은 아직 정적 예시이고, 저장 기능은 연결되지 않았습니다."}
       </div>
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>
-        <ProjectSwitcher
-          projects={SAMPLE_PROJECTS.map((p) => toProjectOption(p))}
-          currentId={projectId ?? null}
-          onSelect={switchProject}
-        />
+        <ProjectSwitcher projects={options} currentId={projectId ?? null} onSelect={switchProject} />
+        {me.status === "error" && (
+          // 프로젝트 목록을 못 불러오면 전환 메뉴가 비어 보이므로 이유와 재시도를 header에서 알린다.
+          // 내 정보가 꼭 필요한 화면은 자기 본문에서 따로 안내한다.
+          <span role="alert" className={styles.meError}>
+            프로젝트 목록을 불러오지 못했습니다.{" "}
+            <Button onClick={me.retry}>다시 시도</Button>
+          </span>
+        )}
       </header>
       <div className={styles.body}>
         {projectId && (
