@@ -10,7 +10,7 @@ import { SAMPLE_ORGANIZATIONS, SAMPLE_PROJECTS } from "./sampleProjects";
  * `/me`가 주는 내 프로젝트 요약. 시간대·상태·설명은 `/me`에 없고 `GET /projects`(ProjectOut)에 있다.
  * timezone은 정적 예시에서만 채우고, API 모드에서는 비워 두어 화면이 기본 표시 시간대(KST)를 쓴다.
  */
-export type MyProject = Pick<ProjectView, "id" | "organizationId" | "code" | "name" | "role"> & {
+export type MyProject = Pick<ProjectView, "id" | "organizationId" | "code" | "name" | "role" | "status"> & {
   timezone?: string;
 };
 
@@ -30,6 +30,7 @@ export function toMeView(me: Schemas["MeOut"]): MeView {
       code: p.code,
       name: p.name,
       role: p.role,
+      status: p.status,
     })),
   };
 }
@@ -56,6 +57,7 @@ const STATIC_ME: MeView = {
     code: p.code,
     name: p.name,
     role: p.role,
+    status: p.status,
     timezone: p.timezone,
   })),
 };

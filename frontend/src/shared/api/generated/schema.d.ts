@@ -1,7 +1,7 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.2.0, openapi_sha256 da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a
-// 승인 scope: project-assets-ports, asset-revisions
+// 기준 계약: version 0.3.0, openapi_sha256 a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48
+// 승인 scope: project-assets-ports, asset-revisions, products-materials
 
 export interface paths {
     "/api/v1/health": {
@@ -257,6 +257,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Materials */
+        get: operations["list_materials_api_v1_projects__project_id__materials_get"];
+        put?: never;
+        /**
+         * Create Material
+         * @description 재료 정의 생성(admin·editor). default_spec의 모든 필드는 기본이 unknown(0이 아님)이다.
+         */
+        post: operations["create_material_api_v1_projects__project_id__materials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/materials/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Material */
+        get: operations["get_material_api_v1_projects__project_id__materials__material_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Material
+         * @description code·name·form·default_spec·notes 수정. default_spec은 보낸 필드만 교체한다. If-Match 필수.
+         */
+        patch: operations["patch_material_api_v1_projects__project_id__materials__material_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Products */
+        get: operations["list_products_api_v1_projects__project_id__products_get"];
+        put?: never;
+        /**
+         * Create Product
+         * @description 제품 생성(admin·editor). 제품은 버전이 없는 기준정보이며 공정 정의가 버전을 가진다.
+         */
+        post: operations["create_product_api_v1_projects__project_id__products_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/products/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Product */
+        get: operations["get_product_api_v1_projects__project_id__products__product_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Product
+         * @description code·name·specification·notes 수정. If-Match 필수. null은 specification·notes를 지운다.
+         */
+        patch: operations["patch_product_api_v1_projects__project_id__products__product_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -419,6 +503,54 @@ export interface components {
             /** Value */
             value?: string | null;
         };
+        /**
+         * CountMeasure
+         * @description 단위 수·가닥 수. known만 값(1 이상 정수, JSON integer)을 가진다.
+         */
+        CountMeasure: {
+            /**
+             * Mode
+             * @default unknown
+             * @enum {string}
+             */
+            mode: "unknown" | "known" | "not_applicable";
+            /** Value */
+            value?: number | null;
+        };
+        /**
+         * DecimalMeasure
+         * @description 길이(m)·중량(kg). known만 값(0 초과 decimal 문자열, 소수 6자리까지)을 가진다.
+         */
+        DecimalMeasure: {
+            /**
+             * Mode
+             * @default unknown
+             * @enum {string}
+             */
+            mode: "unknown" | "known" | "not_applicable";
+            /** Value */
+            value?: string | null;
+        };
+        /**
+         * DefaultSpec
+         * @description 길이·중량·단위 수·가닥 수는 서로 환산하지 않는다. 기본값은 모두 unknown(0이 아님).
+         */
+        DefaultSpec: {
+            length_m?: components["schemas"]["DecimalMeasure"];
+            strand_count?: components["schemas"]["CountMeasure"];
+            unit_count?: components["schemas"]["CountMeasure"];
+            weight_kg?: components["schemas"]["DecimalMeasure"];
+        };
+        /**
+         * DefaultSpecPatch
+         * @description 보낸 필드만 교체한다.
+         */
+        DefaultSpecPatch: {
+            length_m?: components["schemas"]["DecimalMeasure"] | null;
+            strand_count?: components["schemas"]["CountMeasure"] | null;
+            unit_count?: components["schemas"]["CountMeasure"] | null;
+            weight_kg?: components["schemas"]["DecimalMeasure"] | null;
+        };
         /** DispatchUnknown */
         DispatchUnknown: {
             /**
@@ -540,11 +672,77 @@ export interface components {
             data: components["schemas"]["AssetRevisionOut"][];
             page: components["schemas"]["Page"];
         };
+        /** ListOut[MaterialOut] */
+        ListOut_MaterialOut_: {
+            /** Data */
+            data: components["schemas"]["MaterialOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[ProductOut] */
+        ListOut_ProductOut_: {
+            /** Data */
+            data: components["schemas"]["ProductOut"][];
+            page: components["schemas"]["Page"];
+        };
         /** ListOut[ProjectOut] */
         ListOut_ProjectOut_: {
             /** Data */
             data: components["schemas"]["ProjectOut"][];
             page: components["schemas"]["Page"];
+        };
+        /** MaterialCreate */
+        MaterialCreate: {
+            /** Code */
+            code: string;
+            default_spec?: components["schemas"]["DefaultSpec"];
+            /** Form */
+            form: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** MaterialOut */
+        MaterialOut: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at: string;
+            default_spec: components["schemas"]["DefaultSpec"];
+            /** Form */
+            form: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Row Version */
+            row_version: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** MaterialPatch */
+        MaterialPatch: {
+            /** Code */
+            code?: string | null;
+            default_spec?: components["schemas"]["DefaultSpecPatch"] | null;
+            /** Form */
+            form?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /** MeOrganization */
         MeOrganization: {
@@ -586,6 +784,8 @@ export interface components {
             organization_id: string;
             /** Role */
             role: string;
+            /** Status */
+            status: string;
         };
         /** MeUser */
         MeUser: {
@@ -653,6 +853,57 @@ export interface components {
             port_id: string;
             /** Release Rule */
             release_rule?: (components["schemas"]["ReleaseUnknown"] | components["schemas"]["ReleaseWhenAccepts"]) | null;
+        };
+        /** ProductCreate */
+        ProductCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Specification */
+            specification?: string | null;
+        };
+        /** ProductOut */
+        ProductOut: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Row Version */
+            row_version: number;
+            /** Specification */
+            specification: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** ProductPatch */
+        ProductPatch: {
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Specification */
+            specification?: string | null;
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -776,9 +1027,17 @@ export interface components {
         Single_AssetRevisionOut_: {
             data: components["schemas"]["AssetRevisionOut"];
         };
+        /** Single[MaterialOut] */
+        Single_MaterialOut_: {
+            data: components["schemas"]["MaterialOut"];
+        };
         /** Single[MeOut] */
         Single_MeOut_: {
             data: components["schemas"]["MeOut"];
+        };
+        /** Single[ProductOut] */
+        Single_ProductOut_: {
+            data: components["schemas"]["ProductOut"];
         };
         /** Single[ProjectOut] */
         Single_ProjectOut_: {
@@ -1993,6 +2252,552 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_materials_api_v1_projects__project_id__materials_get: {
+        parameters: {
+            query?: {
+                /** @description code/name 부분 일치 */
+                q?: string | null;
+                include_archived?: boolean;
+                /** @description code | name, 앞에 -를 붙이면 내림차순(기본 code) */
+                sort?: string | null;
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_MaterialOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_material_api_v1_projects__project_id__materials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_MaterialOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_material_api_v1_projects__project_id__materials__material_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_MaterialOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_material_api_v1_projects__project_id__materials__material_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_MaterialOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_products_api_v1_projects__project_id__products_get: {
+        parameters: {
+            query?: {
+                /** @description code/name 부분 일치 */
+                q?: string | null;
+                include_archived?: boolean;
+                /** @description code | name, 앞에 -를 붙이면 내림차순(기본 code) */
+                sort?: string | null;
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_ProductOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_product_api_v1_projects__project_id__products_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ProductOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_product_api_v1_projects__project_id__products__product_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ProductOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_product_api_v1_projects__project_id__products__product_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ProductOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
                 headers: {
                     [name: string]: unknown;
                 };

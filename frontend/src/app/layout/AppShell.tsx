@@ -5,6 +5,7 @@ import { useMe } from "../../features/projects/queries";
 import { ProjectSwitcher, type ProjectOption } from "../../shared/components/ProjectSwitcher";
 import { accentFor } from "../../features/projects/projectView";
 import { useDataSource } from "../../shared/api/ApiContext";
+import contractMeta from "../../shared/api/generated/CONTRACT.json";
 import { Button } from "../../shared/components/Button";
 import styles from "./AppShell.module.css";
 
@@ -43,7 +44,7 @@ export function AppShell() {
 
   const options: ProjectOption[] =
     me.status === "success"
-      ? me.data.projects.map((p) => ({ id: p.id, code: p.code, name: p.name, accent: accentFor(p.id) }))
+      ? me.data.projects.map((p) => ({ id: p.id, code: p.code, name: p.name, accent: accentFor(p.id), archived: p.status === "archived" }))
       : [];
 
   return (
@@ -54,7 +55,7 @@ export function AppShell() {
       <div className={styles.banner} role="note" data-source={source}>
         {source === "static"
           ? "정적 예시 화면입니다. 서버에 연결되어 있지 않으며 표시된 데이터는 실제 데이터가 아닙니다."
-          : "API 연동 모드입니다(계약 0.2.0, 읽기 위주). 제품·공정 화면은 아직 정적 예시이고, 저장 기능은 연결되지 않았습니다."}
+          : `API 연동 모드입니다(계약 ${contractMeta.contract_version}). 자산 기본 정보의 저장·생성은 연결되어 있고, 용량·규칙 저장과 제품·공정 화면은 아직 연결되지 않았습니다(제품·공정은 정적 예시).`}
       </div>
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>

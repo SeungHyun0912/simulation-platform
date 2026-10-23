@@ -14,6 +14,7 @@ pnpm build
 pnpm gen:api    # 승인된 계약(contracts/openapi.json)에서 API 타입 생성. 해시가 contract-status.json과 다르면 중단
 pnpm check:api  # 생성물이 승인 스냅샷과 같은지 확인(파일을 바꾸지 않음)
 pnpm test:live  # 실제 API 서버 대상 읽기 전용 검증(LIVE_API 환경변수가 없으면 건너뜀)
+                # 쓰기 검증은 공유 개발 DB를 바꾸므로 LIVE_WRITE=1을 함께 줄 때만 실행(시험 자산 EQ-025만 PATCH 후 원복, 생성은 하지 않음)
 ```
 
 ## 데이터 출처와 실제 API 연결 (로컬 개발)

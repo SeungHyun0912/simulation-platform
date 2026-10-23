@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
+import { SaveErrorNotice } from "../../shared/components/SaveErrorNotice";
 import { classifyError } from "../../shared/api/errors";
 import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
 import { Button } from "../../shared/components/Button";
@@ -31,7 +32,6 @@ import {
   isRevisionEditable,
   KIND_LABELS,
   statusLabel,
-  toInfoDraft,
   toRevisionEdit,
   validateInfoDraft,
   type AssetInfo,
@@ -43,6 +43,19 @@ import styles from "./AssetDetailPage.module.css";
 import { CAPACITY_UNITS, validateCapacity } from "./capacityAdapter";
 import { describeDispatch, describeRelease, type RuleLine } from "./ruleLabels";
 import { useAssetDetail } from "./queries";
+import { useInfoEditor } from "./useInfoEditor";
+
+/** 충돌 안내에서 필드를 부르는 이름 */
+const INFO_LABELS: Record<keyof InfoDraft, string> = {
+  code: "표시 코드",
+  name: "이름",
+  sortOrder: "정렬 순서",
+  externalRef: "외부 참조",
+  notes: "메모",
+  equipmentType: "설비 유형",
+  modelName: "모델",
+  spaceType: "공간 유형",
+};
 
 const CAPACITY_MODES = ["unknown", "value", "unlimited", "not_allowed"] as const;
 const CAPACITY_UNIT_LIST = [...CAPACITY_UNITS];
@@ -140,25 +153,32 @@ function AssetDetail({
   infoConflict,
   revisionConflict,
 }: DetailProps) {
-  const baseInfo = toInfoDraft(asset);
-  const [info, setInfo] = useState<InfoDraft>(baseInfo);
+  // 기본 정보(자산 리소스)의 입력·저장·충돌 상태는 훅이 맡는다. 버전(용량·규칙)과 ETag·저장이 따로다.
+  const editor = useInfoEditor(asset, projectId, infoConflict);
+  const info = editor.info;
   const [selectedId, setSelectedId] = useState<string | null>(
     asset.latestRevision?.id ?? revisions[0]?.id ?? null,
   );
   // 사용자가 건드린 버전만 편집본을 가진다. 없으면 서버 값 그대로다.
   const [edits, setEdits] = useState<Record<string, RevisionEdit>>({});
-  const [infoConflictDismissed, setInfoConflictDismissed] = useState(false);
   const [revConflictDismissed, setRevConflictDismissed] = useState(false);
 
   const source = useDataSource();
   const mayEdit = canEdit(role);
-  const infoDirty = JSON.stringify(info) !== JSON.stringify(baseInfo);
+  const infoDirty = editor.dirty;
   const dirtyRevisionIds = revisions
     .filter((r) => edits[r.id] && JSON.stringify(edits[r.id]) !== JSON.stringify(toRevisionEdit(r)))
     .map((r) => r.id);
   const guard = useUnsavedChangesGuard(infoDirty || dirtyRevisionIds.length > 0);
 
-  const infoErrors = validateInfoDraft(info, asset.kind);
+  // 클라이언트 형식 검사 + 서버가 돌려준 필드 오류(서버가 더 구체적이므로 우선)
+  const serverFieldErrors = Object.fromEntries(Object.entries(editor.fieldErrors).filter(([, v]) => v)) as Partial<
+    Record<keyof InfoDraft, string>
+  >;
+  const clientInfoErrors = validateInfoDraft(info, asset.kind);
+  const infoErrors = { ...clientInfoErrors, ...serverFieldErrors };
+  const infoHasClientError = Object.keys(clientInfoErrors).length > 0;
+  const canSaveInfo = source === "api" && mayEdit && infoDirty && !infoHasClientError && !editor.saving;
   const isEquipment = asset.kind === "equipment";
 
   const selected = revisions.find((r) => r.id === selectedId) ?? null;
@@ -206,7 +226,6 @@ function AssetDetail({
   }
   const revisionIssues = [...clientIssues, ...(selected?.issues ?? [])];
 
-  const infoHasError = Object.keys(infoErrors).length > 0;
   const revisionOptionLabel = (r: RevisionDetail) =>
     `v${r.revisionNo} ${statusLabel(r.status)}` +
     (r.id === asset.latestRevision?.id ? " · 최신" : "") +
@@ -268,16 +287,15 @@ function AssetDetail({
 
       {/* ───── 기본 정보: 버전이 없는 리소스. 항상 편집 가능(역할이 허용하면). 자산 ETag ───── */}
       <Section id="sec-info" title="기본 정보">
-        {infoConflict && !infoConflictDismissed && (
+        {editor.conflict && (
           <ConflictNotice
             resource="자산 기본 정보"
-            onReload={() => {
-              setInfo(baseInfo);
-              setInfoConflictDismissed(true);
-            }}
-            onKeepEditing={() => setInfoConflictDismissed(true)}
+            onReload={() => void editor.reloadFromServer()}
+            onKeepEditing={() => void editor.keepMineAndMerge()}
           />
         )}
+        <SaveErrorNotice error={editor.error} />
+        {editor.general.length > 0 && <ValidationPanel issues={editor.general} />}
         <FieldGrid>
           <TextField label="내부 ID" value={asset.id} readOnly hint="변경할 수 없습니다." />
           <TextField label="종류" value={KIND_LABELS[asset.kind]} readOnly hint="만든 뒤 바꿀 수 없습니다." />
@@ -286,14 +304,14 @@ function AssetDetail({
             value={info.code}
             readOnly={!mayEdit}
             error={infoErrors.code}
-            onChange={(e) => setInfo({ ...info, code: e.target.value })}
+            onChange={(e) => editor.edit("code", e.target.value)}
           />
           <TextField
             label="이름"
             value={info.name}
             readOnly={!mayEdit}
             error={infoErrors.name}
-            onChange={(e) => setInfo({ ...info, name: e.target.value })}
+            onChange={(e) => editor.edit("name", e.target.value)}
           />
           {isEquipment ? (
             <>
@@ -302,7 +320,7 @@ function AssetDetail({
                 value={info.equipmentType}
                 readOnly={!mayEdit}
                 error={infoErrors.equipmentType}
-                onChange={(e) => setInfo({ ...info, equipmentType: e.target.value })}
+                onChange={(e) => editor.edit("equipmentType", e.target.value)}
               />
               <TextField
                 label="모델"
@@ -310,7 +328,7 @@ function AssetDetail({
                 value={info.modelName}
                 readOnly={!mayEdit}
                 error={infoErrors.modelName}
-                onChange={(e) => setInfo({ ...info, modelName: e.target.value })}
+                onChange={(e) => editor.edit("modelName", e.target.value)}
               />
             </>
           ) : (
@@ -319,7 +337,7 @@ function AssetDetail({
               value={info.spaceType}
               readOnly={!mayEdit}
               error={infoErrors.spaceType}
-              onChange={(e) => setInfo({ ...info, spaceType: e.target.value })}
+              onChange={(e) => editor.edit("spaceType", e.target.value)}
             />
           )}
           <TextField
@@ -328,14 +346,14 @@ function AssetDetail({
             value={info.sortOrder}
             readOnly={!mayEdit}
             error={infoErrors.sortOrder}
-            onChange={(e) => setInfo({ ...info, sortOrder: e.target.value })}
+            onChange={(e) => editor.edit("sortOrder", e.target.value)}
           />
           <TextField
             label="외부 참조"
             value={info.externalRef}
             readOnly={!mayEdit}
             error={infoErrors.externalRef}
-            onChange={(e) => setInfo({ ...info, externalRef: e.target.value })}
+            onChange={(e) => editor.edit("externalRef", e.target.value)}
           />
         </FieldGrid>
         <TextAreaField
@@ -343,7 +361,7 @@ function AssetDetail({
           value={info.notes}
           readOnly={!mayEdit}
           error={infoErrors.notes}
-          onChange={(e) => setInfo({ ...info, notes: e.target.value })}
+          onChange={(e) => editor.edit("notes", e.target.value)}
         />
         <h3 className={styles.rulesTitle}>포트</h3>
         <Note>
@@ -359,19 +377,36 @@ function AssetDetail({
             </li>
           ))}
         </ul>
+        {Object.entries(editor.hints).some(([, v]) => v) && (
+          <Note>
+            저장하기 전에 다른 사용자가 바꾼 값이 있습니다. 내 입력을 유지했으며, 저장하면 아래 항목은 내 값으로 바뀝니다:{" "}
+            {(Object.entries(editor.hints) as [keyof InfoDraft, string | undefined][])
+              .filter(([, v]) => v !== undefined)
+              .map(([k, v]) => `${INFO_LABELS[k]}(서버 값: ${v === "" ? "비어 있음" : v})`)
+              .join(", ")}
+          </Note>
+        )}
         <div className={styles.sectionActions}>
           {infoDirty && <strong>● 기본 정보에 저장하지 않은 변경이 있습니다</strong>}
-          <Button disabled={!infoDirty} onClick={() => setInfo(baseInfo)}>
+          {editor.saved && !infoDirty && <span role="status">기본 정보를 저장했습니다.</span>}
+          <Button disabled={!infoDirty || editor.saving} onClick={editor.reset}>
             기본 정보 되돌리기
           </Button>
           <Button
             variant="primary"
-            disabled
+            disabled={!canSaveInfo}
+            onClick={() => void editor.save()}
             title={
-              infoHasError ? "오류를 해결해야 저장할 수 있습니다" : "저장은 API 연동 후 사용할 수 있습니다"
+              source === "static"
+                ? "정적 예시 화면에서는 저장하지 않습니다"
+                : !mayEdit
+                  ? "이 역할은 수정할 수 없습니다"
+                  : infoHasClientError
+                    ? "오류를 해결해야 저장할 수 있습니다"
+                    : undefined
             }
           >
-            기본 정보 저장 (연동 후)
+            {editor.saving ? "저장 중…" : source === "static" ? "기본 정보 저장 (정적 예시)" : "기본 정보 저장"}
           </Button>
         </div>
       </Section>

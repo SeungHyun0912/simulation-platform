@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router";
 import { AppShell } from "./layout/AppShell";
+import { AssetCreatePage } from "../features/assets/AssetCreatePage";
 import { AssetDetailPage } from "../features/assets/AssetDetailPage";
 import { AssetListPage } from "../features/assets/AssetListPage";
 import { ProcessEditorPage } from "../features/processes/ProcessEditorPage";
@@ -15,6 +16,7 @@ export const routes = [
       { path: "/", element: <ProjectListPage /> },
       { path: "/projects/new", element: <ProjectCreatePage /> },
       { path: "/projects/:projectId/assets", element: <AssetListPage /> },
+      { path: "/projects/:projectId/assets/new", element: <AssetCreatePage /> },
       { path: "/projects/:projectId/assets/:assetId", element: <AssetDetailPage /> },
       { path: "/projects/:projectId/products", element: <ProductListPage /> },
       { path: "/projects/:projectId/products/:productId", element: <ProductDetailPage /> },
