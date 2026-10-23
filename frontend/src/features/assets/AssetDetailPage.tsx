@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { Button } from "../../shared/components/Button";
+import { ConflictNotice } from "../../shared/components/ConflictNotice";
 import { TextField } from "../../shared/components/Fields";
 import {
   KnownValueInput,
@@ -15,7 +16,7 @@ import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuar
 import { KIND_LABELS, type AssetView } from "./assetView";
 import styles from "./AssetDetailPage.module.css";
 import { SAMPLE_ASSETS } from "./sampleAssets";
-import { usePreviewState } from "./usePreviewState";
+import { usePreviewState } from "../../shared/hooks/usePreviewState";
 
 const CAPACITY_MODES: KnownValueMode[] = ["unknown", "value", "unlimited", "not_allowed"];
 /** 03 계약 §3의 지원 단위. 초기 실행 엔진은 item만 지원한다. */
@@ -142,24 +143,13 @@ function AssetForm({
 
       {showConflict && !conflictDismissed && (
         <div className={styles.block}>
-          <StateNotice
-            kind="conflict"
-            action={
-              <>
-                <Button
-                  onClick={() => {
-                    setDraft(base);
-                    setConflictDismissed(true);
-                  }}
-                >
-                  최신 내용으로 다시 불러오기
-                </Button>
-                <Button onClick={() => setConflictDismissed(true)}>내 변경을 유지하고 계속 편집</Button>
-              </>
-            }
-          >
-            자동으로 덮어쓰지 않았습니다. 최신 내용을 불러오면 이 화면의 변경은 사라집니다.
-          </StateNotice>
+          <ConflictNotice
+            onReload={() => {
+              setDraft(base);
+              setConflictDismissed(true);
+            }}
+            onKeepEditing={() => setConflictDismissed(true)}
+          />
         </div>
       )}
 

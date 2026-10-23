@@ -55,6 +55,19 @@ export function TextField({
   );
 }
 
+export function CheckboxField({
+  label,
+  ...rest
+}: { label: string } & Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type">) {
+  const id = useId();
+  return (
+    <div className={styles.check}>
+      <input id={id} type="checkbox" {...rest} />
+      <label htmlFor={id}>{label}</label>
+    </div>
+  );
+}
+
 export function SelectField({
   label,
   hint,
