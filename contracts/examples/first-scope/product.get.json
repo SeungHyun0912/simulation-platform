@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/products/00000000-0000-4000-8000-000000000013"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"2\""
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "code": "P-001",
+        "name": "[시험] 제품 예시(수정)",
+        "specification": null,
+        "notes": null,
+        "current_process_version": {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "version_no": 1,
+          "status": "approved",
+          "approved_at": "2026-10-23T00:00:00Z"
+        },
+        "latest_process_version": {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "version_no": 1,
+          "status": "approved",
+          "approved_at": "2026-10-23T00:00:00Z"
+        },
+        "archived_at": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": "2026-10-23T00:00:00Z",
+        "row_version": 2
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # CR-backend-20261023-be04-process-versions
 - 요청자: Backend / 작업 BE-04(제안) / 대상: contracts/04 §4(공정 버전·그래프), contracts/03 §4~8, ERD §5·§9·§14
-- 상태: **제안(미승인)**. 승인 전 구현하지 않는다. 승인 시 새 scope `process-versions`로 contract **0.4.0**.
+- 상태: **BE-04a 구현·승격됨(contract 0.4.0)** — 사용자의 "다음 단계 진행해 줘"(2026-10-23)를 §6 권장안 승인으로 **해석**했다(명시적 "be04 승인" 문구 없음, FE의 BE-REQ-015 답변 없음 → 사용자·FE가 정정 가능). BE-04b/04c는 승인 대상 아님(미구현). 구현 중 달라진 점은 문서 끝 §9.
 - 근거: FE 요청 R-FE-07(제품·공정 버전 API 일정·단계 DTO, 약속한 "FE 화면 모델 ↔ 03 §4~7 어긋남 목록"), FE 순위 3(BE-REQ-010), FE의 공정 표 편집 초안(FE-00f).
   선행: BE-03 `product`(0.3.x). 입력 대기: FE 의견(§6, `request-from-backend.md` BE-REQ-015).
 - 이 문서는 도메인 사실을 만들지 않는다. 미정 값(OPEN-001~020)은 `unknown`/`not_applicable`로 저장하고 기본값으로 채우지 않으며, 제품 6종의 예시 값을 엔진·시드에 하드코딩하지 않는다.
@@ -88,3 +88,11 @@
 1. migration 0004(+자식 불변·상태 전이 트리거·복합 FK) + DB 통합 테스트(프로젝트 격리·타 프로젝트 asset 후보 거부·승인본 자식 변경 거부·열린 버전 유일성).
 2. 규칙 JSON 판별 유니온·그래프 검증 도메인 로직(순수) 단위 테스트 → 서비스·API(버전 단위 ETag·PUT graph 원자성·동시 저장 경쟁 테스트).
 3. 계약 0.4.0 승격(스냅샷·해시·CHANGELOG·예제), FE 안내, 인계.
+
+## 9. 구현 결과와 CR 원안과의 차이 (BE-04a, 2026-10-23)
+- 구현: migration 0004(`process_version`·`flow_node`·`process_step`·`resource_requirement`·`requirement_candidate`·`flow_edge`), API 11개, contract 0.4.0. 증거는 `docs/handoffs/HANDOFF-backend-20261023-BE-04a.md`.
+- **원안에 없던 추가:** `PATCH /process-versions/{v}`(원자재 기본 단위·완제품 단위·메모). 이 값들이 버전 헤더에 있어 그래프 PUT과 분리해 수정할 길이 필요했다.
+- **원안에서 뺀 것(미정 상태로 04b/c에 이월):** 단계 `execution_rule`·`input_match_policy`·`condition_rule`, 후보 `parameter_override`, `step_material_spec`, `process_editor_state`, `completion_node_id`. 닫힌 스키마라 나중에 추가는 비파괴(추가 필드)다.
+- **결정한 값:** step id = operation 노드 id(1:1, 복합 FK). ETag는 단계가 아니라 버전 단위. 그래프는 전체 교체 PUT(클라이언트 UUID, 다른 버전 id 재사용은 422 `VAL-REF-003`). 새 초안 생성 시 승인본 그래프를 새 id로 복사(원안 04b였으나 04a에 포함).
+- **새 오류 코드:** `PROCESS_DRAFT_EXISTS`(409), `PROCESS_VALIDATION_FAILED`(422, 제출·승인 시 구조 오류). `UNSUPPORTED_HANDLER`는 HTTP 오류가 아니라 `run_template` 검증 항목의 rule_id.
+- **열거값 선택(03 §7과 엔진 문서 07 §6~7 어휘가 달라 03 우선):** `output_schedule`·`occupancy`·`allocation_rule`·`residual`의 값은 스키마(`schemas/process.py`)와 04 §4.1이 정본이며, 엔진 문서와의 정리는 별도 결정이 필요하다(§5 말미).

@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -73,6 +73,8 @@ NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE
 | VALIDATION_ERROR | 422 | 요청 형식 오류. `details[].field_path`는 JSON Pointer이며 본문 전체 규칙 위반은 `/` |
 | INVALID_CURSOR | 422 | cursor가 올바르지 않거나 정렬·필터와 맞지 않음 |
 | PROJECT_CODE_CONFLICT | 409 | 같은 조직에 같은 프로젝트 코드 |
+| PROCESS_DRAFT_EXISTS | 409 | 제품에 이미 열린 공정 버전(draft/in_review)이 있음(0.4.0) |
+| PROCESS_VALIDATION_FAILED | 422 | 공정 버전에 구조 오류가 있어 제출·승인할 수 없음(0.4.0, `details`에 오류 목록) |
 | ASSET_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 자산 코드 |
 | PRODUCT_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 제품 코드(0.3.0) |
 | MATERIAL_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 재료 코드(0.3.0) |
@@ -220,7 +222,7 @@ submitted_at|by, rejection_reason|null, rejected_at|null, approved_at|by, create
 **Product**: `{id, project_id, code, name, specification|null, notes|null, archived_at|null, created_at, updated_at|null, row_version}`
 - 생성 `{code, name, specification?, notes?}` → 201 + ETag + Location. `specification`은 **자유 텍스트**(최대 4000자)이며 `null`이 미정, 빈 문자열은 422.
 - PATCH 가능: `code, name, specification(null로 지움), notes(null로 지움)`.
-- 제품 목록의 `latest_process_version` 요약은 **아직 없다**(공정 버전 CR에서 추가 필드로 도입).
+- 제품 응답의 `current_process_version`(현재 승인본)·`latest_process_version`(가장 최근 버전) 요약은 0.4.0에서 추가된다(§4.1, 비파괴, 공정 버전이 없으면 `null`).
 
 **Material**: `{id, project_id, code, name, form, default_spec, notes|null, archived_at|null, created_at, updated_at|null, row_version}`
 - 생성 `{code, name, form, default_spec?, notes?}`. `form`은 **자유 텍스트**(1~100자, 허용값 목록 없음 — 확정된 목록이 생기면 enum으로 좁히는 계약 변경).
@@ -230,7 +232,7 @@ submitted_at|by, rejection_reason|null, rejected_at|null, approved_at|by, create
   - 길이·중량·단위 수·가닥 수는 서로 환산하지 않으며 서로 다른 필드다. 알 수 없는 키는 거부한다.
 - PATCH: `code, name, form, default_spec, notes`. `default_spec`은 **보낸 필드만 교체**하고 나머지는 유지한다(빈 객체·`null`·필드의 `null`은 422). 확정값을 다시 미정으로 되돌리려면 `{mode: "unknown"}`을 보낸다.
 
-**`GET /me` 보강**: `projects[]`에 `status`(`active|archived`, 0.3.0)와 `timezone`(IANA 이름, 0.3.1)이 추가되었다(`GET /projects`의 `Project.status`·`Project.timezone`과 같은 값, 비파괴). 보관된 프로젝트도 목록에 포함하며 제외 여부는 클라이언트가 정한다. 시각은 항상 UTC(`Z`)로 오므로 화면은 `timezone`으로 변환해 보여 준다. 현재 계약 버전은 0.3.1이다(0.3.0은 `main`에 게시된 뒤 불변).
+**`GET /me` 보강**: `projects[]`에 `status`(`active|archived`, 0.3.0)와 `timezone`(IANA 이름, 0.3.1)이 추가되었다(`GET /projects`의 `Project.status`·`Project.timezone`과 같은 값, 비파괴). 보관된 프로젝트도 목록에 포함하며 제외 여부는 클라이언트가 정한다. 시각은 항상 UTC(`Z`)로 오므로 화면은 `timezone`으로 변환해 보여 준다. (0.3.0·0.3.1은 `main`에 게시된 뒤 불변이다. 현재 계약 버전은 0.4.0.)
 
 ## 4. 공정 버전·그래프 API
 
@@ -256,6 +258,51 @@ PUT graph 규칙:
 5. 삭제되는 노드에 연결된 edge 처리 명시; 묵시적으로 엉뚱한 연결 생성 금지.
 6. new row_version·validation summary 반환.
 7. 위키 갱신 outbox 생성. 승인 정보 공개는 승인 이벤트 때만.
+
+### 4.1 승인 scope `process-versions` — BE-04a (contract 0.4.0)
+
+위 표 중 **승인된 operation은 11개**(제품의 공정 버전 목록/생성, 버전 조회·수정, 그래프 조회/PUT, 단계 PATCH, validate, submit·reject·approve)뿐이다.
+`editor-state`, `clone`(명시적 base 선택), `diff`는 **PROPOSED**(BE-04b)이며 단계 입출력 재료 spec·join/supply 간선 spec 연결·completion milestone은 BE-04c다.
+정본은 [openapi.json](openapi.json), 예제는 [examples/first-scope](examples/first-scope/)의 `process-*`·`product.get`·`error.graph-invalid`·`error.process-draft-exists`.
+근거 CR: [CR-backend-20261023-be04-process-versions](../docs/change-requests/CR-backend-20261023-be04-process-versions.md).
+
+**상태·권한(자산 버전과 같은 방식, 잠정)**: `draft → in_review → approved → superseded`, 반려는 `in_review → draft`(사유 필수).
+제품당 열린 버전(draft/in_review)은 하나, 승인본도 하나(새 승인이 나면 이전 승인본은 자동 `superseded`).
+**수정(그래프·단계·단위·메모)은 `draft`에서만** 가능하며 그 밖의 상태는 409 `VERSION_IMMUTABLE`(DB 트리거가 노드·간선·단계·자원 요구·후보의 직접 수정도 막는다).
+수정·제출 = project admin·editor, 반려·승인 = project admin만, 조회·검증 = 모든 멤버. 제출·반려·승인도 `If-Match` 필수(승인 직전 수정 방지, 412).
+제출·승인은 knowledge 검증의 **오류**(구조 오류)가 없어야 하며 있으면 422 `PROCESS_VALIDATION_FAILED`다. 미정은 경고라 막지 않는다(ADR-017).
+
+**버전**: `{id, project_id, product_id, version_no, status, base_version_id|null, schema_version, raw_unit_spec, finished_unit_spec, notes|null, issues[], submitted_*, rejection_*, approved_*, created_at, updated_at|null, row_version}`.
+`raw_unit_spec`(원자재 기본 단위)·`finished_unit_spec`(완제품 단위)은 재료 `default_spec`과 같은 값 객체(`length_m`·`weight_kg`·`unit_count`·`strand_count`, 길이·중량·보빈 수·가닥 수를 섞지 않음, 기본 모두 `unknown`)이며 `PATCH /process-versions/{v}`는 보낸 필드만 교체한다.
+**새 초안**(`POST …/process-versions`)은 승인본이 있으면 그래프를 **새 id로 복사**하고 `base_version_id`를 기록하며, 없으면 빈 그래프·미정 단위로 시작한다. 열린 버전이 있으면 409 `PROCESS_DRAFT_EXISTS`.
+
+**그래프**: `GET`은 `{process_version_id, row_version, nodes[], edges[], issues[]}`(노드는 `display_order`, `node_key` 순), `PUT`은 `{nodes[], edges[]}`로 **전체 교체**한다.
+- 노드 `{id, node_key, kind: source|buffer|operation|join|milestone|sink, label, asset_id|null, display_order, step|null}`. `id`는 **클라이언트가 만든 UUID**이고 다른 버전이 쓰는 id는 422(`VAL-REF-003`). `node_key`는 버전 안에서 유일.
+  `operation`만 `step`을 가지며 그 `step`의 id는 노드 id와 같다. `asset_id`는 source·buffer·sink에만 둘 수 있고 **저장·도킹 공간**만 가능하다(`null` = 위치 미정). operation 노드에 설비를 직접 박지 않는다.
+- 간선 `{id, edge_key, from_node_id, to_node_id, edge_kind: material|precedence|supply, movement_rule}`. 없는 노드를 가리키거나 자기 자신을 가리키면 422(`VAL-GRAPH-001`·`003`), material 간선이 sink에서 나가거나 source로 들어가면 422(`VAL-GRAPH-004`).
+- 단계 `{operation_type|null, handler_version|null, timing_rule, input_rule, output_rule, handoff_rule, residual_rule, resources[]}`. 자원 요구 `{role_key, resource_kind: equipment|worker, selection_mode: one_of|all_of, required_count, capacity_mode: finite|unlimited, allocation_rule, candidates[{asset_id, eligibility_status: confirmed|unknown}]}`.
+  후보는 **같은 프로젝트의 설비 asset UUID**만(표시 코드가 아님), 노동자는 후보가 없고 무제한은 worker만, `one_of`에서 `required_count`가 (후보가 있을 때) 후보 수를 넘으면 422(`VAL-RES-001`).
+- 한 요청에서 오류가 하나라도 있으면 **아무것도 저장하지 않는다**. 오류의 `field_path`는 요청 본문 기준 JSON Pointer(`/nodes/1/asset_id`, `/edges/0/to_node_id`)다.
+- 실제 순환(재작업)은 저장할 수 있으나 경고(`VAL-GRAPH-011`)이며 실행 판정에서 오류다.
+
+**단계 PATCH**(`PATCH /process-versions/{v}/steps/{step_id}`): **ETag는 단계가 아니라 공정 버전의 `row_version`** 이다(그래프 저장·단계 수정·단위 수정·전이가 모두 같은 값을 올린다).
+`label`(노드 이름), `operation_type`·`handler_version`(null로 지움), `timing_rule`·`input_rule`·`output_rule`·`handoff_rule`·`residual_rule`·`resources`는 **보낸 최상위 필드를 통째로 교체**한다(하위 객체를 부분 병합하지 않으며 보내지 않은 하위는 기본 `unknown`).
+buffer 같은 비 operation 노드의 id나 다른 버전의 단계 id는 404.
+
+**규칙 표현**(03 §4~7, 모두 판별자가 있는 닫힌 객체, 값은 `{mode: unknown|known|not_applicable, value}`, 기본 `unknown`이며 0이 아님):
+`timing_rule.processing.kind` = `unknown|none|output_speed|per_output_unit|per_reference_length`(각각 `speed_m_per_min`·`basis`·`output_schedule`·`parallel_streams` / `duration_min`·`output_schedule` / `reference_length_m`·`duration_min`·`scaling`·`includes_setup`),
+`setup`·`precondition_delay`(`duration_min`, `trigger` 8종+`unknown|not_applicable`, 대기는 `occupancy`)는 **0 시간이 유효**하다. 처리 시간·선속·길이는 0 초과 decimal 문자열(소수 6자리까지), 개수는 JSON 정수(1 이상).
+`output_rule`(`mode`·`unit_form`·`length_m`·`weight_kg`·`unit_count`·`quantity_basis`·`schedule`·`accounting_mode`), `input_rule`, `handoff_rule`, `residual_rule`의 허용값은 openapi.json이 정본이다.
+
+**검증**(`POST …/validate?scope=knowledge|run_template`, 오류가 있어도 정상 수행이면 200, 버전 조회·그래프 응답의 `issues`는 knowledge 범위): 항목은 `{severity, rule_id, entity_id, field_path, message, resolution?}`이며
+`entity_id`는 단계·노드·간선(또는 버전 자체) id, `field_path`는 **그 엔티티 내부** JSON Pointer(예 `/timing_rule/processing`)다. 순서 번호는 쓰지 않는다.
+규칙 id: `VAL-TIME-001~005`(처리 방식·값·산출 방식·준비·공급 대기 미정), `VAL-OUT-001~004`(산출), `VAL-INPUT-001`·`VAL-HANDOFF-001`, `VAL-HANDLER-001`(operation_type 미정), `VAL-RES-001`(후보 수 오류)·`002~004`(자원 요구·후보·eligibility 미정),
+`VAL-GRAPH-001~004`(구조 오류)·`010~013`(단계 없음·순환·고립 단계·위치 미정 buffer), `VAL-VER-001·002`(원자재·완제품 단위 미정), `VAL-REF-001~003`(저장 시 참조 오류).
+**knowledge**에서는 구조 오류만 오류이고 미정은 모두 경고다. **run_template**에서는 실행에 필요한 미정(`VAL-TIME-*`, `VAL-OUT-001~003`, `VAL-RES-002~004`, `VAL-INPUT-001`, `VAL-HANDOFF-001`, `VAL-HANDLER-001`, `VAL-GRAPH-011`)이 오류로 승격되고,
+엔진이 지원하지 않는 handler는 `UNSUPPORTED_HANDLER`(rule_id) 오류가 된다. 지원 handler(07 §2): `pass_through_length`, `split_length`, `output_units_by_time`, `configured_yield`, `supply_delay`, `inspection`, `transport_manual`(handler_version `1`).
+등록(저장)은 handler 지원 여부와 무관하며 실행 가능 여부만 막는다(03 §12).
+
+**제품 응답 추가 필드**: `current_process_version`(현재 승인본), `latest_process_version`(가장 최근 버전) — 각각 `{id, version_no, status, approved_at|null}` 또는 `null`.
 
 ## 5. 시나리오·실행 API
 

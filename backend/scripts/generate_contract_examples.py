@@ -5,6 +5,7 @@
 스키마는 이미 head여야 한다(통합 테스트가 만든 상태). UUID·시각은 고정값으로 치환한다.
 """
 
+import itertools
 import json
 import os
 import re
@@ -221,6 +222,72 @@ def main(out_dir: Path) -> None:
     material_patch = {"default_spec": {"unit_count": {"mode": "known", "value": 10}}}
     r = client.patch(material_path, json=material_patch, headers=match(1))
     record("material.patch", "PATCH", material_path, r, material_patch, {"If-Match": '"1"'})
+
+    # --- process-versions (contract 0.4.0) ------------------------------------------------
+    versions_url = f"{product_path}/process-versions"
+    r = client.post(versions_url, headers=base)
+    record("process-version.create", "POST", versions_url, r)
+    version_path = f"{api}/projects/{pid}/process-versions/{r.json()['data']['id']}"
+    r = client.post(versions_url, headers=base)
+    record("error.process-draft-exists", "POST", versions_url, r)
+
+    def known(value):
+        return {"mode": "known", "value": value}
+
+    def operation(key, order, equipment_id):
+        return {"id": str(uuid.uuid4()), "node_key": key, "kind": "operation", "label": f"[시험] {key}",
+                "display_order": order, "step": {
+                    "operation_type": "output_units_by_time", "handler_version": "1",
+                    "timing_rule": {
+                        "processing": {"kind": "output_speed", "speed_m_per_min": known("30"),
+                                       "basis": "per_stream", "output_schedule": "sequential_units",
+                                       "parallel_streams": known(1)},
+                        "setup": {"duration_min": {"mode": "not_applicable"},
+                                  "trigger": "not_applicable"},
+                        "precondition_delay": {"duration_min": {"mode": "not_applicable"},
+                                               "trigger": "not_applicable", "occupancy": "unknown"}},
+                    "input_rule": {"acquire_scope": "per_operation", "consume_policy": "consume"},
+                    "output_rule": {"mode": "configured_units", "length_m": known("1000"),
+                                    "unit_count": known(2), "quantity_basis": "per_operation",
+                                    "schedule": "sequential_units", "accounting_mode": "physical"},
+                    "handoff_rule": {"mode": "per_output_unit"},
+                    "resources": [{"role_key": "main", "candidates": [
+                        {"asset_id": equipment_id, "eligibility_status": "confirmed"}]}]}}
+
+    nodes = [
+        {"id": str(uuid.uuid4()), "node_key": "src", "kind": "source", "label": "[시험] 원자재",
+         "display_order": 0},
+        operation("insulate", 1, eq_id),
+        {"id": str(uuid.uuid4()), "node_key": "wait", "kind": "buffer", "label": "[시험] 대기 공간",
+         "asset_id": st_id, "display_order": 2},
+        operation("sheath", 3, eq_id),
+        {"id": str(uuid.uuid4()), "node_key": "sink", "kind": "sink", "label": "[시험] 완제품",
+         "display_order": 4},
+    ]
+    edges = [{"id": str(uuid.uuid4()), "edge_key": f"{a['node_key']}-{b['node_key']}",
+              "from_node_id": a["id"], "to_node_id": b["id"], "edge_kind": "material"}
+             for a, b in itertools.pairwise(nodes)]
+    dangling = {"nodes": nodes[:2], "edges": [{**edges[1], "id": str(uuid.uuid4())}]}
+    r = client.put(f"{version_path}/graph", json=dangling, headers=match(1))
+    record("error.graph-invalid", "PUT", f"{version_path}/graph", r, dangling, {"If-Match": '"1"'})
+    graph = {"nodes": nodes, "edges": edges}
+    r = client.put(f"{version_path}/graph", json=graph, headers=match(1))
+    record("process-graph.put", "PUT", f"{version_path}/graph", r, graph, {"If-Match": '"1"'})
+    step_patch = {"label": "[시험] 절연(수정)",
+                  "timing_rule": {"processing": {"kind": "none"}}}
+    step_path = f"{version_path}/steps/{nodes[1]['id']}"
+    r = client.patch(step_path, json=step_patch, headers=match(2))
+    record("process-step.patch", "PATCH", step_path, r, step_patch, {"If-Match": '"2"'})
+    r = client.post(f"{version_path}/validate?scope=run_template", headers=base)
+    record("process-validate.run-template", "POST", f"{version_path}/validate?scope=run_template", r)
+    r = client.post(f"{version_path}/submit", headers=match(3))
+    record("process-version.submit", "POST", f"{version_path}/submit", r, None, {"If-Match": '"3"'})
+    r = client.post(f"{version_path}/approve", headers=match(4))
+    record("process-version.approve", "POST", f"{version_path}/approve", r, None, {"If-Match": '"4"'})
+    r = client.get(versions_url, headers=base)
+    record("process-version.list", "GET", versions_url, r)
+    r = client.get(product_path, headers=base)
+    record("product.get", "GET", product_path, r)
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 

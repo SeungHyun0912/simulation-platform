@@ -19,6 +19,15 @@ from simulation_platform.schemas.catalog import (
 )
 from simulation_platform.schemas.common import ErrorEnvelope, ListOut, Single
 from simulation_platform.schemas.me import MeOut
+from simulation_platform.schemas.process import (
+    GraphIn,
+    GraphOut,
+    ProcessVersionListItem,
+    ProcessVersionOut,
+    StepOut,
+    StepPatch,
+    ValidationOut,
+)
 from simulation_platform.schemas.project import ProjectCreate, ProjectOut
 from simulation_platform.schemas.revision import AssetRevisionOut, RejectBody, RevisionPatch
 
@@ -61,6 +70,17 @@ EXPECTED = {
     "material.patch": (MaterialPatch, Single[MaterialOut], 200),
     "error.product-code-conflict": (None, ERROR, 409),
     "error.validation-default-spec": (None, ERROR, 422),
+    # contract 0.4.0
+    "product.get": (None, Single[ProductOut], 200),
+    "process-version.create": (None, Single[ProcessVersionOut], 201),
+    "process-version.list": (None, ListOut[ProcessVersionListItem], 200),
+    "process-version.submit": (None, Single[ProcessVersionOut], 200),
+    "process-version.approve": (None, Single[ProcessVersionOut], 200),
+    "process-graph.put": (GraphIn, Single[GraphOut], 200),
+    "process-step.patch": (StepPatch, Single[StepOut], 200),
+    "process-validate.run-template": (None, Single[ValidationOut], 200),
+    "error.process-draft-exists": (None, ERROR, 409),
+    "error.graph-invalid": (None, ERROR, 422),
 }
 
 
@@ -107,6 +127,35 @@ def test_catalog_examples_show_unknown_vs_value_and_separate_units():
     assert product["specification"] is None and product["row_version"] == 2
     listing = _load("product.list")["response"]["body"]
     assert listing["page"]["next_cursor"] == "opaque-cursor-example"
+
+
+def test_process_examples_show_graph_version_workflow_and_unknown_defaults():
+    created = _load("process-version.create")["response"]["body"]["data"]
+    assert created["status"] == "draft" and created["base_version_id"] is None
+    assert all(v["mode"] == "unknown" for v in created["raw_unit_spec"].values())  # 0이 아니다
+    saved = _load("process-graph.put")["response"]
+    assert saved["headers"]["ETag"] == '"2"'
+    graph = saved["body"]["data"]
+    assert [n["kind"] for n in graph["nodes"]] == ["source", "operation", "buffer", "operation", "sink"]
+    assert next(n for n in graph["nodes"] if n["kind"] == "buffer")["asset_id"]
+    patched = _load("process-step.patch")["response"]
+    assert patched["headers"]["ETag"] == '"3"'
+    assert patched["body"]["data"]["step"]["timing_rule"]["processing"] == {"kind": "none"}
+    validation = _load("process-validate.run-template")["response"]["body"]["data"]
+    assert validation["scope"] == "run_template"
+    # timing_rule을 통째로 교체해 setup·precondition_delay가 unknown으로 돌아간 단계는 실행(run_template)에서
+    # 오류이지만 승인(knowledge)은 막지 않는다(이 예제는 그 직후 승인된다).
+    errors = [i for i in validation["issues"] if i["severity"] == "error"]
+    assert {i["rule_id"] for i in errors} == {"VAL-TIME-004", "VAL-TIME-005"}
+    assert {i["entity_id"] for i in errors} == {patched["body"]["data"]["id"]}
+    assert {i["rule_id"] for i in validation["issues"] if i["severity"] == "warning"} == {
+        "VAL-VER-001", "VAL-VER-002"}
+    approved = _load("process-version.approve")["response"]
+    assert approved["headers"]["ETag"] == '"5"' and approved["body"]["data"]["status"] == "approved"
+    product = _load("product.get")["response"]["body"]["data"]
+    assert product["current_process_version"]["status"] == "approved"
+    invalid = _load("error.graph-invalid")["response"]["body"]["error"]["details"][0]
+    assert invalid["rule_id"] == "VAL-GRAPH-001" and invalid["field_path"].startswith("/edges/")
 
 
 def test_revision_examples_show_the_documented_workflow():

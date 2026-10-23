@@ -1,0 +1,105 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000015/steps/00000000-0000-4000-8000-000000000017",
+    "headers": {
+      "If-Match": "\"2\""
+    },
+    "body": {
+      "label": "[시험] 절연(수정)",
+      "timing_rule": {
+        "processing": {
+          "kind": "none"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"3\""
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "label": "[시험] 절연(수정)",
+        "row_version": 3,
+        "step": {
+          "operation_type": "output_units_by_time",
+          "handler_version": "1",
+          "timing_rule": {
+            "processing": {
+              "kind": "none"
+            },
+            "setup": {
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              },
+              "trigger": "unknown"
+            },
+            "precondition_delay": {
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              },
+              "trigger": "unknown",
+              "occupancy": "unknown"
+            }
+          },
+          "input_rule": {
+            "acquire_scope": "per_operation",
+            "consume_policy": "consume"
+          },
+          "output_rule": {
+            "mode": "configured_units",
+            "unit_form": null,
+            "length_m": {
+              "mode": "known",
+              "value": "1000"
+            },
+            "weight_kg": {
+              "mode": "unknown",
+              "value": null
+            },
+            "unit_count": {
+              "mode": "known",
+              "value": 2
+            },
+            "quantity_basis": "per_operation",
+            "schedule": "sequential_units",
+            "accounting_mode": "physical"
+          },
+          "handoff_rule": {
+            "mode": "per_output_unit"
+          },
+          "residual_rule": {
+            "mode": "unknown",
+            "on_product_change": "unknown",
+            "on_run_end": "unknown",
+            "scope": "unknown",
+            "physical_join_mode": "unknown"
+          },
+          "resources": [
+            {
+              "role_key": "main",
+              "resource_kind": "equipment",
+              "selection_mode": "one_of",
+              "required_count": 1,
+              "capacity_mode": "finite",
+              "allocation_rule": {
+                "mode": "unknown"
+              },
+              "candidates": [
+                {
+                  "asset_id": "00000000-0000-4000-8000-000000000003",
+                  "eligibility_status": "confirmed"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

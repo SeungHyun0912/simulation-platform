@@ -1,0 +1,50 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000015/validate?scope=run_template"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": {
+        "scope": "run_template",
+        "error_count": 2,
+        "warning_count": 2,
+        "issues": [
+          {
+            "severity": "error",
+            "rule_id": "VAL-TIME-004",
+            "entity_id": "00000000-0000-4000-8000-000000000017",
+            "field_path": "/timing_rule/setup",
+            "message": "[시험] 절연(수정): 준비 시점 또는 시간이 미정입니다(0이 아님).",
+            "resolution": "준비가 없으면 not_applicable을 선택하세요."
+          },
+          {
+            "severity": "error",
+            "rule_id": "VAL-TIME-005",
+            "entity_id": "00000000-0000-4000-8000-000000000017",
+            "field_path": "/timing_rule/precondition_delay",
+            "message": "[시험] 절연(수정): 공급 대기의 발생 시점·시간·설비 점유 여부가 미정입니다.",
+            "resolution": "대기가 없으면 not_applicable을 선택하세요."
+          },
+          {
+            "severity": "warning",
+            "rule_id": "VAL-VER-001",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/raw_unit_spec",
+            "message": "원자재 기본 단위가 미정입니다.",
+            "resolution": null
+          },
+          {
+            "severity": "warning",
+            "rule_id": "VAL-VER-002",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/finished_unit_spec",
+            "message": "완제품 단위가 미정입니다.",
+            "resolution": null
+          }
+        ]
+      }
+    }
+  }
+}

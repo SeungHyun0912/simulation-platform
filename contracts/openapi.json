@@ -1,6 +1,24 @@
 {
   "components": {
     "schemas": {
+      "AllocationRule": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "fifo",
+              "priority",
+              "first_available"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "AllocationRule",
+        "type": "object"
+      },
       "AssetCreate": {
         "additionalProperties": false,
         "description": "포트는 요청에 없다. 서버가 kind에 맞춰 같은 트랜잭션에서 생성한다.",
@@ -518,6 +536,30 @@
         "title": "AssetRevisionOut",
         "type": "object"
       },
+      "CandidateDto": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "eligibility_status": {
+            "default": "unknown",
+            "enum": [
+              "confirmed",
+              "unknown"
+            ],
+            "title": "Eligibility Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "CandidateDto",
+        "type": "object"
+      },
       "Capacity": {
         "additionalProperties": false,
         "description": "03 §3 용량 계약. finite만 value·unit을 가지며 나머지 mode는 둘 다 null이다.\n\nstatus는 보내지 않아도 된다(unknown→unknown, 그 외→confirmed로 서버가 채운다).\nmaster 값에는 assumed/not_applicable을 쓸 수 없다(가정은 시나리오에서만).",
@@ -757,6 +799,35 @@
         "title": "DispatchWhenAvailable",
         "type": "object"
       },
+      "DurationMeasure": {
+        "additionalProperties": false,
+        "description": "시간(분). 준비·대기 시간은 0이 유효한 값이므로 known은 0 이상을 허용한다(처리 시간과 다름).",
+        "properties": {
+          "mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "known",
+              "not_applicable"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "DurationMeasure",
+        "type": "object"
+      },
       "EquipmentIn": {
         "additionalProperties": false,
         "properties": {
@@ -956,6 +1027,194 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "GraphEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "edge_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Edge Key",
+            "type": "string"
+          },
+          "edge_kind": {
+            "default": "material",
+            "enum": [
+              "material",
+              "precedence",
+              "supply"
+            ],
+            "title": "Edge Kind",
+            "type": "string"
+          },
+          "from_node_id": {
+            "format": "uuid",
+            "title": "From Node Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "movement_rule": {
+            "$ref": "#/components/schemas/MovementRule"
+          },
+          "to_node_id": {
+            "format": "uuid",
+            "title": "To Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edge_key",
+          "from_node_id",
+          "to_node_id"
+        ],
+        "title": "GraphEdge",
+        "type": "object"
+      },
+      "GraphIn": {
+        "additionalProperties": false,
+        "description": "그래프 전체 교체(PUT). 보내지 않은 노드·간선은 삭제된다. 간선이 없는 노드를 가리키면 422.",
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "maxItems": 2000,
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "maxItems": 500,
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes"
+        ],
+        "title": "GraphIn",
+        "type": "object"
+      },
+      "GraphNode": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "display_order": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "source",
+              "buffer",
+              "operation",
+              "join",
+              "milestone",
+              "sink"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "node_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Node Key",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "node_key",
+          "kind",
+          "label"
+        ],
+        "title": "GraphNode",
+        "type": "object"
+      },
+      "GraphOut": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDto"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "process_version_id": {
+            "format": "uuid",
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "process_version_id",
+          "row_version",
+          "nodes",
+          "edges",
+          "issues"
+        ],
+        "title": "GraphOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -967,6 +1226,101 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HandoffRule": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "per_output_unit",
+              "total_batch"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "HandoffRule",
+        "type": "object"
+      },
+      "InputRule": {
+        "additionalProperties": false,
+        "properties": {
+          "acquire_scope": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "per_operation",
+              "per_lot"
+            ],
+            "title": "Acquire Scope",
+            "type": "string"
+          },
+          "consume_policy": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "reserve",
+              "consume",
+              "transfer"
+            ],
+            "title": "Consume Policy",
+            "type": "string"
+          }
+        },
+        "title": "InputRule",
+        "type": "object"
+      },
+      "IssueDto": {
+        "description": "검증 항목. 대상은 entity_id(노드·단계·간선·버전 id) + 그 엔티티 내부 JSON Pointer다.",
+        "properties": {
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "rule_id",
+          "entity_id",
+          "field_path",
+          "message"
+        ],
+        "title": "IssueDto",
         "type": "object"
       },
       "IssueOut": {
@@ -1077,6 +1431,26 @@
           "page"
         ],
         "title": "ListOut[MaterialOut]",
+        "type": "object"
+      },
+      "ListOut_ProcessVersionListItem_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessVersionListItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[ProcessVersionListItem]",
         "type": "object"
       },
       "ListOut_ProductOut_": {
@@ -1440,6 +1814,143 @@
         "title": "MeUser",
         "type": "object"
       },
+      "MovementRule": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_min": {
+            "$ref": "#/components/schemas/DurationMeasure"
+          },
+          "mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "manual_duration",
+              "network_route",
+              "direct_feed"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "MovementRule",
+        "type": "object"
+      },
+      "OutputRule": {
+        "additionalProperties": false,
+        "description": "길이·중량·단위 수·가닥 수를 섞지 않는다. 총 계획 수량과 작업 한 번의 산출량은 quantity_basis로 구분.",
+        "properties": {
+          "accounting_mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "physical",
+              "abstract_yield"
+            ],
+            "title": "Accounting Mode",
+            "type": "string"
+          },
+          "length_m": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          },
+          "mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "configured_units",
+              "split_length",
+              "pass_through",
+              "merge_strands",
+              "fixed_mass_units"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "quantity_basis": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "per_operation",
+              "per_input_unit",
+              "per_lot",
+              "total_plan"
+            ],
+            "title": "Quantity Basis",
+            "type": "string"
+          },
+          "schedule": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "sequential_units"
+            ],
+            "title": "Schedule",
+            "type": "string"
+          },
+          "unit_count": {
+            "$ref": "#/components/schemas/CountMeasure"
+          },
+          "unit_form": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Form"
+          },
+          "weight_kg": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          }
+        },
+        "title": "OutputRule",
+        "type": "object"
+      },
+      "OutputSpeed": {
+        "additionalProperties": false,
+        "description": "선속 기준. basis·output_schedule·parallel_streams가 미정이면 실행 차단(03 §4.1).",
+        "properties": {
+          "basis": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "per_stream",
+              "aggregate_output"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "kind": {
+            "const": "output_speed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "output_schedule": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "sequential_units",
+              "parallel_streams"
+            ],
+            "title": "Output Schedule",
+            "type": "string"
+          },
+          "parallel_streams": {
+            "$ref": "#/components/schemas/CountMeasure"
+          },
+          "speed_m_per_min": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "OutputSpeed",
+        "type": "object"
+      },
       "Page": {
         "properties": {
           "limit": {
@@ -1463,6 +1974,75 @@
           "next_cursor"
         ],
         "title": "Page",
+        "type": "object"
+      },
+      "PerOutputUnit": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_min": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          },
+          "kind": {
+            "const": "per_output_unit",
+            "title": "Kind",
+            "type": "string"
+          },
+          "output_schedule": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "sequential_units",
+              "parallel_streams"
+            ],
+            "title": "Output Schedule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "PerOutputUnit",
+        "type": "object"
+      },
+      "PerReferenceLength": {
+        "additionalProperties": false,
+        "description": "기준 길이당 시간. scaling=linear를 확인하기 전에는 다른 길이로 비례 계산하지 않는다.",
+        "properties": {
+          "duration_min": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          },
+          "includes_setup": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "yes",
+              "no"
+            ],
+            "title": "Includes Setup",
+            "type": "string"
+          },
+          "kind": {
+            "const": "per_reference_length",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference_length_m": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          },
+          "scaling": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "linear"
+            ],
+            "title": "Scaling",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "PerReferenceLength",
         "type": "object"
       },
       "PortOut": {
@@ -1644,6 +2224,441 @@
         "title": "PortPolicyPatch",
         "type": "object"
       },
+      "PreconditionDelay": {
+        "additionalProperties": false,
+        "description": "공급 대기(예: AL 싱글-12의 120분). 설비 점유 여부(occupancy)는 미정일 수 있다.",
+        "properties": {
+          "duration_min": {
+            "$ref": "#/components/schemas/DurationMeasure"
+          },
+          "occupancy": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "occupies_machine",
+              "releases_machine"
+            ],
+            "title": "Occupancy",
+            "type": "string"
+          },
+          "trigger": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "not_applicable",
+              "per_operation",
+              "per_input_replacement",
+              "per_output_replacement",
+              "on_product_change",
+              "on_shift_start",
+              "once_per_run"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "title": "PreconditionDelay",
+        "type": "object"
+      },
+      "ProcessVersionListItem": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "in_review",
+              "approved",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "product_id",
+          "version_no",
+          "status",
+          "base_version_id",
+          "submitted_at",
+          "approved_at",
+          "created_at",
+          "updated_at",
+          "row_version"
+        ],
+        "title": "ProcessVersionListItem",
+        "type": "object"
+      },
+      "ProcessVersionOut": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "finished_unit_spec": {
+            "$ref": "#/components/schemas/DefaultSpec"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDto"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "raw_unit_spec": {
+            "$ref": "#/components/schemas/DefaultSpec"
+          },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "in_review",
+              "approved",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "product_id",
+          "version_no",
+          "status",
+          "base_version_id",
+          "submitted_at",
+          "approved_at",
+          "created_at",
+          "updated_at",
+          "row_version",
+          "schema_version",
+          "raw_unit_spec",
+          "finished_unit_spec",
+          "notes",
+          "issues",
+          "submitted_by",
+          "rejection_reason",
+          "rejected_at",
+          "approved_by"
+        ],
+        "title": "ProcessVersionOut",
+        "type": "object"
+      },
+      "ProcessVersionPatch": {
+        "additionalProperties": false,
+        "description": "원자재 기본 단위·완제품 단위·메모(초안만). 단위 값은 보낸 필드만 교체한다.",
+        "properties": {
+          "finished_unit_spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DefaultSpecPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "raw_unit_spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DefaultSpecPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ProcessVersionPatch",
+        "type": "object"
+      },
+      "ProcessVersionSummary": {
+        "description": "제품 응답에 붙는 공정 버전 요약(자산의 RevisionSummary와 같은 방식).",
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "in_review",
+              "approved",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_no",
+          "status",
+          "approved_at"
+        ],
+        "title": "ProcessVersionSummary",
+        "type": "object"
+      },
+      "ProcessingNone": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "none",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ProcessingNone",
+        "type": "object"
+      },
+      "ProcessingUnknown": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "unknown",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ProcessingUnknown",
+        "type": "object"
+      },
       "ProductCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1714,10 +2729,30 @@
             "title": "Created At",
             "type": "string"
           },
+          "current_process_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessVersionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "latest_process_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessVersionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "title": "Name",
@@ -2066,6 +3101,125 @@
         "title": "ReleaseWhenAccepts",
         "type": "object"
       },
+      "RequirementDto": {
+        "additionalProperties": false,
+        "properties": {
+          "allocation_rule": {
+            "$ref": "#/components/schemas/AllocationRule"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateDto"
+            },
+            "maxItems": 200,
+            "title": "Candidates",
+            "type": "array"
+          },
+          "capacity_mode": {
+            "default": "finite",
+            "enum": [
+              "finite",
+              "unlimited"
+            ],
+            "title": "Capacity Mode",
+            "type": "string"
+          },
+          "required_count": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Required Count",
+            "type": "integer"
+          },
+          "resource_kind": {
+            "default": "equipment",
+            "enum": [
+              "equipment",
+              "worker"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "role_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Role Key",
+            "type": "string"
+          },
+          "selection_mode": {
+            "default": "one_of",
+            "enum": [
+              "one_of",
+              "all_of"
+            ],
+            "title": "Selection Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role_key"
+        ],
+        "title": "RequirementDto",
+        "type": "object"
+      },
+      "ResidualRule": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "none",
+              "carry_same_product"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "on_product_change": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "discard",
+              "carry"
+            ],
+            "title": "On Product Change",
+            "type": "string"
+          },
+          "on_run_end": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "discard",
+              "carry"
+            ],
+            "title": "On Run End",
+            "type": "string"
+          },
+          "physical_join_mode": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "abstract_length_pool"
+            ],
+            "title": "Physical Join Mode",
+            "type": "string"
+          },
+          "scope": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "machine",
+              "product",
+              "operation",
+              "lot"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "title": "ResidualRule",
+        "type": "object"
+      },
       "RevisionPatch": {
         "additionalProperties": false,
         "description": "초안만 수정할 수 있다. 보낸 필드만 바뀌며 ports는 port_id별로 병합한다.",
@@ -2156,6 +3310,31 @@
         "title": "RevisionSummary",
         "type": "object"
       },
+      "Setup": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_min": {
+            "$ref": "#/components/schemas/DurationMeasure"
+          },
+          "trigger": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "not_applicable",
+              "per_operation",
+              "per_input_replacement",
+              "per_output_replacement",
+              "on_product_change",
+              "on_shift_start",
+              "once_per_run"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "title": "Setup",
+        "type": "object"
+      },
       "Single_AssetOut_": {
         "properties": {
           "data": {
@@ -2178,6 +3357,18 @@
           "data"
         ],
         "title": "Single[AssetRevisionOut]",
+        "type": "object"
+      },
+      "Single_GraphOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GraphOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[GraphOut]",
         "type": "object"
       },
       "Single_MaterialOut_": {
@@ -2204,6 +3395,18 @@
         "title": "Single[MeOut]",
         "type": "object"
       },
+      "Single_ProcessVersionOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ProcessVersionOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[ProcessVersionOut]",
+        "type": "object"
+      },
       "Single_ProductOut_": {
         "properties": {
           "data": {
@@ -2226,6 +3429,30 @@
           "data"
         ],
         "title": "Single[ProjectOut]",
+        "type": "object"
+      },
+      "Single_StepOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StepOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[StepOut]",
+        "type": "object"
+      },
+      "Single_ValidationOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ValidationOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[ValidationOut]",
         "type": "object"
       },
       "Single_list_PortOut__": {
@@ -2293,6 +3520,246 @@
         "title": "SpacePatch",
         "type": "object"
       },
+      "StepDto": {
+        "additionalProperties": false,
+        "description": "operation 노드의 단계. 단계 id는 노드 id와 같다.",
+        "properties": {
+          "handler_version": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handler Version"
+          },
+          "handoff_rule": {
+            "$ref": "#/components/schemas/HandoffRule"
+          },
+          "input_rule": {
+            "$ref": "#/components/schemas/InputRule"
+          },
+          "operation_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Type"
+          },
+          "output_rule": {
+            "$ref": "#/components/schemas/OutputRule"
+          },
+          "residual_rule": {
+            "$ref": "#/components/schemas/ResidualRule"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementDto"
+            },
+            "maxItems": 50,
+            "title": "Resources",
+            "type": "array"
+          },
+          "timing_rule": {
+            "$ref": "#/components/schemas/TimingRule"
+          }
+        },
+        "title": "StepDto",
+        "type": "object"
+      },
+      "StepOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "step": {
+            "$ref": "#/components/schemas/StepDto"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "row_version",
+          "step"
+        ],
+        "title": "StepOut",
+        "type": "object"
+      },
+      "StepPatch": {
+        "additionalProperties": false,
+        "description": "보낸 최상위 필드를 통째로 교체한다(규칙 객체는 부분 병합하지 않는다).",
+        "properties": {
+          "handler_version": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handler Version"
+          },
+          "handoff_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandoffRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "operation_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Type"
+          },
+          "output_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutputRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "residual_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResidualRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resources": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RequirementDto"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resources"
+          },
+          "timing_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimingRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "StepPatch",
+        "type": "object"
+      },
+      "TimingRule": {
+        "additionalProperties": false,
+        "properties": {
+          "precondition_delay": {
+            "$ref": "#/components/schemas/PreconditionDelay"
+          },
+          "processing": {
+            "discriminator": {
+              "mapping": {
+                "none": "#/components/schemas/ProcessingNone",
+                "output_speed": "#/components/schemas/OutputSpeed",
+                "per_output_unit": "#/components/schemas/PerOutputUnit",
+                "per_reference_length": "#/components/schemas/PerReferenceLength",
+                "unknown": "#/components/schemas/ProcessingUnknown"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProcessingUnknown"
+              },
+              {
+                "$ref": "#/components/schemas/ProcessingNone"
+              },
+              {
+                "$ref": "#/components/schemas/OutputSpeed"
+              },
+              {
+                "$ref": "#/components/schemas/PerOutputUnit"
+              },
+              {
+                "$ref": "#/components/schemas/PerReferenceLength"
+              }
+            ],
+            "title": "Processing"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/Setup"
+          }
+        },
+        "title": "TimingRule",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2331,6 +3798,41 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationOut": {
+        "properties": {
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDto"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "scope": {
+            "enum": [
+              "knowledge",
+              "run_template"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "error_count",
+          "warning_count",
+          "issues"
+        ],
+        "title": "ValidationOut",
         "type": "object"
       }
     }
@@ -4601,6 +6103,1080 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}": {
+      "get": {
+        "operationId": "get_process_version_api_v1_projects__project_id__process_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ProcessVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      },
+      "patch": {
+        "description": "원자재 기본 단위·완제품 단위·메모 수정(초안만, 단위는 보낸 필드만 교체). If-Match 필수.",
+        "operationId": "patch_process_version_api_v1_projects__project_id__process_versions__version_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessVersionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ProcessVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Patch Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/approve": {
+      "post": {
+        "description": "in_review → approved (project admin). 이전 승인본은 superseded가 된다. 미정은 경고일 뿐 승인을 막지 않는다.",
+        "operationId": "approve_process_version_api_v1_projects__project_id__process_versions__version_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ProcessVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Approve Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/graph": {
+      "get": {
+        "operationId": "get_graph_api_v1_projects__project_id__process_versions__version_id__graph_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_GraphOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Graph",
+        "tags": [
+          "process-versions"
+        ]
+      },
+      "put": {
+        "description": "그래프 전체를 한 트랜잭션으로 교체한다(초안만). 보내지 않은 노드·간선은 삭제된다.\n\n노드·간선 id는 클라이언트가 만든 UUID다. 검증 오류가 하나라도 있으면 아무것도 저장하지 않는다.",
+        "operationId": "put_graph_api_v1_projects__project_id__process_versions__version_id__graph_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_GraphOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Put Graph",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/reject": {
+      "post": {
+        "description": "in_review → draft (project admin, 사유 필수).",
+        "operationId": "reject_process_version_api_v1_projects__project_id__process_versions__version_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ProcessVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Reject Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/steps/{step_id}": {
+      "patch": {
+        "description": "단계 수정(초안만). ETag는 단계가 아니라 **공정 버전**의 row_version이며 보낸 최상위 필드를 통째로 교체한다.",
+        "operationId": "patch_step_api_v1_projects__project_id__process_versions__version_id__steps__step_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Step Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_StepOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Patch Step",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/submit": {
+      "post": {
+        "description": "draft → in_review. 구조 오류가 있으면 422 PROCESS_VALIDATION_FAILED. 이후 내용은 수정할 수 없다.",
+        "operationId": "submit_process_version_api_v1_projects__project_id__process_versions__version_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ProcessVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Submit Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/validate": {
+      "post": {
+        "description": "검증 항목 목록. 오류가 있어도 검증이 정상 수행되면 200이다.",
+        "operationId": "validate_process_version_api_v1_projects__project_id__process_versions__version_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "knowledge: 승인 가능 여부(구조 오류만 오류), run_template: 실행 가능 여부(필수 미정도 오류)",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "knowledge",
+              "description": "knowledge: 승인 가능 여부(구조 오류만 오류), run_template: 실행 가능 여부(필수 미정도 오류)",
+              "enum": [
+                "knowledge",
+                "run_template"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ValidationOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Validate Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/products": {
       "get": {
         "operationId": "list_products_api_v1_projects__project_id__products_get",
@@ -5050,6 +7626,210 @@
         "summary": "Patch Product",
         "tags": [
           "products"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/products/{product_id}/process-versions": {
+      "get": {
+        "description": "제품의 공정 버전 목록(최신 version_no부터).",
+        "operationId": "list_process_versions_api_v1_projects__project_id__products__product_id__process_versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_ProcessVersionListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Process Versions",
+        "tags": [
+          "process-versions"
+        ]
+      },
+      "post": {
+        "description": "새 초안. 승인본이 있으면 그래프까지 새 id로 복사하고, 없으면 빈 그래프·미정 단위로 시작한다.\n\n제품당 열린 버전(draft/in_review)은 하나뿐이다(409 PROCESS_DRAFT_EXISTS).",
+        "operationId": "create_process_version_api_v1_projects__project_id__products__product_id__process_versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ProcessVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Process Version",
+        "tags": [
+          "process-versions"
         ]
       }
     }

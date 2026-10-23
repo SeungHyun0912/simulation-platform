@@ -86,6 +86,18 @@ class MaterialCodeConflict(DomainError):
     status_code = 409
 
 
+class ProcessDraftExistsError(DomainError):
+    code = "PROCESS_DRAFT_EXISTS"
+    status_code = 409
+
+
+class ProcessValidationFailed(DomainError):
+    """knowledge 검증 오류가 있어 제출·승인할 수 없음. details에 오류 목록."""
+
+    code = "PROCESS_VALIDATION_FAILED"
+    status_code = 422
+
+
 class VersionImmutableError(DomainError):
     """초안이 아닌 버전의 내용을 바꾸려 할 때(승인·검토 중·대체됨)."""
 

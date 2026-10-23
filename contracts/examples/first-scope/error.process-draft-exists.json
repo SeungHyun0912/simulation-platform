@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/products/00000000-0000-4000-8000-000000000013/process-versions"
+  },
+  "response": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "PROCESS_DRAFT_EXISTS",
+        "message": "이미 진행 중인 공정 버전이 있습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "초안 또는 검토 중인 버전이 제품당 하나만 있을 수 있습니다. 그 버전을 먼저 승인하거나 반려하세요.",
+            "severity": "error"
+          }
+        ]
+      }
+    }
+  }
+}

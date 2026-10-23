@@ -12,6 +12,8 @@
 - 버전 상태별 샘플(없음/draft/in_review/approved/approved+draft/superseded 이력/approved+in_review)과 용량·규칙 케이스
 - 프로젝트 B에 같은 코드(EQ-001) 자산 1건(프로젝트 격리 확인)
 - 제품 8건(규격 입력/미정 혼합)·재료 4건(default_spec 확정/미정/해당 없음 혼합), 프로젝트 B에 같은 코드(P-001) 제품 1건
+- 공정 버전 샘플(프로젝트 A): P-001 승인본(확정된 직선 그래프), P-002 초안(빈 그래프), P-003 검토 중(미정 경고만),
+  P-004 승인본 + 복사된 새 초안
 """
 
 import argparse
@@ -26,6 +28,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import itertools
+
 import seed_dev_data
 
 from simulation_platform.api.app import create_app
@@ -244,13 +248,112 @@ def seed_catalog(seeder: Seeder, project_a: uuid.UUID, project_b: uuid.UUID) -> 
     return {"skipped": False, "products": 8, "materials": len(samples)}
 
 
+def _known(value):
+    return {"mode": "known", "value": value}
+
+
+def _confirmed_step(equipment_id: str, speed: str) -> dict:
+    """실행에 필요한 값이 모두 확정된 시험용 단계(실제 공정 값이 아님)."""
+    na = {"mode": "not_applicable"}
+    return {
+        "operation_type": "output_units_by_time", "handler_version": "1",
+        "timing_rule": {
+            "processing": {"kind": "output_speed", "speed_m_per_min": _known(speed),
+                           "basis": "per_stream", "output_schedule": "sequential_units",
+                           "parallel_streams": _known(1)},
+            "setup": {"duration_min": na, "trigger": "not_applicable"},
+            "precondition_delay": {"duration_min": na, "trigger": "not_applicable",
+                                   "occupancy": "unknown"}},
+        "input_rule": {"acquire_scope": "per_operation", "consume_policy": "consume"},
+        "output_rule": {"mode": "configured_units", "length_m": _known("1000"),
+                        "unit_count": _known(2), "quantity_basis": "per_operation",
+                        "schedule": "sequential_units", "accounting_mode": "physical"},
+        "handoff_rule": {"mode": "per_output_unit"},
+        "resources": [{"role_key": "main", "candidates": [
+            {"asset_id": equipment_id, "eligibility_status": "confirmed"}]}]}
+
+
+def _linear_graph(first_step: dict, second_step: dict, storage_id: str) -> dict:
+    nodes = [
+        {"id": str(uuid.uuid4()), "node_key": "src", "kind": "source", "label": "[시험] 원자재",
+         "display_order": 0},
+        {"id": str(uuid.uuid4()), "node_key": "step-1", "kind": "operation",
+         "label": "[시험] 1단계", "display_order": 1, "step": first_step},
+        {"id": str(uuid.uuid4()), "node_key": "wait", "kind": "buffer", "label": "[시험] 대기 공간",
+         "asset_id": storage_id, "display_order": 2},
+        {"id": str(uuid.uuid4()), "node_key": "step-2", "kind": "operation",
+         "label": "[시험] 2단계", "display_order": 3, "step": second_step},
+        {"id": str(uuid.uuid4()), "node_key": "sink", "kind": "sink", "label": "[시험] 완제품",
+         "display_order": 4},
+    ]
+    edges = [{"id": str(uuid.uuid4()), "edge_key": f"{a['node_key']}-{b['node_key']}",
+              "from_node_id": a["id"], "to_node_id": b["id"], "edge_kind": "material"}
+             for a, b in itertools.pairwise(nodes)]
+    return {"nodes": nodes, "edges": edges}
+
+
+def seed_process(seeder: Seeder, project_a: uuid.UUID) -> dict:
+    """공정 버전 시험 데이터: 승인 / 초안(빈 그래프) / 검토 중(미정 경고) / 승인+새 초안. 이미 있으면 건너뛴다."""
+    base = f"{API}/projects/{project_a}"
+    products = {p["code"]: p["id"] for p in seeder.client.get(
+        f"{base}/products?limit=50", headers=seeder.headers).json()["data"]}
+    if "P-001" not in products:
+        return {"skipped": True, "reason": "products missing"}
+    versions = seeder.client.get(f"{base}/products/{products['P-001']}/process-versions",
+                                 headers=seeder.headers).json()["data"]
+    if versions:
+        return {"skipped": True}
+
+    def asset(code):
+        return next(a["id"] for a in seeder.client.get(
+            f"{base}/assets?q={code}", headers=seeder.headers).json()["data"] if a["code"] == code)
+
+    equipment_a, equipment_b, storage = asset("EQ-004"), asset("EQ-005"), asset("ST-003")
+
+    def new_version(product_code):
+        return seeder.post(f"{base}/products/{products[product_code]}/process-versions")
+
+    def save_graph(version, graph):
+        response = seeder.client.put(
+            f"{base}/process-versions/{version['id']}/graph", json=graph,
+            headers={**seeder.headers, "If-Match": f'"{version["row_version"]}"'})
+        if response.status_code >= 300:
+            raise RuntimeError(f"PUT graph -> {response.status_code}: {response.text}")
+        return seeder.client.get(f"{base}/process-versions/{version['id']}",
+                                 headers=seeder.headers).json()["data"]
+
+    def advance(version, *actions):
+        for action in actions:
+            version = seeder.post(f"{base}/process-versions/{version['id']}/{action}",
+                                  version=version["row_version"])
+        return version
+
+    def confirmed_graph():
+        return _linear_graph(_confirmed_step(equipment_a, "30"),
+                             _confirmed_step(equipment_b, "20"), storage)
+
+    # P-001: 확정된 그래프의 승인본 하나
+    advance(save_graph(new_version("P-001"), confirmed_graph()), "submit", "approve")
+    # P-002: 초안만(빈 그래프, 단위 미정)
+    new_version("P-002")
+    # P-003: 검토 중(모든 단계가 미정이라 경고만 있는 그래프)
+    unknown_step = {"operation_type": None}
+    advance(save_graph(new_version("P-003"), _linear_graph(unknown_step, unknown_step, storage)),
+            "submit")
+    # P-004: 승인본 + 승인본에서 복사한 새 초안
+    advance(save_graph(new_version("P-004"), confirmed_graph()), "submit", "approve")
+    new_version("P-004")
+    return {"skipped": False, "versions": 5}
+
+
 def seed(engine: Engine) -> dict:
     fixtures = seed_fixtures(engine)
     seeder = Seeder(engine, fixtures["users"]["admin"])
     projects = fixtures["projects"]
     result = seed_assets(seeder, projects["A"], projects["B"], engine)
     catalog = seed_catalog(seeder, projects["A"], projects["B"])
-    return {**fixtures, "assets": result, "catalog": catalog}
+    process = seed_process(seeder, projects["A"])
+    return {**fixtures, "assets": result, "catalog": catalog, "process": process}
 
 
 def main(argv: list[str]) -> int:
@@ -276,6 +379,7 @@ def main(argv: list[str]) -> int:
         print(f"X-Debug-User ({name}) = {user_id}")
     print(f"assets: {result['assets']}")
     print(f"catalog: {result['catalog']}")
+    print(f"process: {result['process']}")
     return 0
 
 
