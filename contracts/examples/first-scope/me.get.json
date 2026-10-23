@@ -26,6 +26,7 @@
             "code": "DEMO-WIRE",
             "name": "전선 공장 예제",
             "status": "active",
+            "timezone": "Asia/Seoul",
             "role": "admin"
           }
         ]

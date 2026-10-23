@@ -1403,6 +1403,10 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
           }
         },
         "required": [
@@ -1411,6 +1415,7 @@
           "code",
           "name",
           "status",
+          "timezone",
           "role"
         ],
         "title": "MeProject",
