@@ -74,6 +74,8 @@ type Props = {
    * 예: 용량은 0을 허용하지 않는다. 공정의 "준비 0분"처럼 0이 유효한 필드는 지정하지 않는다.
    */
   validator?: (v: KnownValue) => string | null;
+  /** 서버가 돌려준 필드 오류. 입력 형식 오류가 없을 때 보여 준다(입력이 바뀌면 호출한 쪽이 지운다). */
+  error?: string | null;
   disabled?: boolean;
 };
 
@@ -86,13 +88,16 @@ export function KnownValueInput({
   numberKind = "decimal",
   units,
   validator,
+  error: externalError,
   disabled,
 }: Props) {
   const id = useId();
   const effectiveUnit = units ? (value.unit ?? units[0]) : undefined;
   const effective: KnownValue = effectiveUnit ? { ...value, unit: effectiveUnit } : value;
   const error =
-    validator && effective.mode === "value" ? validator(effective) : validateKnownValue(effective, numberKind);
+    (validator && effective.mode === "value" ? validator(effective) : validateKnownValue(effective, numberKind)) ??
+    externalError ??
+    null;
   const errorId = `${id}-error`;
 
   return (

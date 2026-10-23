@@ -1,6 +1,6 @@
 # Frontend → Backend 요청·확인 목록 (+ Backend 요청 BE-REQ에 대한 FE 답변)
 
-작성: Frontend 세션 / 최초 작성 2026-10-23 / **최종 갱신 2026-10-23 (FE-00h: 정적 화면을 계약 0.2.0 구조에 정렬한 뒤)**
+작성: Frontend 세션 / 최초 작성 2026-10-23 / **최종 갱신 2026-10-23 (FE-01d: 버전 용량·규칙 저장·전이 연결 뒤)**
 짝 파일: `request-from-backend.md` (Backend가 작성). 기준: origin/main `607d8a7`(계약 0.2.0 병합 포함).
 
 ## 사용 규칙 (Backend 파일과 같은 규칙)
@@ -17,10 +17,10 @@
 | 항목 | 값 |
 |---|---|
 | FE가 **읽은** 계약 | 0.2.0, openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, scope `project-assets-ports`·`asset-revisions` (`contract-status.json` 2026-10-23) |
-| FE가 **코드에 반영한** 계약 | **0.2.0 / `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`** (2026-10-23, FE-01a/b). 생성 타입 `frontend/src/shared/api/generated/schema.d.ts`(도구 openapi-typescript, `pnpm gen:api`; 해시가 `contract-status.json`과 다르면 생성 중단, `pnpm check:api`·단위 테스트가 오래된 생성물을 막음). **읽기 API만 연결**: `/me`, `GET /projects`, 자산 목록·상세, 버전 목록. **쓰기(PATCH·POST) 호출은 아직 없음**. 데이터 출처는 `VITE_DATA_SOURCE=static|api`(기본 static, 실패해도 자동 전환 없음). 반영할 때마다 이 표를 갱신한다(BE-REQ-002) |
+| FE가 **코드에 반영한** 계약 | **0.3.1 / `4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c`** (2026-10-23, FE-01a~d; 0.3.0 → 0.3.1은 `/me.projects[].timezone` 추가라 `/me` fixture만 컴파일 단계에서 걸러졌다). scope `project-assets-ports`·`asset-revisions`·`products-materials`. 생성 타입 `frontend/src/shared/api/generated/schema.d.ts`(도구 openapi-typescript, `pnpm gen:api`; 해시가 `contract-status.json`과 다르면 생성 중단, `pnpm check:api`·단위 테스트가 오래된 생성물을 막음). **연결 범위**: 읽기(`/me`, `GET /projects`, 자산 목록·상세, 버전 목록, `GET /projects/{id}`) + **쓰기: 자산 기본 정보 `PATCH`, 자산 생성 `POST`, 버전 `PATCH`(용량·규칙), 제출·승인·반려, 새 초안 `POST`**. 프로젝트 생성·수정, 제품·재료(0.3.0 API는 있으나 화면은 정적 예시), 공정은 아직 연결하지 않음. 데이터 출처는 `VITE_DATA_SOURCE=static|api`(기본 static, 실패해도 자동 전환 없음). 반영할 때마다 이 표를 갱신한다(BE-REQ-002) |
 | 화면 모델 기준 | **정적 화면은 계약 0.2.0 구조로 정렬됨(FE-00h)**: 자산 기본 정보와 버전을 별도 모델·별도 저장 섹션으로 분리, 설비 포트별 용량, 용량 `value`↔`finite` 어댑터(`capacityAdapter.ts`), `superseded` 상태. 데이터는 승인 예제 모양의 **정적 예시**이며 API 응답이 아니다. 어댑터·뷰 모델은 손으로 쓴 타입이라 생성 client가 생기면 교체한다 |
 | 구현된 정적 화면 | 프로젝트 목록·만들기, 설비·공간 목록·상세(기본 정보/버전/포트별 용량·규칙 읽기 전용/이력), 제품 목록·상세, 공정 표 편집(초안 UI) |
-| 다음 FE 작업 | FE-01c: 자산 기본 정보 저장(PATCH, ETag/If-Match, 412 충돌·409 코드 중복 처리) → FE-01d: 버전 용량 저장·제출·승인·반려·새 초안, 규칙 입력(확장 제안 CR은 사용자 승인됨). 그 뒤 제품·공정(계약 0.3.0 이후) |
+| 다음 FE 작업 | 제품·재료 연동(0.3.0 API 있음)·프로젝트 생성·수정, 그 뒤 공정(BE-REQ-015의 CR be04 승인 후). FE-01d(버전 쓰기)는 완료, 실서버 쓰기 검증은 사용자 허락 후(공유 DB에 흔적이 남음) |
 
 ---
 
@@ -44,7 +44,7 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
 
 - [x] **R-FE-04 오류 코드·`field_path` 규칙**
   - Backend 답변: 코드·HTTP 표, `field_path`는 본문 기준 JSON Pointer, 쿼리·헤더 오류는 이름만(backend 파일 R-FE-04).
-  - FE 확인: 수용. 오류 변환 계층은 위 표의 code를 열거형으로 두고 모르는 code(`HTTP_ERROR` 포함)는 일반 오류로 표시하며 `request_id`를 보여 준다. `PRECONDITION_REQUIRED`(428)는 FE 버그 신호라 사용자에게 노출하지 않고 로깅한다. 쿼리 오류(`/limit`, `/cursor` 등)는 endpoint 문맥으로 본문 필드와 구분한다. **FE 가정 하나:** 경로의 UUID 형식 오류(422)는 사용자에게는 "찾을 수 없음"과 같은 화면으로 처리한다. 다르게 처리해야 하면 알려 주세요. **반영 완료(FE-01a, 2026-10-23):** `shared/api/errors.ts`(`ApiError`·`NetworkError`·`classifyError`·`toIssues`·`fieldErrors`)와 `QueryErrorNotice`. 실서버에서 확인한 사실: 경로의 비UUID id는 **422**(상세 화면은 "찾을 수 없음"으로 처리), 잘못된 cursor는 422 `INVALID_CURSOR`, 비멤버·다른 프로젝트 경유는 404 `NOT_FOUND`, 인증 헤더 없음은 401.
+  - FE 확인: 수용. 오류 변환 계층은 위 표의 code를 열거형으로 두고 모르는 code(`HTTP_ERROR` 포함)는 일반 오류로 표시하며 `request_id`를 보여 준다. `PRECONDITION_REQUIRED`(428)는 FE 버그 신호라 사용자에게 노출하지 않고 로깅한다. 쿼리 오류(`/limit`, `/cursor` 등)는 endpoint 문맥으로 본문 필드와 구분한다. **FE 가정 하나:** 경로의 UUID 형식 오류(422)는 사용자에게는 "찾을 수 없음"과 같은 화면으로 처리한다. 다르게 처리해야 하면 알려 주세요. **반영 완료(FE-01a, 2026-10-23):** `shared/api/errors.ts`(`ApiError`·`NetworkError`·`classifyError`·`toIssues`·`fieldErrors`)와 `QueryErrorNotice`. 실서버에서 확인한 사실: 경로의 비UUID id는 **422**(상세 화면은 "찾을 수 없음"으로 처리), 잘못된 cursor는 422 `INVALID_CURSOR`, 비멤버·다른 프로젝트 경유는 404 `NOT_FOUND`, 인증 헤더 없음은 401. **쓰기 오류도 실서버로 확인(FE-01c, 2026-10-23):** If-Match 없음 428 `PRECONDITION_REQUIRED`, 오래된 버전 412 `EDIT_CONFLICT`(`field_path=/row_version`, 서버에 아무것도 쓰이지 않음), 코드 중복 409 `ASSET_CODE_CONFLICT`(`field_path=/code`), 빈 문자열·null 불가 필드·허용되지 않은 필드(`/kind`)·빈 본문 422, 조회자 403, 비멤버 404. 모두 FE 화면에 연결(412→리소스별 충돌 안내, 409/422→필드 오류, 428→화면 오류 안내, 403/404/네트워크 단절→각각 안내).
 
 ## P2
 
@@ -71,12 +71,12 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
   - Backend 답변: `request-from-backend.md` Part 2 R-FE-13(2026-10-23, 커밋 `d0a9f38`): (1) `/me.organizations`, role=admin만, 선택지가 없으면 안내 / (2) 코드는 조직 안에서 유일, 409 `PROJECT_CODE_CONFLICT`의 `field_path=/code` / (3) IANA 검증, 422 `/timezone` / (4) 설명은 생략·null 동일(입력 없음), 빈 문자열 422 / (5) 201 + 전체 `ProjectOut`(`row_version:1`) + `ETag` + `Location`, 생성자는 project admin 자동 등록 → 생성 후 `/me` 재조회.
   - FE 확인(FE-00h): 수용. **정적 폼에 반영함:** 조직 선택지는 role이 admin인 조직만(구성원 조직은 숨김), 선택 가능한 조직이 없으면 "프로젝트를 만들 권한이 없습니다" 안내, 시간대는 브라우저 `Intl`로 IANA 이름 검증, 설명은 비우면 생략. 연동 시 할 일(FE-01b): 409의 `/code` 오류를 코드 필드에 표시, 생성 응답 본문을 재조회 없이 사용, 생성 직후 `/me`를 다시 불러 전환 메뉴 갱신. 확인 필요 없음.
 
-- [ ] **R-FE-14 `/me.projects[]`의 시간대(`timezone`)**
+- [x] **R-FE-14 `/me.projects[]`의 시간대(`timezone`)**
   - 배경: 서버 시각은 UTC로 오고 화면은 프로젝트 시간대로 보여 줘야 한다(계약 04). `/me.projects[]`에는 `timezone`이 없고 `GET /projects/{id}`에만 있다. 시험 데이터 프로젝트 B는 UTC, C는 America/New_York라 시간대를 모르면 KST로 잘못 보여 줄 수 있다.
   - FE 조치(현재): 시각을 보여 주는 상세 화면에서만 `GET /projects/{id}`를 한 번 더 호출해 시간대를 쓰고, 알 수 없는 동안에는 열 제목에 "(Asia/Seoul 기본)"이라고 표시한다.
   - 요청(낮음): 0.3.0 소규모 보강에서 `/me.projects[]`에 `timezone`(과 `status`)을 함께 넣어 주면 요청이 줄어든다. 불필요하다고 판단하면 그대로 두어도 FE는 동작한다.
   - Backend 답변:
-  - FE 확인:
+  - FE 확인(FE-01d): **계약 0.3.1에서 `/me.projects[].timezone`이 추가되어 반영 완료.** 상세 화면은 더 이상 `GET /projects/{id}`를 추가로 호출하지 않고 `/me`의 시간대로 시각을 표시한다(`useProjectTimezone`). 시간대를 모르는 동안 열 제목의 "(Asia/Seoul 기본)" 표시는 유지한다(`/me` 로딩 전에만 보임). 가짜 서버 테스트로 America/New_York·UTC 표시를 확인했고 추가 요청이 없음을 검증했다.
 
 ## P3
 
@@ -91,7 +91,7 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
   - FE 확인: 제안(보관 항목 쓰기 409) 동의. 일정은 BE-REQ-010 #4로 이어진다.
 
 - [x] **R-FE-12 Idempotency-Key 적용 범위**
-  - FE 확인: 수용. 생성 POST는 저장 중 버튼 비활성, 409 `*_CODE_CONFLICT`는 "코드 중복" 표시. 네트워크 단절 뒤 재시도의 409는 `q=<code>`로 재조회해 "이미 만들어졌는지" 확인하는 흐름을 둔다. 버전 제출·승인·반려는 `If-Match`로 보호됨을 확인. 반영 작업: FE-01b·d.
+  - FE 확인: 수용. 생성 POST는 저장 중 버튼 비활성, 409 `*_CODE_CONFLICT`는 "코드 중복" 표시. 네트워크 단절 뒤 재시도의 409는 `q=<code>`로 재조회해 "이미 만들어졌는지" 확인하는 흐름을 둔다. 버전 제출·승인·반려는 `If-Match`로 보호됨을 확인. **반영 완료(FE-01c, 생성):** 만드는 중 버튼 비활성·연속 클릭 시 1회 전송, 409는 코드 필드 오류, 연결이 끊기면 "처리 여부를 알 수 없음" 안내와 함께 같은 코드로 목록을 재검색하는 링크를 제공(중복 생성 방지). 제출·승인·반려는 FE-01d.
 
 ---
 
@@ -155,7 +155,7 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
 - 확인한 계약 사실: 버전 **목록** 응답의 항목도 상세와 같은 `AssetRevisionOut`(용량·ports·issues 포함, `ListOut_AssetRevisionOut_`)이라 FE는 이력 목록에서 상세를 따로 호출하지 않아도 된다고 판단했다. 다르면 알려 주세요.
 
 ## BE-REQ-002 · FE가 반영한 계약 버전/해시 기록
-- 현재 FE 코드가 반영한 계약: **0.2.0 / `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`** (2026-10-23, 생성 타입 + 읽기 API 연결, 위 "FE 현재 상태" 표). 생성물의 해시가 `contract-status.json`과 다르면 `pnpm check:api`와 단위 테스트가 실패한다.
+- 현재 FE 코드가 반영한 계약: **0.3.0 / `a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48`** (2026-10-23, 생성 타입 + 읽기·자산 기본 정보 쓰기 연결, 위 "FE 현재 상태" 표). 0.2.0 → 0.3.0은 main 병합 직후 재생성했고, 재생성 전에는 `pnpm check:api`와 단위 테스트가 실패해 오래된 생성물을 막았다(의도한 동작). 생성물의 해시가 `contract-status.json`과 다르면 `pnpm check:api`와 단위 테스트가 실패한다.
 - 앞으로 client를 생성·재생성하거나 계약 변경을 반영할 때마다 이 파일의 표와 FE 인계 문서에 `contract_version`과 `openapi_sha256`을 적는다. 세션 시작 시 `contract-status.json`과 비교한다.
 
 ## BE-REQ-003 · 자산 기본 정보와 용량(버전)의 저장 UX
@@ -242,17 +242,44 @@ FE 화면 순서 기준 의견이다. 최종 일정은 사용자·조정자가 �
 - 요청: 공정 CR 작성 시 위 표와 03 §4~7을 대조해 **어긋나는 필드 목록**을 FE에 알려 주세요. FE는 그 CR 승인 전에는 이 화면을 "초안 UI"로 유지한다.
 
 ## BE-REQ-012 · 시험 데이터·실행 스크립트·R-FE-13 답변 확인
-- ① **시험 데이터: 충족.** 실서버를 읽어 확인한 내용: 프로젝트 3개(A Asia/Seoul, B UTC, C 다른 조직), 자산 60건 + 보관 1건(limit=50에서 
-ext_cursor), 버전 상태 4종(draft·in_review·approved·superseded)이 모두 어댑터를 통과, 역할이 다른 사용자(admin·viewer·mixed)·소속 없음·다른 조직 사용자 동작, 같은 코드 EQ-001이 A·B에 있고 A의 자산 id로 B를 조회하면 404. **빠지거나 어긋난 케이스: 없음.** (회귀 방지로 FE에 읽기 전용 라이브 테스트 	ests/live/live-api.test.ts 13건을 두었고, 시드 id가 바뀌면 이 파일의 상수를 맞춘다.)
-- ② un_dev_api.ps1로 띄운 서버와 proxy 연동: **문제 없음**(FE는 서버를 직접 띄우지 않았고 backend 세션·사용자가 띄운 서버를 사용). proxy 경유 /api/v1/me, 자산 목록·상세를 브라우저에서 확인. 참고로 localhost와 127.0.0.1 모두 응답한다.
-- ③ R-FE-13 답변 확인: **수용, 정적 폼에 반영 완료**(R-FE-13 [x]).
+- ① **시험 데이터: 충족.** 실서버를 읽어 확인한 내용: 프로젝트 3개(A Asia/Seoul, B UTC, C 다른 조직), 자산 60건 + 보관 1건(`limit=50`에서 `next_cursor`), 버전 상태 4종(draft·in_review·approved·superseded)이 모두 어댑터를 통과, 역할이 다른 사용자(admin·viewer·mixed)·소속 없음·다른 조직 사용자 동작, 같은 코드 `EQ-001`이 A·B에 있고 A의 자산 id로 B를 조회하면 404. **빠지거나 어긋난 케이스: 없음.** 회귀 방지로 FE에 읽기 전용 라이브 테스트 `tests/live/live-api.test.ts`(13건)를 두었다. 시드 id가 바뀌면 이 파일의 상수를 맞춘다.
+- ② `run_dev_api.ps1`로 띄운 서버와 proxy 연동: **문제 없음**. FE는 서버를 직접 띄우지 않았고 backend 세션이 띄운 서버를 사용했다. proxy 경유 `/api/v1/me`, 자산 목록·상세를 브라우저에서 확인했고 `localhost`와 `127.0.0.1` 모두 응답한다.
+- ③ R-FE-13 답변 확인: **수용, 정적 폼에 반영 완료**(R-FE-13 `[x]`).
 
-## BE-REQ-013 · CR be03(제품·재료 + /me.projects[].status) FE 확인 사항
-- ① latest_process_version이 제품 목록에 **당분간 없어도 FE 연동 순서에 문제 없다.** 제품 화면은 FE-01d 이후이고, 그때 공정 버전 CR이 승인되어 있지 않다면 제품 목록은 최신 공정 버전 칸 없이(또는 "상세에서 확인") 연동한다. 공정 CR에서 요약 필드가 이월되면 그때 추가한다.
-- ② /me.projects[].status는 **0.3.0에 같이 내는 것에 동의**한다(Backend 기본). 급하지 않다: 현재 모든 프로젝트가 active이고 보관 기능이 없다. 다만 **같은 묶음에 	imezone도 넣어 주면 좋다**(R-FE-14).
-- 승인 여부는 사용자가 정한다.
+## BE-REQ-013 · 계약 0.3.0(제품·재료, `/me` status) FE 확인
+main 병합(`00cf26e`) 직후 `contracts/CHANGELOG.md` 0.3.0과 `04 §3.3`을 읽고 FE 모델과 대조했다. 계약 0.3.0으로 생성 타입을 재생성했고 기존 코드는 호환 추가라 `/me` fixture 3곳(필수 `status`)만 컴파일 단계에서 걸러졌다.
+- ① **FE 모델과 어긋나는 점**(제품 화면은 아직 정적 예시이고 FE-01d 이후 연동):
+  1. 제품 `notes`(nullable) 필드가 FE `ProductView`에 없다 → 연동 때 추가.
+  2. FE 제품 상세·목록에 있는 **공정 버전 요약**(`versions[]`, "최신 공정 버전")은 0.3.0 API에 없다(공정 CR 이월, 예상된 것) → 연동 모드에서는 해당 열·표를 "공정 계약 필요"로 바꾼다. 정적 예시와 섞어 보여 주지 않는다.
+  3. `specification` 최대 4000자·빈 문자열 422·`null`=미정은 FE 규칙과 일치한다. 4000자 검증은 연동 때 추가.
+  4. 제품 목록 기본 정렬이 `code`(자산은 `sort_order`)라서 화면별 기본 정렬을 따로 둔다.
+  5. 재료 화면은 FE에 없다. `default_spec`의 `known` ↔ `value` 어댑터(개수는 JSON 정수, 길이·중량은 decimal 문자열, `unknown` 기본값)는 재료 화면을 만들 때 둔다. `default_spec` 형식(`known`/`unknown`/`not_applicable`·개수 JSON 정수)은 FE 단위 규칙과 **일치**한다.
+- ② 제품 목록에 공정 요약이 없어도 FE-01 순서에 **문제 없다**(위 2번).
+- ③ "다음 개발 진행"을 CR 승인으로 해석한 데 **반대 의견 없다.** 사용자의 승인 기록은 `contract-status.json`의 `approval_record`가 정본이므로 backend가 정확히 남겨 주길 바란다.
+- 반영한 것: `/me.projects[].status` → 전환 메뉴에서 보관 프로젝트를 "(보관됨)"으로 표시(제외하지 않음).
+- 0.3.1(`/me.projects[].timezone`) 반영 확인: FE-01d에서 생성 타입을 재생성하고 시간대를 `/me`에서 읽는다(R-FE-14 `[x]`). 이 항목의 "남은 요청"(0.3.0 어긋남 대조)은 위 ①~③으로 답했다.
+
+## BE-REQ-014 · 개발 API 서버 연결 확인
+- **연결 정상.** `GET /api/v1/health`가 `{"data":{"status":"ok"}}`이고 Vite proxy(`DEV_DEBUG_USER` 셸 환경변수) 경유 `/me`·자산 API를 브라우저와 실서버 테스트로 확인했다.
+- 실서버 검증: 읽기 전용 13건(`tests/live/live-api.test.ts`) + **쓰기 7건**(`tests/live/live-write.test.ts`, `LIVE_WRITE=1`일 때만 실행). 쓰기 검증은 공유 개발 DB를 바꾸므로 범위를 좁혔다: 시험 데이터 자산 **`EQ-025` 하나**에 `PATCH`만 하고 마지막에 원래 값으로 되돌렸다(원복 확인: 메모·모델 비어 있음). 부작용은 그 자산의 `row_version`이 1→5로 오른 것과 `updated_at` 변경뿐이다. **삭제 endpoint가 없어 흔적이 남는 자산 생성(POST)은 실서버로 실행하지 않았다**(가짜 서버로만 검증, 본문 타입은 생성 타입으로 컴파일 검사).
+- 서버는 backend 세션이 살아 있는 동안만 보장되는 점을 확인했다. 멈추면 이 파일에 적겠다.
+
+## BE-REQ-015 · 공정 버전·그래프 CR(be04) FE 의견
+[CR be04](../change-requests/CR-backend-20261023-be04-process-versions.md) §5(13항목)와 §6을 읽고 FE 정적 공정 화면(`processView.ts`)과 대조했다. **구현은 CR 승인 전이라 하지 않았다.** 요약: 13항목 모두 FE 쪽 변경으로 흡수할 수 있고 계약 해석이 다르다고 보는 항목은 없다(#7만 제약 조건이 붙는다).
+- **(a) `assumed` 단계 상태: 동의.** 마스터 공정 버전은 확인된 사실만 담고 가정은 시나리오 입력이어야 한다(03 §2). FE 단계 상태에서 `assumed`를 제거하고 필드 단위 `confirmed|unknown|not_applicable`로 바꾼다. 단계 요약 배지는 서버 `issues`에서 파생해 표시만 한다. 가정을 입력받는 화면은 시나리오 단계에서 새로 설계한다.
+- **(b) 직선 표 ↔ 그래프 어댑터: 동의(편의 `steps[]` endpoint 없음).** 조건 두 가지: ① **직선(operation → buffer → operation)이 아닌 그래프(join·supply·분기·다중 buffer·precedence)는 FE가 표로 저장하지 않는다.** `PUT graph`가 전체 교체라서 표가 표현하지 못하는 노드·간선을 조용히 지우게 되기 때문이다. 이런 버전은 읽기 전용 표시 + "그래프 편집은 후속 화면"으로 안내한다. ② 노드·간선 id는 FE가 UUID로 만들어 보내고 `node_key`는 UUID 기반으로 만든다. 응답이 임시 key↔서버 id 대응을 돌려주는지, `node_key`의 허용 형식·길이를 계약에 명시해 주길 부탁한다.
+- **(c) 값 표현 `{mode: unknown|known|not_applicable, value}`: 동의.** 자산 용량의 `finite`↔`value` 어댑터와 같은 방식으로 FE 어댑터가 `known`↔`value`를 변환한다. 공정 값에는 `unlimited`·`not_allowed`가 없다는 것도 확인했다(노동자 무제한은 `resource_kind=worker`+`capacity_mode=unlimited`).
+- **(d) 추가 입력 필드: 화면에 넣을 수 있고, 우선순위는 다음과 같다.** (1) `parallel_streams`·`basis`·`output_schedule`(미정이면 full run 차단, 멀티신선 대표 케이스) — 먼저. (2) `quantity_basis`(작업당 vs 총 계획 수량 혼동 방지)·`required_count`·후보별 `eligibility_status`(OPEN-001) — 그다음. (3) `precondition_delay`(점유 여부 포함, AL 싱글-12 케이스)·`unit_form` — 그다음. (4) `accounting_mode`(표시)·`operation_type`/`handler_version`·`input/handoff/residual/execution_rule` — 04a에서는 구조만 저장하고 값 입력은 후속, FE는 읽기 전용 표시. 새 입력 패턴(규칙 판별 객체 선택)이 필요하면 자산 규칙과 같은 `PortRuleInput` 방식으로 CR-frontend를 먼저 올린다.
+- **(e) 04a만 승인해도 FE 공정 표 연동이 가능하다.** 단 다음이 함께 와야 한다: `GET /products`의 `latest_process_version`(#13, 제품 목록의 "최신 공정 버전" 열), 서버 `issues`의 `entity_id`+`field_path` 계약(FE는 이미 순서 번호 경로를 쓰지 않도록 준비), 새 초안 409 `PROCESS_DRAFT_EXISTS` 처리(자산의 `REVISION_DRAFT_EXISTS`와 같은 UX 재사용). 단계 `PATCH`는 버전 단위 ETag이므로 같은 버전의 단계 수정은 직렬화되어, FE는 단계 저장을 버전 단위 충돌(412)로 처리한다(용량 버전과 같은 병합 UX).
+- 부가 의견: ① 자산 버전과 같은 전이·권한(제출 admin·editor, 승인·반려 admin)에 **동의**. ② 승인 시 남은 `issues`가 막지 않는 것(자산과 동일)에 동의하며 FE는 경고를 승인 대화에서 요약해 보여 준다. ③ §5 말미의 배출 규칙 어휘 불일치(03 §7 vs 07 §6~7)는 FE UI 라벨(`ruleLabels.ts`)이 03 §7 코드값을 따르고 있으므로, 어휘를 바꾸는 계약 변경이 생기면 라벨 매핑 한 곳만 바뀐다(코드값 변경은 자산 규칙 화면의 선택지에 영향이 있어 CR로 알려 주길 바란다).
+
+## BE-REQ-016(FE 자체 기록) · FE-01d 구현 결과 요약
+Backend 요청 항목은 아니며 BE-REQ-001 #9·R-FE-05·확장 제안 CR의 구현 결과를 공유한다. 상세는 `docs/handoffs/HANDOFF-frontend-2026-10-23-FE-01d.md`.
+- 버전(용량·규칙) 쓰기를 자산 기본 정보와 **별도 ETag·충돌·저장**으로 연결했다: `PATCH /asset-revisions/{id}`(바꾼 포트·필드만, 규칙은 판별 객체 전체), `submit`·`approve`·`reject`(반려 사유 필수 대화상자, 1~1000자), `POST /assets/{id}/revisions`(새 초안, 버전이 없으면 "용량 설정 시작").
+- 서버 계약대로 처리한 것: 초안만 수정(409 `VERSION_IMMUTABLE`은 화면을 서버와 맞춤), 열린 버전 하나(409 `REVISION_DRAFT_EXISTS`는 열린 버전으로 이동), 반려는 `in_review → draft`(사유가 작성자에게 표시), 승인은 남은 issues로 막지 않음, PATCH 422의 `/ports/{i}`는 **요청 본문의 ports 순서**로 해석.
+- **Backend에 알리는 점:** (1) 위 동작은 가짜 서버(생성 타입으로 검증)로만 확인했고 **실서버 쓰기 검증은 하지 않았다** — 버전 쓰기는 삭제 endpoint가 없어 공유 개발 DB에 흔적(row_version·상태 전이)이 남는다. 허락을 받으면 시험 데이터 자산 하나(예: `EQ-008`)로 최소 범위만 실행하겠다. (2) 제출은 검증 오류가 있어도 가능하다는 계약 설명을 그대로 따랐다(화면은 서버 `issues`를 표시만 한다).
+
 ---
-
 ## 변경 이력
 | 날짜 | 작성자 | 내용 |
 |---|---|---|
@@ -261,3 +288,5 @@ ext_cursor), 버전 상태 4종(draft·in_review·approved·superseded)이 모�
 | 2026-10-23 | Frontend | Backend 답변(R-FE-01~12) 검토 반영, 상태 규칙 정리, Part 2에 BE-REQ-001~011 답변 작성 |
 | 2026-10-23 | Frontend | FE-01a/b: 생성 타입(openapi-typescript, 계약 0.2.0)·공통 API 클라이언트·오류 변환·proxy, 읽기 API(`/me`, 프로젝트·자산 목록, 자산 상세·버전) 연결, 실서버 읽기 검증 13건. BE-REQ-004(사용자 결정)·012·013 답변, R-FE-14 추가, R-FE-02·03·04·08 반영 완료 기록 |
 | 2026-10-23 | Frontend | FE 세션 시작 절차 이행: backend 커밋 `d0a9f38`의 R-FE-13 답변 확인 → `[x]`. FE-00h로 정적 화면을 0.2.0 구조에 정렬하고 BE-REQ-001 진행 현황 표 추가. 코드에 반영한 계약은 여전히 없음(client 미생성) |
+| 2026-10-23 | Frontend | FE-01c: 계약 0.3.0으로 재생성(main 병합 확인), `/me.status` 반영(보관됨 표시), **자산 기본 정보 저장(PATCH)·자산 생성(POST) 연결**(바꾼 필드만 전송, 편집 시작 버전으로 If-Match, 412 후 필드 단위 병합, 409/422 필드 오류, 428·403·404·네트워크 단절 안내). 실서버 읽기 13건 + 쓰기 7건(EQ-025, 원복) 검증. BE-REQ-012·013(0.3.0 대조)·014 답변 갱신 |
+| 2026-10-23 | Frontend | FE-01d: 계약 0.3.1로 재생성(`/me.timezone` 반영, R-FE-14 `[x]`), **버전 용량·규칙 저장(PATCH)·제출·승인·반려(사유 대화상자)·새 초안·용량 설정 시작 연결**(별도 ETag·412 항목 단위 병합·409 VERSION_IMMUTABLE/REVISION_DRAFT_EXISTS·422 포트 매핑). BE-REQ-015(공정 CR be04) FE 의견 답변, FE-01d 구현 요약 기록. 실서버 쓰기 검증은 미실행(허락 대기) |

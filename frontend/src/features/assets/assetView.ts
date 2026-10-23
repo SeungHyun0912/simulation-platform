@@ -106,17 +106,26 @@ export type RevisionDetail = {
   rowVersion: number;
 };
 
-/** 버전에서 편집하는 값. 규칙(dispatch/release) 입력은 확장 제안 승인 후 추가한다. */
+/** 설비 포트 하나에서 편집하는 값: 대기 용량과 이동·배출 규칙(확장 제안 CR 승인됨). */
+export type PortEdit = {
+  capacity: KnownValue;
+  dispatch: DispatchRule;
+  release: ReleaseRule;
+};
+
+/** 버전에서 편집하는 값. 설비는 포트별(`ports`), 공간은 저장 용량(`storageCapacity`). */
 export type RevisionEdit = {
   storageCapacity: KnownValue | null;
-  /** portId → 용량 */
-  portCapacities: Record<string, KnownValue>;
+  /** portId → 포트 편집 값 */
+  ports: Record<string, PortEdit>;
 };
 
 export function toRevisionEdit(r: RevisionDetail): RevisionEdit {
   return {
     storageCapacity: r.storageCapacity,
-    portCapacities: Object.fromEntries(r.ports.map((p) => [p.portId, p.bufferCapacity])),
+    ports: Object.fromEntries(
+      r.ports.map((p) => [p.portId, { capacity: p.bufferCapacity, dispatch: p.dispatchRule, release: p.releaseRule }]),
+    ),
   };
 }
 

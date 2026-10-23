@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ASSETS, createFakeServer, errorBody, P1, P2 } from "../fakeApi";
+import contractMeta from "../../src/shared/api/generated/CONTRACT.json";
+import { ASSETS, createFakeServer, errorBody, ME, P1, P2 } from "../fakeApi";
 import { renderApp } from "../renderApp";
 
 const api = (path: string, server = createFakeServer()) => ({ server, ...renderApp(path, { source: "api", fetchImpl: server.fetchImpl }) });
@@ -10,7 +11,9 @@ describe("API 모드: 앱 셸과 프로젝트", () => {
     const user = userEvent.setup();
     const { server } = api(`/projects/${P1}/assets`);
     expect(screen.getByRole("note")).toHaveAttribute("data-source", "api");
-    expect(screen.getByRole("note")).toHaveTextContent("API 연동 모드");
+    // 계약 버전은 생성물(CONTRACT.json)에서 읽으므로 계약이 바뀌어도 하드코딩된 값과 어긋나지 않는다.
+    expect(screen.getByRole("note")).toHaveTextContent(`API 연동 모드입니다(계약 ${contractMeta.contract_version})`);
+    expect(screen.getByRole("note")).toHaveTextContent("용량·규칙(버전)의 저장·검토 흐름은 연결되어 있고");
     await waitFor(() => expect(screen.getByRole("group", { name: "현재 프로젝트" })).toHaveTextContent("SRV-P1"));
     await user.click(screen.getByRole("button", { name: /프로젝트 전환/ }));
     const menu = await screen.findByRole("menu");
@@ -18,6 +21,32 @@ describe("API 모드: 앱 셸과 프로젝트", () => {
     expect(within(menu).getByText("서버 프로젝트 2")).toBeInTheDocument();
     expect(within(menu).queryByText(/예시 프로젝트/)).not.toBeInTheDocument();
     expect(server.requests.some((r) => r.path === "/me")).toBe(true);
+  });
+
+  it("보관된 프로젝트(/me status=archived)는 전환 메뉴에 포함하되 보관됨을 표시한다(계약 0.3.0)", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer((req, std) =>
+      req.path === "/me"
+        ? {
+            status: 200,
+            body: {
+              data: {
+                ...ME,
+                projects: [
+                  ...ME.projects,
+                  { id: "66666666-6666-4666-8666-666666666666", organization_id: ME.organizations[0]!.id, code: "OLD", name: "옛 프로젝트", role: "viewer", status: "archived" },
+                ],
+              },
+            },
+          }
+        : std(req),
+    );
+    api(`/projects/${P1}/assets`, server);
+    await waitFor(() => expect(screen.getByRole("group", { name: "현재 프로젝트" })).toHaveTextContent("SRV-P1"));
+    await user.click(screen.getByRole("button", { name: /프로젝트 전환/ }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("옛 프로젝트 (보관됨)")).toBeInTheDocument();
+    expect(within(menu).queryByText("서버 프로젝트 1 (보관됨)")).not.toBeInTheDocument();
   });
 
   it("프로젝트 전환 시 새 프로젝트로만 요청하고 이전 프로젝트 캐시는 버린다", async () => {
@@ -236,13 +265,13 @@ describe("API 모드: 자산 상세", () => {
     expect(within(history).getAllByRole("row")).toHaveLength(3);
   });
 
-  it("승인 시각은 프로젝트의 시간대(GET /projects/{id})로 표시하고 어느 시간대인지 알린다", async () => {
+  it("승인 시각은 /me의 프로젝트 시간대로 표시하고 별도 요청 없이 어느 시간대인지 알린다(계약 0.3.1)", async () => {
     const { server } = api(`/projects/${P1}/assets/${A1}`);
     const history = await screen.findByRole("table", { name: "EQ-001 버전 이력" });
     // 서버 시각은 UTC 2026-10-23 00:00. 프로젝트 시간대(America/New_York, UTC-4)로는 10월 22일 20:00이다.
     await waitFor(() => expect(within(history).getByText(/2026\. 10\. 22\. 20:00/)).toBeInTheDocument());
     expect(within(history).getByRole("columnheader", { name: /America\/New_York/ })).toBeInTheDocument();
-    expect(server.requests.some((r) => r.path === `/projects/${P1}` && r.method === "GET")).toBe(true);
+    expect(server.requests.some((r) => r.path === `/projects/${P1}`)).toBe(false); // GET /projects/{id} 추가 호출 없음
   });
 
   it("역할은 /me에서 온다: 관리자 프로젝트에서는 편집 가능", async () => {
@@ -277,12 +306,9 @@ describe("API 모드: 자산 상세", () => {
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
   });
 
-  it("저장 요청(PATCH·POST)은 보내지 않는다(저장은 다음 단계)", async () => {
-    const user = userEvent.setup();
+  it("조회만 하는 동안에는 쓰기 요청(PATCH·POST)을 보내지 않는다", async () => {
     const { server } = api(`/projects/${P1}/assets/${A1}`);
     await screen.findByRole("heading", { level: 1, name: /EQ-001/ });
-    await user.type(screen.getByLabelText("모델"), "X");
-    expect(screen.getByRole("button", { name: /기본 정보 저장/ })).toBeDisabled();
-    expect(server.requests.every((r) => r.method === "GET")).toBe(true);
+    expect(server.writes()).toHaveLength(0);
   });
 });
