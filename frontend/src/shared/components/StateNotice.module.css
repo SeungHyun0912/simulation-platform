@@ -14,6 +14,12 @@
   font-size: var(--text-sm);
 }
 
+.action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .neutral { color: var(--status-neutral-fg); background: var(--status-neutral-bg); }
 .info { color: var(--status-info-fg); background: var(--status-info-bg); }
 .warning { color: var(--status-warning-fg); background: var(--status-warning-bg); }

@@ -2,8 +2,16 @@
   padding: var(--space-4);
   font-size: var(--text-sm);
   background: var(--color-surface);
-  border: var(--border-width) solid var(--status-danger-fg);
+  border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
+}
+
+.hasError {
+  border-color: var(--status-danger-fg);
+}
+
+.onlyWarning {
+  border-color: var(--status-warning-fg);
 }
 
 .title {
@@ -31,6 +39,7 @@
 }
 
 .path {
+  display: block;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--color-text-muted);

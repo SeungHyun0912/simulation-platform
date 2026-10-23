@@ -1,6 +1,8 @@
 .field {
   display: grid;
   gap: var(--space-1);
+  /* 격자에서 행이 늘어나도 입력 상자가 라벨 바로 아래에 붙도록 */
+  align-content: start;
 }
 
 .label {
