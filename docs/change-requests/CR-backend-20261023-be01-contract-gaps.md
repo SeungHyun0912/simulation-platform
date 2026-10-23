@@ -22,5 +22,18 @@
 - 04 §3은 "kind에 따라 subtype·포트를 원자 생성"만 명시. 요청/응답 필드 없음.
 - Backend 제안안은 BE-01c 착수 전에 별도 CR로 제출한다. 승인 전 구현하지 않는다.
 
+## 6. ERD 해석·잠정값 (BE-01b, migration 0001에 반영됨)
+- 조직 멤버 역할 `organization_member.role`: 허용값 미정 → 잠정 `admin|member`.
+- 프로젝트 멤버 역할 `project_member.role`: 잠정 `admin|editor|viewer`. TECH-006 결정 시 CHECK 교체(새 migration).
+- 상태값: organization/project `active|archived`, app_user `active|disabled`(잠정).
+- ERD §4의 "조직/사용자/역할 유일"을 `UNIQUE(organization_id,user_id)`(조직당 1역할)로 구현.
+  복수 역할이 필요하면 알려 주세요. project_member의 "조직 멤버 확인"을 복합 FK로 강제하는 데 필요했음.
+- `project_member`, `audit_log`에 `organization_id` 컬럼을 추가(복합 FK용). ERD 표에는 project_member에 없음.
+- `equipment_detail/space_detail/asset_port`에 `asset_kind` 컬럼을 추가하고 `asset(project_id,id,kind)`에 복합 FK:
+  subtype/포트 role 불일치를 트리거 없이 DB에서 차단(ERD §14 "subtype 변경 단순 PATCH 금지"도 FK가 막음).
+- 포트 불변식은 지연 제약 트리거로 구현: 설비 IN/OUT 각 1, 공간 ACCESS 1개 이상(커밋 시 검증).
+- 미반영: PostgreSQL RLS. 앱/migration DB 계정 분리와 함께 별도 단위로 제안 예정(ERD §10).
+- `timezone`은 기본값 없이 필수 입력(도메인 문서에 기본값 근거 없음). `Asia/Seoul`은 테스트 시드에서만 사용.
+
 ## 5. 인증 adapter
 - TECH-002 미결. BE-01은 local 전용 테스트 주체(AUTH_MODE=local, production 비활성)로 시작하고 운영 adapter는 결정 후 교체.
