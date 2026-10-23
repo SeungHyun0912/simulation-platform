@@ -17,10 +17,10 @@
 | 항목 | 값 |
 |---|---|
 | FE가 **읽은** 계약 | 0.2.0, openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, scope `project-assets-ports`·`asset-revisions` (`contract-status.json` 2026-10-23) |
-| FE가 **코드에 반영한** 계약 | **없음.** 화면은 모두 정적 예시 데이터이며 generated client·API 호출·Mock이 없다. 반영할 때마다 이 표에 `contract_version`/`openapi_sha256`을 적는다(BE-REQ-002) |
+| FE가 **코드에 반영한** 계약 | **0.2.0 / `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`** (2026-10-23, FE-01a/b). 생성 타입 `frontend/src/shared/api/generated/schema.d.ts`(도구 openapi-typescript, `pnpm gen:api`; 해시가 `contract-status.json`과 다르면 생성 중단, `pnpm check:api`·단위 테스트가 오래된 생성물을 막음). **읽기 API만 연결**: `/me`, `GET /projects`, 자산 목록·상세, 버전 목록. **쓰기(PATCH·POST) 호출은 아직 없음**. 데이터 출처는 `VITE_DATA_SOURCE=static|api`(기본 static, 실패해도 자동 전환 없음). 반영할 때마다 이 표를 갱신한다(BE-REQ-002) |
 | 화면 모델 기준 | **정적 화면은 계약 0.2.0 구조로 정렬됨(FE-00h)**: 자산 기본 정보와 버전을 별도 모델·별도 저장 섹션으로 분리, 설비 포트별 용량, 용량 `value`↔`finite` 어댑터(`capacityAdapter.ts`), `superseded` 상태. 데이터는 승인 예제 모양의 **정적 예시**이며 API 응답이 아니다. 어댑터·뷰 모델은 손으로 쓴 타입이라 생성 client가 생기면 교체한다 |
 | 구현된 정적 화면 | 프로젝트 목록·만들기, 설비·공간 목록·상세(기본 정보/버전/포트별 용량·규칙 읽기 전용/이력), 제품 목록·상세, 공정 표 편집(초안 UI) |
-| 다음 FE 작업 | **사용자 결정 대기:** API 서버 실행 주체(BE-REQ-004), client 생성 도구 승인(FE-01a). 결정 후 FE-01a → 01b~d. 그전: 규칙 입력·사유 입력 확장 제안 `CR-frontend-20261023-fe-rule-ui-and-reason-dialog` 검토 |
+| 다음 FE 작업 | FE-01c: 자산 기본 정보 저장(PATCH, ETag/If-Match, 412 충돌·409 코드 중복 처리) → FE-01d: 버전 용량 저장·제출·승인·반려·새 초안, 규칙 입력(확장 제안 CR은 사용자 승인됨). 그 뒤 제품·공정(계약 0.3.0 이후) |
 
 ---
 
@@ -36,15 +36,15 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
 
 - [x] **R-FE-02 로컬 개발 연결: 인증 헤더, CORS, 시드**
   - Backend 답변: Vite proxy 권장, CORS 미구현, 시드 실행 완료(backend 파일 R-FE-02).
-  - FE 확인: 수용. `DEV_DEBUG_USER`는 `VITE_` 접두사 없이 셸 환경변수로 두고 `vite.config.ts` proxy에서만 읽는다(번들에 사용자 id 미포함). CORS 미들웨어는 **요청하지 않는다**. 헤더 이름은 proxy 설정 한 곳에 둔다. 서버 기동 주체는 BE-REQ-004에서 이어서 정한다. 반영 작업: FE-01a.
+  - FE 확인: 수용. `DEV_DEBUG_USER`는 `VITE_` 접두사 없이 셸 환경변수로 두고 `vite.config.ts` proxy에서만 읽는다(번들에 사용자 id 미포함). CORS 미들웨어는 **요청하지 않는다**. 헤더 이름은 proxy 설정 한 곳에 둔다. 서버 기동 주체는 BE-REQ-004(사용자 결정: backend 세션 또는 사용자). **반영 완료(2026-10-23):** `vite.config.ts` proxy(`/api` → `DEV_API_TARGET` 기본 `127.0.0.1:8000`, `DEV_DEBUG_USER`를 `X-Debug-User`로 붙임), `.env.example` 갱신. 실제 서버(`/health`·`/me`)를 proxy 경유 브라우저에서 확인함.
 
 - [x] **R-FE-03 프로젝트 전환 UI의 데이터 출처와 역할 값**
   - Backend 답변: `/me.projects` 사용 가능(상한·페이지 없음), 역할 잠정 목록, 프로젝트 `status`는 `active|archived`(현재 모두 active), `/me`의 projects에는 `status`가 없음(backend 파일 R-FE-03).
-  - FE 확인: 수용. 전환 메뉴는 `/me.projects`로 구성한다. 역할 표시 라벨(표시용, 서버 403이 정본): admin=관리자, editor=편집자, viewer=조회자; 조직 admin=조직 관리자, member=조직 구성원. 모르는 역할 문자열은 원문을 그대로 표시한다. **역할 라벨·버튼 노출 판정(`canEdit`/`canApprove`)은 FE-00h에 정적 화면에 반영함**(조회자는 입력 읽기 전용·작업 버튼 숨김, 편집자는 검토 요청만, 승인·반려는 관리자만). **후속 요청:** `/me.projects[]`에 `status`를 추가하는 소규모 보강을 **찬성**한다(보관된 프로젝트를 메뉴에서 구분/제외하기 위해). 우선순위 의견은 BE-REQ-010 답변. 반영 작업: FE-01b.
+  - FE 확인: 수용. 전환 메뉴는 `/me.projects`로 구성한다. 역할 표시 라벨(표시용, 서버 403이 정본): admin=관리자, editor=편집자, viewer=조회자; 조직 admin=조직 관리자, member=조직 구성원. 모르는 역할 문자열은 원문을 그대로 표시한다. **역할 라벨·버튼 노출 판정(`canEdit`/`canApprove`)은 FE-00h에 정적 화면에 반영함**(조회자는 입력 읽기 전용·작업 버튼 숨김, 편집자는 검토 요청만, 승인·반려는 관리자만). **후속 요청:** `/me.projects[]`에 `status`를 추가하는 소규모 보강을 **찬성**한다(보관된 프로젝트를 메뉴에서 구분/제외하기 위해). 우선순위 의견은 BE-REQ-010 답변. **반영 완료(FE-01b, 2026-10-23):** 전환 메뉴·역할은 `/me`(`useMe`), 프로젝트 목록은 `GET /projects`에 `/me`의 역할을 id로 합쳐 표시, 프로젝트 만들기의 조직은 `/me.organizations` 중 admin만. 실서버로 확인(관리자·조회자·소속 없음·다른 조직 사용자). 시간대는 `/me`에 없어 상세 화면에서만 `GET /projects/{id}`로 가져온다(R-FE-14).
 
 - [x] **R-FE-04 오류 코드·`field_path` 규칙**
   - Backend 답변: 코드·HTTP 표, `field_path`는 본문 기준 JSON Pointer, 쿼리·헤더 오류는 이름만(backend 파일 R-FE-04).
-  - FE 확인: 수용. 오류 변환 계층은 위 표의 code를 열거형으로 두고 모르는 code(`HTTP_ERROR` 포함)는 일반 오류로 표시하며 `request_id`를 보여 준다. `PRECONDITION_REQUIRED`(428)는 FE 버그 신호라 사용자에게 노출하지 않고 로깅한다. 쿼리 오류(`/limit`, `/cursor` 등)는 endpoint 문맥으로 본문 필드와 구분한다. **FE 가정 하나:** 경로의 UUID 형식 오류(422)는 사용자에게는 "찾을 수 없음"과 같은 화면으로 처리한다. 다르게 처리해야 하면 알려 주세요. 반영 작업: FE-01a.
+  - FE 확인: 수용. 오류 변환 계층은 위 표의 code를 열거형으로 두고 모르는 code(`HTTP_ERROR` 포함)는 일반 오류로 표시하며 `request_id`를 보여 준다. `PRECONDITION_REQUIRED`(428)는 FE 버그 신호라 사용자에게 노출하지 않고 로깅한다. 쿼리 오류(`/limit`, `/cursor` 등)는 endpoint 문맥으로 본문 필드와 구분한다. **FE 가정 하나:** 경로의 UUID 형식 오류(422)는 사용자에게는 "찾을 수 없음"과 같은 화면으로 처리한다. 다르게 처리해야 하면 알려 주세요. **반영 완료(FE-01a, 2026-10-23):** `shared/api/errors.ts`(`ApiError`·`NetworkError`·`classifyError`·`toIssues`·`fieldErrors`)와 `QueryErrorNotice`. 실서버에서 확인한 사실: 경로의 비UUID id는 **422**(상세 화면은 "찾을 수 없음"으로 처리), 잘못된 cursor는 422 `INVALID_CURSOR`, 비멤버·다른 프로젝트 경유는 404 `NOT_FOUND`, 인증 헤더 없음은 401.
 
 ## P2
 
@@ -60,7 +60,7 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
   - FE 확인: 2~5번 수용. 특히 **검증 경로 방식이 FE와 다르다**: FE 정적 화면은 순서 번호(`/steps/2/setup/duration`)를 쓰는데 실제 연동 시 `entity_id`(step id) + 단계 내부 포인터로 바꾼다. 1번(일정)은 BE-REQ-010·011로 이어진다. 남은 일: 일정, 공정 CR.
 
 - [x] **R-FE-08 목록 페이지 이동**
-  - FE 확인: 수용. 기본 50/최대 200, 필터·정렬·프로젝트가 바뀌면 cursor 폐기(422 `INVALID_CURSOR`에 대비해 폐기하지 않은 경우 첫 페이지로 재요청), `total` 없음·이전 페이지 없음 → "더 보기" 방식. 반영 작업: FE-01b.
+  - FE 확인: 수용. 기본 50/최대 200, 필터·정렬·프로젝트가 바뀌면 cursor 폐기(422 `INVALID_CURSOR`에 대비해 폐기하지 않은 경우 첫 페이지로 재요청), `total` 없음·이전 페이지 없음 → "더 보기" 방식. **반영 완료(FE-01b, 2026-10-23):** 자산·프로젝트 목록이 `limit`/`next_cursor`로 더 보기를 하고, 정렬·검색·종류가 바뀌면 새 조회(cursor 폐기). 새 조건을 불러오는 동안 같은 프로젝트의 이전 목록만 유지한다(다른 프로젝트 데이터는 남기지 않음). 실서버에서 50건 + 다음 페이지(중복 없음)와 조건이 다른 cursor의 422를 확인.
 
 ## P2 (추가)
 
@@ -70,6 +70,13 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
   - FE 임시 가정: 선택지는 `/me.organizations` 중 role=admin인 조직, 설명은 비우면 생략, 시간대는 자유 입력, 서버가 최종 검증.
   - Backend 답변: `request-from-backend.md` Part 2 R-FE-13(2026-10-23, 커밋 `d0a9f38`): (1) `/me.organizations`, role=admin만, 선택지가 없으면 안내 / (2) 코드는 조직 안에서 유일, 409 `PROJECT_CODE_CONFLICT`의 `field_path=/code` / (3) IANA 검증, 422 `/timezone` / (4) 설명은 생략·null 동일(입력 없음), 빈 문자열 422 / (5) 201 + 전체 `ProjectOut`(`row_version:1`) + `ETag` + `Location`, 생성자는 project admin 자동 등록 → 생성 후 `/me` 재조회.
   - FE 확인(FE-00h): 수용. **정적 폼에 반영함:** 조직 선택지는 role이 admin인 조직만(구성원 조직은 숨김), 선택 가능한 조직이 없으면 "프로젝트를 만들 권한이 없습니다" 안내, 시간대는 브라우저 `Intl`로 IANA 이름 검증, 설명은 비우면 생략. 연동 시 할 일(FE-01b): 409의 `/code` 오류를 코드 필드에 표시, 생성 응답 본문을 재조회 없이 사용, 생성 직후 `/me`를 다시 불러 전환 메뉴 갱신. 확인 필요 없음.
+
+- [ ] **R-FE-14 `/me.projects[]`의 시간대(`timezone`)**
+  - 배경: 서버 시각은 UTC로 오고 화면은 프로젝트 시간대로 보여 줘야 한다(계약 04). `/me.projects[]`에는 `timezone`이 없고 `GET /projects/{id}`에만 있다. 시험 데이터 프로젝트 B는 UTC, C는 America/New_York라 시간대를 모르면 KST로 잘못 보여 줄 수 있다.
+  - FE 조치(현재): 시각을 보여 주는 상세 화면에서만 `GET /projects/{id}`를 한 번 더 호출해 시간대를 쓰고, 알 수 없는 동안에는 열 제목에 "(Asia/Seoul 기본)"이라고 표시한다.
+  - 요청(낮음): 0.3.0 소규모 보강에서 `/me.projects[]`에 `timezone`(과 `status`)을 함께 넣어 주면 요청이 줄어든다. 불필요하다고 판단하면 그대로 두어도 FE는 동작한다.
+  - Backend 답변:
+  - FE 확인:
 
 ## P3
 
@@ -148,7 +155,7 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
 - 확인한 계약 사실: 버전 **목록** 응답의 항목도 상세와 같은 `AssetRevisionOut`(용량·ports·issues 포함, `ListOut_AssetRevisionOut_`)이라 FE는 이력 목록에서 상세를 따로 호출하지 않아도 된다고 판단했다. 다르면 알려 주세요.
 
 ## BE-REQ-002 · FE가 반영한 계약 버전/해시 기록
-- 현재 FE 코드가 반영한 계약: **없음**(위 "FE 현재 상태" 표). 읽은 최신 계약은 0.2.0 / `da54371140…c2a33a`.
+- 현재 FE 코드가 반영한 계약: **0.2.0 / `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`** (2026-10-23, 생성 타입 + 읽기 API 연결, 위 "FE 현재 상태" 표). 생성물의 해시가 `contract-status.json`과 다르면 `pnpm check:api`와 단위 테스트가 실패한다.
 - 앞으로 client를 생성·재생성하거나 계약 변경을 반영할 때마다 이 파일의 표와 FE 인계 문서에 `contract_version`과 `openapi_sha256`을 적는다. 세션 시작 시 `contract-status.json`과 비교한다.
 
 ## BE-REQ-003 · 자산 기본 정보와 용량(버전)의 저장 UX
@@ -159,6 +166,7 @@ Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, 
 ## BE-REQ-004 · API 서버 실행 주체와 CORS
 - ② **Vite proxy로 충분하고 CORS는 필요 없다.** CORS 미들웨어는 구현하지 않아도 된다(R-FE-02 답변과 동일).
 - ① 서버 실행 주체: FE는 `backend/**`를 수정하지 않고 실행만 할 수 있다. **FE 제안:** Backend가 상시 띄우지 않고, 연동 작업 때 사용자가 `backend/README.md`의 명령으로 한 번 띄운다(또는 사용자가 허용하면 FE 세션이 띄운다). 개발 DB 연결과 프로세스 기동이 걸려 있어 **사용자 결정이 필요**하다. 결정이 나기 전에는 FE가 서버를 기동하지 않는다.
+- **사용자 결정(2026-10-23):** 서버 실행 주체는 **backend 개발 세션 또는 사용자**이며, FE는 기동하지 않는다. 이 결정으로 FE 쪽 항목은 닫힌다(Backend가 `확인(BE)`로 닫으면 됨). FE는 `DEV_DEBUG_USER` 셸 환경변수 + proxy로 연결했고 실서버(`127.0.0.1:8000`, `/health` ok)에서 읽기 검증을 마쳤다.
 
 ## BE-REQ-005 · 목록의 용량 컬럼
 - **FE 선택: ① 제거 + 상태 표시.** 목록은 상태(`latest_revision.status`, 없으면 "버전 없음")와 "승인본 있음"(`current_revision` 유무)만 보여 주고 용량은 상세로 유도한다.
@@ -233,6 +241,16 @@ FE 화면 순서 기준 의견이다. 최종 일정은 사용자·조정자가 �
 - 알려진 어긋남: ① 확인 상태를 단계 단위로 단순화했다(필드 단위로 바꿀지 공정 CR에서 정해야 함). ② 입력 길이·중량·수량·가닥, 이동, 잔량 열은 만들지 않았다. ③ `merge_strands`·`fixed_mass_units` 산출 방식은 규칙이 미정이라 제외했다.
 - 요청: 공정 CR 작성 시 위 표와 03 §4~7을 대조해 **어긋나는 필드 목록**을 FE에 알려 주세요. FE는 그 CR 승인 전에는 이 화면을 "초안 UI"로 유지한다.
 
+## BE-REQ-012 · 시험 데이터·실행 스크립트·R-FE-13 답변 확인
+- ① **시험 데이터: 충족.** 실서버를 읽어 확인한 내용: 프로젝트 3개(A Asia/Seoul, B UTC, C 다른 조직), 자산 60건 + 보관 1건(limit=50에서 
+ext_cursor), 버전 상태 4종(draft·in_review·approved·superseded)이 모두 어댑터를 통과, 역할이 다른 사용자(admin·viewer·mixed)·소속 없음·다른 조직 사용자 동작, 같은 코드 EQ-001이 A·B에 있고 A의 자산 id로 B를 조회하면 404. **빠지거나 어긋난 케이스: 없음.** (회귀 방지로 FE에 읽기 전용 라이브 테스트 	ests/live/live-api.test.ts 13건을 두었고, 시드 id가 바뀌면 이 파일의 상수를 맞춘다.)
+- ② un_dev_api.ps1로 띄운 서버와 proxy 연동: **문제 없음**(FE는 서버를 직접 띄우지 않았고 backend 세션·사용자가 띄운 서버를 사용). proxy 경유 /api/v1/me, 자산 목록·상세를 브라우저에서 확인. 참고로 localhost와 127.0.0.1 모두 응답한다.
+- ③ R-FE-13 답변 확인: **수용, 정적 폼에 반영 완료**(R-FE-13 [x]).
+
+## BE-REQ-013 · CR be03(제품·재료 + /me.projects[].status) FE 확인 사항
+- ① latest_process_version이 제품 목록에 **당분간 없어도 FE 연동 순서에 문제 없다.** 제품 화면은 FE-01d 이후이고, 그때 공정 버전 CR이 승인되어 있지 않다면 제품 목록은 최신 공정 버전 칸 없이(또는 "상세에서 확인") 연동한다. 공정 CR에서 요약 필드가 이월되면 그때 추가한다.
+- ② /me.projects[].status는 **0.3.0에 같이 내는 것에 동의**한다(Backend 기본). 급하지 않다: 현재 모든 프로젝트가 active이고 보관 기능이 없다. 다만 **같은 묶음에 	imezone도 넣어 주면 좋다**(R-FE-14).
+- 승인 여부는 사용자가 정한다.
 ---
 
 ## 변경 이력
@@ -241,4 +259,5 @@ FE 화면 순서 기준 의견이다. 최종 일정은 사용자·조정자가 �
 | 2026-10-23 | Frontend | 최초 작성(R-FE-01~12) |
 | 2026-10-23 | Frontend | R-FE-13 추가 |
 | 2026-10-23 | Frontend | Backend 답변(R-FE-01~12) 검토 반영, 상태 규칙 정리, Part 2에 BE-REQ-001~011 답변 작성 |
+| 2026-10-23 | Frontend | FE-01a/b: 생성 타입(openapi-typescript, 계약 0.2.0)·공통 API 클라이언트·오류 변환·proxy, 읽기 API(`/me`, 프로젝트·자산 목록, 자산 상세·버전) 연결, 실서버 읽기 검증 13건. BE-REQ-004(사용자 결정)·012·013 답변, R-FE-14 추가, R-FE-02·03·04·08 반영 완료 기록 |
 | 2026-10-23 | Frontend | FE 세션 시작 절차 이행: backend 커밋 `d0a9f38`의 R-FE-13 답변 확인 → `[x]`. FE-00h로 정적 화면을 0.2.0 구조에 정렬하고 BE-REQ-001 진행 현황 표 추가. 코드에 반영한 계약은 여전히 없음(client 미생성) |

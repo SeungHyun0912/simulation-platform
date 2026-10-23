@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
+import { useDataSource } from "../../shared/api/ApiContext";
+import { classifyError } from "../../shared/api/errors";
+import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
 import { Button } from "../../shared/components/Button";
 import { ConflictNotice } from "../../shared/components/ConflictNotice";
 import { DataTable, type Column } from "../../shared/components/DataTable";
@@ -21,6 +24,7 @@ import { usePreviewState } from "../../shared/hooks/usePreviewState";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { formatDateTime } from "../../shared/format/datetime";
 import { canApprove, canEdit, projectRoleLabel } from "../projects/projectView";
+import { useProjectTimezone } from "../projects/queries";
 import { useCurrentProject } from "../projects/useCurrentProject";
 import {
   isOpenStatus,
@@ -38,16 +42,20 @@ import {
 import styles from "./AssetDetailPage.module.css";
 import { CAPACITY_UNITS, validateCapacity } from "./capacityAdapter";
 import { describeDispatch, describeRelease, type RuleLine } from "./ruleLabels";
-import { SAMPLE_ASSETS, SAMPLE_REVISIONS } from "./sampleAssets";
+import { useAssetDetail } from "./queries";
 
 const CAPACITY_MODES = ["unknown", "value", "unlimited", "not_allowed"] as const;
 const CAPACITY_UNIT_LIST = [...CAPACITY_UNITS];
 
 export function AssetDetailPage() {
   const { projectId, project, label } = useCurrentProject();
+  const timeZone = useProjectTimezone(projectId);
   const { assetId = "" } = useParams();
-  const preview = usePreviewState();
-  const asset = SAMPLE_ASSETS.find((a) => a.id === assetId);
+  const source = useDataSource();
+  const previewParam = usePreviewState();
+  // ?state= 미리보기는 정적 모드에서만 쓴다. API 모드에서는 실제 요청 결과만 보여 준다.
+  const preview = source === "static" ? previewParam : null;
+  const detail = useAssetDetail(projectId, assetId);
 
   const header = (title: string, code?: string) => (
     <PageHeader
@@ -69,27 +77,42 @@ export function AssetDetailPage() {
         <StateNotice kind="forbidden">이 자산을 볼 권한이 없습니다.</StateNotice>
       </>
     );
-  if (!asset)
-    // 서버는 다른 프로젝트의 자산과 없는 자산을 구분하지 않고 404로 답한다. 형식이 틀린 id(422)도 같은 화면으로 처리한다.
+  if (detail.status === "pending")
     return (
       <>
-        {header("자산을 찾을 수 없습니다")}
-        <StateNotice kind="empty" title="자산을 찾을 수 없습니다">
-          <Link to={`/projects/${projectId}/assets`}>목록으로 돌아가기</Link>
-        </StateNotice>
+        {header("자산")}
+        <StateNotice kind="loading" />
       </>
     );
+  if (detail.status === "error") {
+    // 서버는 다른 프로젝트의 자산과 없는 자산을 구분하지 않고 404로 답한다. 형식이 틀린 id(422)도 같은 화면으로 처리한다.
+    const kind = classifyError(detail.error);
+    const notFound = kind === "not-found" || kind === "validation";
+    return (
+      <>
+        {header(notFound ? "자산을 찾을 수 없습니다" : "자산")}
+        {notFound ? (
+          <StateNotice kind="empty" title="자산을 찾을 수 없습니다">
+            <Link to={`/projects/${projectId}/assets`}>목록으로 돌아가기</Link>
+          </StateNotice>
+        ) : (
+          <QueryErrorNotice error={detail.error} subject="자산" onRetry={detail.retry} />
+        )}
+      </>
+    );
+  }
+  const { asset, revisions } = detail.data;
 
   // key로 프로젝트·자산이 바뀌면 입력 중인 폼 상태를 완전히 버린다.
   return (
     <AssetDetail
       key={`${projectId}:${asset.id}`}
       asset={asset}
-      revisions={SAMPLE_REVISIONS[asset.id] ?? []}
+      revisions={revisions}
       projectId={projectId}
       projectLabel={label}
       role={project?.role}
-      timeZone={project?.timezone}
+      timeZone={timeZone}
       infoConflict={preview === "conflict"}
       revisionConflict={preview === "conflict-revision"}
     />
@@ -127,6 +150,7 @@ function AssetDetail({
   const [infoConflictDismissed, setInfoConflictDismissed] = useState(false);
   const [revConflictDismissed, setRevConflictDismissed] = useState(false);
 
+  const source = useDataSource();
   const mayEdit = canEdit(role);
   const infoDirty = JSON.stringify(info) !== JSON.stringify(baseInfo);
   const dirtyRevisionIds = revisions
@@ -199,7 +223,7 @@ function AssetDetail({
           .filter(Boolean)
           .join(" · ") || "-",
     },
-    { key: "approved", header: "승인 시각", render: (r) => formatDateTime(r.approvedAt, timeZone) },
+    { key: "approved", header: `승인 시각 (${timeZone ?? "Asia/Seoul 기본"})`, render: (r) => formatDateTime(r.approvedAt, timeZone) },
     {
       key: "open",
       header: "작업",
@@ -229,7 +253,9 @@ function AssetDetail({
         renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
       />
       <SampleDataNotice>
-        예시 데이터입니다(계약 0.2.0 예제 모양). 입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다.
+        {source === "static"
+          ? "예시 데이터입니다(계약 0.2.0 예제 모양). 입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다."
+          : "서버에서 불러온 데이터입니다. 저장은 아직 연결되지 않아 입력은 이 화면에서만 유지되고 서버에는 반영되지 않습니다."}
       </SampleDataNotice>
       <Block>
         <Note>
@@ -524,7 +550,7 @@ function AssetDetail({
         </Section>
       )}
 
-      <PreviewStateLinks states={["conflict", "conflict-revision", "forbidden"]} />
+      {source === "static" && <PreviewStateLinks states={["conflict", "conflict-revision", "forbidden"]} />}
     </>
   );
 }
