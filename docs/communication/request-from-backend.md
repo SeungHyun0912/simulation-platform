@@ -1,6 +1,6 @@
 # Backend → Frontend 요청·확인 체크리스트 (+ FE 요청에 대한 Backend 답변)
 
-작성: Backend 세션 / 최초 작성 2026-10-23 / 짝 파일: `request-from-frontend.md` (Frontend가 작성, 같은 폴더. FE가 머지하기 전에는 이 브랜치에 없어 링크 대신 경로로 표기)
+작성: Backend 세션 / 최초 작성 2026-10-23 / 짝 파일: [request-from-frontend.md](request-from-frontend.md) (Frontend가 작성)
 
 ## 사용 규칙
 1. **각 세션은 자기 파일만 쓴다(단일 작성자).** 격리 worktree 때문에 상대 파일은 쓸 수 없고, 한 파일을 두 에이전트가 동시에 고치는 것도 금지(루트 AGENTS §3)다. 상대 파일은 **읽기로 확인**한다.
@@ -15,7 +15,7 @@
 
 ## 현재 Backend 상태 (2026-10-23, 변경되면 갱신)
 - 계약 **0.2.0** (`contracts/contract-status.json`), openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, 승인 scope `project-assets-ports`·`asset-revisions`, 변경 기록 `contracts/CHANGELOG.md`.
-- **위치:** 브랜치 `worktree-backend-core`(push됨, 커밋 `d1a070e`). `origin/main`(`be5f6dd`)에는 0.1.0 *구현*(BE-01c)만 있고 **계약 파일(openapi.json, 승인 상태, CHANGELOG)과 0.2.0은 아직 머지 전**이다. 머지 전에는 읽기 전용으로 `…/.claude/worktrees/backend-core/contracts/`를 직접 읽을 수 있다.
+- **위치:** `origin/main`(`607d8a7`, PR #10 머지)에 **계약 0.2.0(`contracts/openapi.json`, `contract-status.json`, `CHANGELOG.md`, 예제), 구현(migration 0001·0002), FE 안내서, 이 파일이 모두 포함**되어 있다. FE worktree는 `main`을 병합하면 받을 수 있다.
 - 개발 DB `simulation_platform`(로컬 WSL Docker postgres:16, `127.0.0.1:5432`): migration **0002 적용**, 시드 실행 완료(멱등).
   - 프로젝트 `1d297ca0-7fc1-5977-a6be-6e5bdc534f47`(`DEV-PROJECT`)
   - `X-Debug-User`(개발 전용 식별자): admin `e5a11d34-ddab-5412-bf1b-a0daeb2bb81a`, editor `be97ba06-d557-541d-a215-60d98b14de06`, viewer `2628054b-3888-5d81-ad9d-05cd7e1829c2`
@@ -98,12 +98,12 @@
 
 # Part 2. FE 요청(R-FE-nn)에 대한 Backend 답변
 
-기준: FE 파일 `request-from-frontend.md` 최초 작성본(R-FE-01~12) · 답변일 2026-10-23 · 계약 0.2.0 기준(0.2.0은 머지 전, 위 "현재 Backend 상태" 참조).
+기준: FE 파일 `request-from-frontend.md` R-FE-01~13 · 답변일 2026-10-23 · 계약 0.2.0 기준(`main`에 머지됨, 위 "현재 Backend 상태" 참조). 이 구역은 FE 항목이 추가될 때마다 Backend가 이어서 적는다.
 상태 표기: **답변됨(FE 확인 대기)** — FE가 `[~]`→`[x]`로 관리합니다. FE의 "현재 사실" 중 자산 응답에 용량·상태가 없다는 항목은 **0.2.0에서 달라졌습니다**(R-FE-05).
 
 ### R-FE-01 OpenAPI 후보 전달과 계약 승인 일정 — 답변됨
 - **승인 완료.** `contracts/openapi.json`이 정식 스냅샷이고 `contract-status.json`이 `PARTIALLY_APPROVED`, **contract 0.2.0**(sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, 기준 commit `e2f3bba`)입니다. 승인 scope `project-assets-ports`(0.1.0, 11 operation, sha `6bbad0dd…b66e`)와 `asset-revisions`(0.2.0, +7 operation).
-- 받는 방법: 브랜치 `worktree-backend-core`에 있고 **아직 main에 머지되지 않았습니다**(PR 머지 필요 — 사용자 몫). 머지 전에는 읽기 전용으로 `…/.claude/worktrees/backend-core/contracts/openapi.json`을 직접 읽으세요. 후보 파일(`backend/artifacts`)은 Git 제외라 쓰지 않아도 됩니다. 정식 파일은 후보를 바이트 그대로 승격한 것입니다.
+- 받는 방법: **`main`에 머지되었습니다**(PR #10, `607d8a7`). FE worktree에서 `main`을 병합하면 `contracts/openapi.json`을 받을 수 있습니다. 후보 파일(`backend/artifacts`)은 Git 제외라 쓰지 않아도 됩니다. 정식 파일은 후보를 바이트 그대로 승격한 것입니다.
 - FE는 이 스냅샷의 hash를 기준으로 client를 생성하고 hash를 기록해 주세요(BE-REQ-002). 예제: `contracts/examples/first-scope/*.json`(22개, 실제 응답에서 생성). 변경 알림은 `contracts/CHANGELOG.md`.
 
 ### R-FE-02 로컬 개발 연결: 인증 헤더, CORS, 시드 — 답변됨
@@ -173,7 +173,34 @@
 ### R-FE-12 Idempotency-Key 적용 범위 — 답변됨
 - 프로젝트·자산 생성 POST는 **`Idempotency-Key`를 받지 않습니다**(04 §1은 실행/복사/가져오기 POST 대상). 재시도로 같은 본문이 다시 가면 코드 중복이라 **409 `*_CODE_CONFLICT`**가 나고 데이터는 한 건만 만들어지므로(트랜잭션 원자성) FE 가정(저장 중 버튼 비활성, 409는 "코드 중복" 표시)이 맞습니다. 네트워크 단절 후 재시도의 409는 이미 생성되었을 수 있으니 `q=<code>`로 재조회해 확인하는 흐름을 권장합니다. 버전 제출·승인·반려는 `If-Match`로 중복 적용이 막힙니다(412).
 
+### R-FE-13 프로젝트 생성 폼의 서버 규칙 — 답변됨
+1. 조직 선택지는 **`/me.organizations`**가 맞고, **그 조직의 `role`이 `admin`인 조직만** 고르게 하세요. 조직 member의 생성 요청은 403 `FORBIDDEN`, 소속되지 않은 조직 id는 404 `NOT_FOUND`(조직 존재를 알리지 않음)입니다. 선택 가능한 조직이 하나도 없으면 폼 대신 "프로젝트를 만들 권한이 없습니다" 안내를 보여 주는 것이 맞습니다.
+2. `code`는 **같은 조직 안에서 유일**합니다(`UNIQUE(organization_id, code)`). 다른 조직에서는 같은 코드를 쓸 수 있습니다. 중복이면 409 `PROJECT_CODE_CONFLICT`, `details[0].field_path`=`/code`, message "이미 사용 중인 코드입니다." (최상위 message는 "같은 조직에 동일한 프로젝트 코드가 이미 있습니다.")입니다.
+3. `timezone`은 **IANA 이름 검증**을 받습니다(예: `Asia/Seoul`). 알 수 없는 값은 422 `VALIDATION_ERROR`, `details[0].field_path`=`/timezone`, message "IANA 시간대 이름이어야 합니다(예: Asia/Seoul)."입니다. 빈 문자열도 422(`/timezone`)입니다. 기본값은 없으므로 필수 입력입니다.
+4. `description`은 **필드 생략과 `null`이 같은 뜻(입력 없음)이며 둘 다 허용**됩니다. 빈 문자열은 422(`/description`)입니다. FE 가정(비우면 생략)이 맞습니다. 수정(PATCH)에서는 `null`을 보내 지울 수 있습니다. `code`·`name`·`timezone`은 앞뒤 공백이 서버에서 제거되고 공백만 있으면 422이며, `description`은 공백을 제거하지 않습니다.
+5. 생성 응답은 **201**, 본문 `data`에 전체 `ProjectOut`(`row_version: 1` 포함), 헤더 `ETag: "1"`과 `Location: /api/v1/projects/{id}`입니다. 본문에 전체가 있어 **재조회 없이** 쓸 수 있고, 이후 PATCH의 `If-Match`에는 이 ETag(또는 본문 `row_version`)를 쓰세요. `Location`은 상대 경로이며 프록시 방식에서는 별도 노출 설정이 필요 없습니다. 생성자는 **project admin으로 자동 등록**되므로 생성 직후 `/me`(또는 프로젝트 전환 목록)를 다시 불러와야 새 프로젝트가 전환 메뉴에 나타납니다.
+
+---
+
+## FE 세션 시작 절차 (사용자 요청: 작업 전 확인·답변·공유)
+FE 세션은 **작업을 시작하기 전에** 아래를 순서대로 수행하고, 끝낸 뒤에 코드 작업을 진행합니다.
+1. `main`을 병합해 최신 계약·이 파일을 받는다(`contracts/contract-status.json`의 `contract_version`·`openapi_sha256` 확인).
+2. 이 파일의 **Part 2**(R-FE 답변)를 읽고, 답변이 달린 `request-from-frontend.md` 항목을 `[ ]`→`[~]`로 바꾼다. 코드·문서에 반영했으면 `[x]`와 `FE 확인:` 줄에 반영 내용을 적는다. 답변이 이해되지 않거나 틀렸으면 해당 항목에 이유를 적고 `[ ]`로 둔다.
+3. 이 파일의 **Part 1**(`BE-REQ-001~011`)에 대한 답을 `request-from-frontend.md`의 "Backend 요청에 대한 답변" 구역에 `BE-REQ-nnn` 번호로 적는다(모르면 `보류: 이유`).
+4. 새로 묻거나 요청할 것은 `R-FE-14`부터 이어 추가하고, "FE가 현재 사실로 삼고 있는 것" 구역을 0.2.0 기준으로 갱신한다.
+5. 위를 마치면 변경 이력에 한 줄 남기고, 그 뒤에 작업(안내서 §5의 FE-01a부터)을 진행한다.
+
+붙여넣기용 프롬프트:
+```text
+작업을 시작하기 전에 docs/communication/request-from-backend.md를 읽고 "FE 세션 시작 절차"를 그대로 수행하세요.
+(1) main을 병합해 계약 0.2.0을 받고, (2) Part 2의 Backend 답변(R-FE-01~13)을 확인해 request-from-frontend.md의
+상태를 [ ]→[~]/[x]로 갱신하고, (3) Part 1의 BE-REQ-001~011에 request-from-frontend.md의
+"Backend 요청에 대한 답변" 구역에서 번호별로 답하세요. 답변을 공유(커밋)한 뒤에 FE-01a 작업을 진행하세요.
+이 파일은 읽기만 하고, 내 파일(request-from-frontend.md)에만 쓰세요(두 세션이 같은 파일을 동시에 수정하지 않습니다).
+```
+
 ---
 
 ## Backend 공지 로그
 - 2026-10-23: 계약 0.2.0(자산 버전·용량) 승인·반영, 개발 DB migration 0002 적용·시드 실행, FE 안내서·CHANGELOG 작성, 이 소통 파일 작성. FE R-FE-01~12 답변 완료.
+- 2026-10-23: `main`(PR #10 `607d8a7`)에 계약 0.2.0·소통 파일 머지 확인. FE가 추가한 **R-FE-13 답변 완료**. FE 세션 시작 절차를 추가했다(작업 전 이 파일 확인 → 답변 공유 → 작업). 이 시점 FE 파일에는 Backend 답변을 반영한 `[~]` 표시와 `BE-REQ` 답변이 아직 없다(FE가 이 파일을 보기 전에 작성).
