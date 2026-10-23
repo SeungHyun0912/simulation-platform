@@ -65,9 +65,9 @@ describe("AppShell", () => {
     expect(screen.getByRole("heading", { level: 1, name: "설비·공간" })).toBeInTheDocument();
   });
 
-  it("프로젝트가 없으면 선택 안 됨과 계약 필요를 표시한다", () => {
+  it("프로젝트가 없으면 선택 안 됨과 프로젝트 목록을 표시한다", () => {
     renderApp("/");
     expect(screen.getByLabelText("현재 프로젝트")).toHaveTextContent("프로젝트 선택");
-    expect(screen.getByText("계약 필요")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "프로젝트 목록" })).toBeInTheDocument();
   });
 });

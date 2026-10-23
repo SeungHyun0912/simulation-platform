@@ -118,12 +118,58 @@ describe("공정 표 편집 (초안 UI)", () => {
     expect(within(table).getByText("새 이름")).toBeInTheDocument();
   });
 
+  it("처리 방식을 바꿔 값이 사라질 때는 확인하고, 취소하면 그대로 둔다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
+    await user.selectOptions(screen.getByLabelText("처리 방식"), "per_output_unit");
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("입력한 값이 사라집니다");
+    expect(dialog).toHaveTextContent("값: 20 m/분");
+    await user.click(within(dialog).getByRole("button", { name: "취소" }));
+    expect(screen.getByLabelText("처리 방식")).toHaveValue("output_speed");
+    expect(screen.getByLabelText("선속 값")).toHaveValue("20");
+    expect(screen.queryByText(/저장하지 않은 변경이 있습니다/)).not.toBeInTheDocument();
+  });
+
+  it("버릴 값이 없으면 확인 없이 바로 바뀐다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    await user.click(screen.getByRole("button", { name: "예시 검사 편집" }));
+    await user.selectOptions(screen.getByLabelText("처리 방식"), "output_speed");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("처리 방식")).toHaveValue("output_speed");
+  });
+
+  it("같은 단위(분)로 바뀌는 방식 사이에서는 값을 유지하고 확인하지 않는다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    await user.click(screen.getByRole("button", { name: "예시 편조 편집" }));
+    expect(screen.getByLabelText("산출 단위당 시간 값")).toHaveValue("22");
+    await user.selectOptions(screen.getByLabelText("처리 방식"), "per_reference_length");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("기준 길이당 시간 값")).toHaveValue("22");
+  });
+
+  it("산출 방식을 바꿔 길이·수량이 사라질 때도 확인한다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
+    await user.selectOptions(screen.getByLabelText("산출 방식"), "pass_through");
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("산출 길이: 1000 m");
+    await user.click(within(dialog).getByRole("button", { name: "값을 버리고 변경" }));
+    expect(screen.getByLabelText("산출 방식")).toHaveValue("pass_through");
+    expect(screen.queryByLabelText("산출 길이 값")).not.toBeInTheDocument();
+  });
+
   it("처리 방식을 바꾸면 이전 단위의 값을 이어받지 않는다", async () => {
     const user = userEvent.setup();
     renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
     expect(screen.getByLabelText("선속 값")).toHaveValue("20");
     await user.selectOptions(screen.getByLabelText("처리 방식"), "per_output_unit");
+    await user.click(await screen.findByRole("button", { name: "값을 버리고 변경" }));
     expect(screen.queryByLabelText("선속 값")).not.toBeInTheDocument();
     const group = screen.getByRole("radiogroup", { name: "산출 단위당 시간 상태" });
     expect(within(group).getByRole("radio", { name: "미정" })).toBeChecked();

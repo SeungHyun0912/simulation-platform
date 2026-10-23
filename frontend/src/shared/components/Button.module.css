@@ -10,6 +10,12 @@
   cursor: pointer;
 }
 
+.link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.55;

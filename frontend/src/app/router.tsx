@@ -5,13 +5,15 @@ import { AssetListPage } from "../features/assets/AssetListPage";
 import { ProcessEditorPage } from "../features/processes/ProcessEditorPage";
 import { ProductDetailPage } from "../features/products/ProductDetailPage";
 import { ProductListPage } from "../features/products/ProductListPage";
-import { HomePlaceholder } from "../features/projects/HomePlaceholder";
+import { ProjectCreatePage } from "../features/projects/ProjectCreatePage";
+import { ProjectListPage } from "../features/projects/ProjectListPage";
 
 export const routes = [
   {
     element: <AppShell />,
     children: [
-      { path: "/", element: <HomePlaceholder /> },
+      { path: "/", element: <ProjectListPage /> },
+      { path: "/projects/new", element: <ProjectCreatePage /> },
       { path: "/projects/:projectId/assets", element: <AssetListPage /> },
       { path: "/projects/:projectId/assets/:assetId", element: <AssetDetailPage /> },
       { path: "/projects/:projectId/products", element: <ProductListPage /> },

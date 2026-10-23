@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
+import { toProjectOption } from "../../features/projects/projectView";
 import { SAMPLE_PROJECTS } from "../../features/projects/sampleProjects";
 import { ProjectSwitcher } from "../../shared/components/ProjectSwitcher";
 import styles from "./AppShell.module.css";
@@ -47,7 +48,7 @@ export function AppShell() {
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>
         <ProjectSwitcher
-          projects={SAMPLE_PROJECTS}
+          projects={SAMPLE_PROJECTS.map(toProjectOption)}
           currentId={projectId ?? null}
           onSelect={switchProject}
         />

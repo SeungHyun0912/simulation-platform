@@ -1,4 +1,10 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import {
+  useId,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react";
 import styles from "./Fields.module.css";
 
 type BaseProps = { label: string; hint?: string; error?: string | null };
@@ -47,6 +53,27 @@ export function TextField({
       <input
         id={id}
         className={styles.control}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, { label, hint, error })}
+        {...rest}
+      />
+    </Wrapper>
+  );
+}
+
+export function TextAreaField({
+  label,
+  hint,
+  error,
+  ...rest
+}: BaseProps & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "id">) {
+  const id = useId();
+  return (
+    <Wrapper id={id} label={label} hint={hint} error={error}>
+      <textarea
+        id={id}
+        className={`${styles.control} ${styles.area}`}
+        rows={3}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(id, { label, hint, error })}
         {...rest}
