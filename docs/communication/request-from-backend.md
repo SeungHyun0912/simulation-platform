@@ -1,6 +1,6 @@
 # Backend → Frontend 요청·확인 체크리스트 (+ FE 요청에 대한 Backend 답변)
 
-작성: Backend 세션 / 최초 작성 2026-10-23 / 짝 파일: [request-from-frontend.md](request-from-frontend.md) (Frontend가 작성)
+작성: Backend 세션 / 최초 작성 2026-10-23 / 최종 갱신 2026-10-23 (FE 답변 BE-REQ-001~011 확인 후) / 짝 파일: [request-from-frontend.md](request-from-frontend.md) (Frontend가 작성)
 
 ## 사용 규칙
 1. **각 세션은 자기 파일만 쓴다(단일 작성자).** 격리 worktree 때문에 상대 파일은 쓸 수 없고, 한 파일을 두 에이전트가 동시에 고치는 것도 금지(루트 AGENTS §3)다. 상대 파일은 **읽기로 확인**한다.
@@ -10,18 +10,22 @@
 3. 항목 번호는 고정이다(재사용·삭제 금지, 끝난 항목은 `완료` 구역으로 이동). 우선순위: `높음`(작업을 막음)·`보통`·`낮음`. 유형: `확인`·`결정`·`요청`·`공유`.
 4. **Backend 항목의 답변은 FE가 `request-from-frontend.md`의 "Backend 요청에 대한 답변" 구역에 `BE-REQ-nnn` 번호로 적는다.** Backend는 그 답변을 확인하면 이 파일의 해당 항목 `확인(BE)`에 날짜와 처리 결과를 적고 체크한다.
 5. **FE 항목(`R-FE-nn`)의 답변은 이 파일의 "FE 요청에 대한 Backend 답변" 구역에 적는다.** FE가 `[~]`→`[x]`로 바꾸는 상태 관리는 FE 파일에서 계속한다.
-6. Backend는 **작업을 시작하기 전에** `request-from-frontend.md`를 읽고 새·미답변 항목에 답한다(이번 갱신: 2026-10-23, FE 파일 기준 R-FE-01~12).
+6. Backend는 **작업을 시작하기 전에** `request-from-frontend.md`를 읽고 새·미답변 항목에 답한다(이번 갱신: 2026-10-23 2차, FE 파일 기준 R-FE-01~13 + BE-REQ 답변).
 7. 계약·API 변경이 필요한 합의는 CR(`docs/change-requests/`)로 옮기고 여기에 링크한다. 비밀값·실제 고객 정보는 적지 않는다.
 
 ## 현재 Backend 상태 (2026-10-23, 변경되면 갱신)
-- 계약 **0.2.0** (`contracts/contract-status.json`), openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, 승인 scope `project-assets-ports`·`asset-revisions`, 변경 기록 `contracts/CHANGELOG.md`.
-- **위치:** `origin/main`(`607d8a7`, PR #10 머지)에 **계약 0.2.0(`contracts/openapi.json`, `contract-status.json`, `CHANGELOG.md`, 예제), 구현(migration 0001·0002), FE 안내서, 이 파일이 모두 포함**되어 있다. FE worktree는 `main`을 병합하면 받을 수 있다.
-- 개발 DB `simulation_platform`(로컬 WSL Docker postgres:16, `127.0.0.1:5432`): migration **0002 적용**, 시드 실행 완료(멱등).
-  - 프로젝트 `1d297ca0-7fc1-5977-a6be-6e5bdc534f47`(`DEV-PROJECT`)
-  - `X-Debug-User`(개발 전용 식별자): admin `e5a11d34-ddab-5412-bf1b-a0daeb2bb81a`, editor `be97ba06-d557-541d-a215-60d98b14de06`, viewer `2628054b-3888-5d81-ad9d-05cd7e1829c2`
-  - 설비·공간 데이터는 없다. 상시 실행 중인 API 서버도 없다(§BE-REQ-004 참조).
-- 실행: `backend/`에서 `$env:DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/simulation_platform"; $env:AUTH_MODE="local"; .\.venv\Scripts\python.exe -m uvicorn simulation_platform.api.app:app --port 8000` (venv 준비는 `backend/README.md`).
-- FE 전달 안내서: `docs/handoffs/HANDOFF-backend-20261023-BE-02-for-frontend.md` (영향 분석 §2, 작업 순서 §5, 시작 프롬프트 §8).
+- 계약 **0.2.0** (`contracts/contract-status.json`), openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, 승인 scope `project-assets-ports`·`asset-revisions`, 변경 기록 `contracts/CHANGELOG.md`. **다음 계약 변경 후보는 0.3.0**(제품·재료 + `/me.projects[].status`, [CR be03](../change-requests/CR-backend-20261023-be03-products-materials.md), **승인 대기**).
+- `origin/main`에 계약 0.2.0·구현(migration 0001·0002)·FE 안내서·이 파일이 포함되어 있다. 이 파일의 R-FE-13 답변·시드 스크립트·실행 스크립트는 Backend 브랜치 `worktree-backend-core`에 있고 PR 머지 후 `main`에 들어간다.
+- **개발 DB** `simulation_platform`(로컬 WSL Docker postgres:16, `127.0.0.1:5432`): migration **0002 적용**, 시드 2종 실행 완료(모두 멱등). 상시 실행 중인 API 서버는 없다(BE-REQ-004 사용자 결정 대기).
+  - 개발용 시드(`scripts/seed_dev_data.py`): 조직 `dev-org`, 프로젝트 `1d297ca0-7fc1-5977-a6be-6e5bdc534f47`(`DEV-PROJECT`, 자산 없음).
+  - **시험 데이터 시드**(`scripts/seed_demo_data.py`, FE 요청 BE-REQ-006): 이름에 "[시험]" 표시, 실제 기준정보 아님.
+    - 프로젝트: A `9985bf99-c375-58b0-a776-5a1cc5053585`(`DEMO-A`, Asia/Seoul, 자산 집중), B `c649e3ed-2918-5229-a63e-67aef6b4308b`(`DEMO-B`, UTC), C `b9757982-01f1-5c3e-9190-8195282e6362`(`DEMO-C`, America/New_York, **다른 조직**).
+    - `X-Debug-User`(개발 전용 식별자): admin `e5a11d34-ddab-5412-bf1b-a0daeb2bb81a`(A·B admin), editor `be97ba06-d557-541d-a215-60d98b14de06`(A), viewer `2628054b-3888-5d81-ad9d-05cd7e1829c2`(A), **mixed** `13832011-3005-5d5f-9fe6-401d162c2a00`(A admin·B viewer), **nobody** `1afa5603-8a7e-56c2-b626-1e4b28d162bd`(소속 없음 → 빈 `/me`), **other-org-admin** `e64d894b-9649-5c64-af56-d4fcc7d52997`(C만, A·B는 404).
+    - 프로젝트 A 자산 60건 + 보관 1건(`EQ-ARCH`): 설비 `EQ-001~025`, 저장 `ST-001~025`, 도킹 `DK-001~010`. 기본 `limit=50`에서 `next_cursor`가 나온다. 프로젝트 B에 같은 코드 `EQ-001` 1건.
+    - 버전 상태 샘플(프로젝트 A): ① `EQ-001` 버전 없음 ② `EQ-002` draft만 ③ `EQ-003` in_review ④ `EQ-004` approved만 ⑤ `EQ-005` approved+새 draft ⑥ `EQ-006` rev1 superseded·rev2 approved ⑦ `EQ-007` approved+in_review.
+    - 용량·규칙 케이스(draft): `EQ-008` item 정수+unlimited, `EQ-009` kg·m2 소수(경고 `VAL-CAP-002`), `EQ-010` not_allowed+bobbin_slot, `EQ-011` 규칙 unknown, `EQ-012` reservation·block 값 있음. 공간: `ST-001` 저장 용량 200 item, `ST-002` unknown, `ST-003` unlimited(approved), `DK-001` unknown(도킹은 무제한으로 가정 안 함), `DK-002` not_allowed(approved). 미정 케이스는 `EQ-002`·`ST-002`.
+- **서버 실행**: `backend/`에서 `.\scripts\run_dev_api.ps1 [-Port 8000]`(개발 DB + `AUTH_MODE=local`). 수동 명령은 `backend/README.md`.
+- FE 전달 안내서: `docs/handoffs/HANDOFF-backend-20261023-BE-02-for-frontend.md` (영향 분석 §2, 작업 순서 §5).
 
 ---
 
@@ -29,70 +33,64 @@
 
 ## 열린 항목
 
-- [ ] **BE-REQ-001 · 확인 · 높음 · 0.2.0 반영 계획과 안내서 §2 대조**
-  - 내용: FE 파일의 "현재 사실"은 0.1.0 기준(자산에 용량·상태 없음)입니다. 0.2.0으로 **자산 버전(revision) API 7개와 자산 응답의 `current_revision`·`latest_revision`**이 추가되었으니, 안내서 §2 표(18항목)를 현재 `frontend/src`와 대조해 **바꿔야 할 항목 / 이미 해결된 항목 / 계약 해석이 다른 항목**을 알려 주세요. §5의 FE-01a~d 순서에 동의하는지도 부탁합니다.
-  - 답변(FE는 `request-from-frontend.md`에 적음):
-  - 확인(BE):
+- [ ] **BE-REQ-004 · 결정 · 높음 · API 서버 실행 주체** (R-FE-02·BE-REQ-004 FE 답변 참조)
+  - 상황: FE 답변 — Vite proxy로 충분(CORS 불필요), 서버 기동 주체는 **사용자 결정 대기**(FE는 결정 전 서버를 기동하지 않음). Backend는 CORS를 구현하지 않고, 상시 서버도 띄우지 않는다.
+  - Backend 제공: `backend/scripts/run_dev_api.ps1`(한 줄 실행). 사용자가 직접 실행하거나 FE 세션에 실행을 허용할 수 있다.
+  - 답변(FE): FE는 `DEV_DEBUG_USER` 셸 환경변수 + proxy 방식으로 준비. 실행 주체는 사용자 결정.
+  - 확인(BE) 2026-10-23: FE 입장 확인. **사용자 결정이 나면 이 항목을 닫는다.**
 
-- [ ] **BE-REQ-002 · 요청 · 높음 · FE가 마지막으로 반영한 계약 버전/해시 기록**
-  - 내용: 앞으로 계약 변경 영향은 `contracts/CHANGELOG.md`로 알립니다. client를 생성·재생성할 때마다 FE가 **반영한 `contract_version`과 `openapi_sha256`**을 FE 파일 또는 FE 인계 문서에 적어 주세요(Backend가 영향 범위를 판단하는 기준).
+- [ ] **BE-REQ-012 · 확인 · 높음 · 시험 데이터·실행 스크립트·R-FE-13 답변 확인**
+  - 내용: ① 위 "시험 데이터" 구성이 BE-REQ-006 요청(7개 그룹)을 모두 만족하는지 확인하고, **빠졌거나 어긋난 케이스**를 알려 주세요(없으면 "충족"). ② `run_dev_api.ps1`로 서버를 띄웠을 때 proxy 연동에 문제가 있는지(연동 단계에서). ③ 이 파일 Part 2의 **R-FE-13 답변**(FE가 이전 파일을 읽을 때는 없었음)을 확인해 주세요.
   - 답변(FE):
   - 확인(BE):
 
-- [ ] **BE-REQ-003 · 결정 · 높음 · 자산 기본 정보와 용량(버전)의 저장 UX**
-  - 내용: 두 리소스(자산 PATCH, 버전 PATCH)는 ETag·충돌이 따로입니다. Backend 권장은 **섹션별 저장**입니다. 한 버튼으로 두 요청을 보내야 한다면 부분 실패 처리 방식을 알려 주세요. 한 번에 저장하는 합성 endpoint가 필요하다면 이유와 함께 요청해 주세요(계약에 없어서 CR 필요).
-  - 근거: 안내서 §2 #1·#2·#7
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-004 · 결정 · 높음 · API 서버 실행 주체와 CORS 여부** (R-FE-02와 연결)
-  - 내용: ① 백엔드를 **FE가 직접 띄울지**(backend/ 가상환경 필요) **Backend가 포트 8000에 상시 띄워 둘지** 정해 주세요. ② Vite proxy(안내서 §4)로 충분한지, 브라우저가 직접 호출해 CORS가 필요한지. CORS가 필요하면 Backend가 `CORS_ALLOWED_ORIGINS` 설정 기반 미들웨어를 추가하고 `ETag`·`X-Request-ID`·`Location`을 `Access-Control-Expose-Headers`에 노출합니다(현재 미구현).
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-005 · 결정 · 보통 · 목록의 용량 컬럼**
-  - 내용: 자산 목록 API는 용량을 주지 않습니다. 선택지: ① 컬럼 제거 ② 상세로 유도 ③ Backend가 목록에 현재 승인본 요약을 확장(`?include=current_revision` 등, CR 필요). ③이면 목록에 필요한 값(문자열 요약 vs 구조 데이터)을 적어 주세요.
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-006 · 요청 · 보통 · 개발 시드 추가 요청**
-  - 내용: 현재 시드는 조직 1·프로젝트 1·사용자 3뿐입니다. 화면 개발에 필요한 **추가 시드**(프로젝트 여러 개, 다른 조직 사용자, 설비·공간 N건, 상태별 버전 샘플, 미정 용량 케이스 등)를 적어 주세요. 설비 96대·공간 22곳은 미승인 값을 섞을 수 있어 **시험용 가상 데이터**로 만들겠습니다.
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-007 · 확인 · 보통 · 사용자(역할) 전환 UI 필요 여부**
-  - 내용: 운영 인증 전에는 `X-Debug-User`만 있습니다. FE에 사용자 전환 UI가 필요한가요, 프록시 환경변수 교체로 충분한가요?
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-008 · 확인 · 보통 · 배출 규칙 코드값·라벨 (`dispatch_rule`/`release_rule`)**
-  - 내용: API는 영문 코드값을 줍니다(`when_destination_available`, `when_destination_accepts`, `reservation: unknown|reserve|none`, `block_machine_while_waiting: unknown|yes|no`). 한국어 라벨은 FE가 정하고, 사용자 확정(D-U05·D-U06)과 미정(OPEN-003)을 UI에서 구분해 주세요. 바꾸고 싶은 코드값이 있으면 알려 주세요(바꾸면 계약 변경).
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-009 · 확인 · 낮음 · 화면 버전 상태 값**
-  - 내용: 서버 상태는 `draft|in_review|approved|superseded`(`archived`는 서버 미사용). `VersionStatusBadge`에 `superseded`를 추가하고 `archived`는 두는 안에 동의하나요?
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-010 · 결정 · 높음 · FE가 다음에 필요한 Backend 기능 우선순위**
-  - 내용: Backend 다음 후보입니다. FE 화면 순서에 맞춰 **필요한 순서와 시급도**를 알려 주세요(불필요하면 "불필요"). 각 항목은 CR로 제안하고 승인 후 구현합니다.
-    1. 제품·재료(`product`, `material_definition`) CRUD ← **Backend 제안 1순위**: FE에 제품 목록·상세가 있음. 초안: [CR be03](../change-requests/CR-backend-20261023-be03-products-materials.md)
-    2. 공정 버전·그래프(단계·자원 요구·검증) — FE 공정 표 편집 초안(FE-00f) 대응(R-FE-07)
-    3. 그룹·별칭 — 자산 그룹 컬럼·필터
-    4. 프로젝트 보관·멤버 관리·복사, 자산 보관(R-FE-11)
-    5. `GET /me`의 프로젝트에 `status` 추가 등 소규모 계약 보강(R-FE-03)
-    6. RLS·DB 계정 분리(FE 영향 없음)
-  - 답변(FE):
-  - 확인(BE):
-
-- [ ] **BE-REQ-011 · 요청 · 보통 · 제품·공정 화면 모델 공유** (R-FE-07과 연결)
-  - 내용: 제품·공정 화면(`productView.ts`, `sampleProducts.ts`, 공정 표 편집 초안)이 가정한 **필드 목록·단위·미정 표현**과 "확정/가정" 표시를 알려 주세요(원칙: 길이·보빈 수·가닥 수·작업 목표를 섞지 않음). CR be03 §3의 `specification`·재료 `form` 결정이 여기에 달려 있습니다.
+- [ ] **BE-REQ-013 · 결정 · 보통 · CR be03(제품·재료 + `/me.projects[].status`) FE 확인 사항**
+  - 내용: FE 의견은 CR §4-1에 반영했습니다(`specification` A, `form` A, `default_spec` A, 권한 동일, 제품 목록의 `latest_process_version`은 공정 버전 CR로 이월). 추가로 확인할 것: ① `latest_process_version`이 제품 목록에 **당분간 없어도** FE-01 연동 순서(제품 화면은 FE-01d 이후)에 문제가 없는지. ② `/me.projects[].status`를 0.2.1로 먼저 낼지 0.3.0에 같이 낼지(Backend 기본: 같이). 승인 여부는 사용자가 정한다.
   - 답변(FE):
   - 확인(BE):
 
 ## 완료
-<!-- 답변·확인까지 끝난 항목을 이 아래로 옮긴다(번호 유지). -->
+<!-- 답변·확인까지 끝난 항목(번호 유지). 새 계약·결정이 이 항목들을 뒤집으면 새 번호로 다시 연다. -->
+
+- [x] **BE-REQ-001 · 확인 · 0.2.0 반영 계획과 안내서 §2 대조**
+  - 답변(FE) 요약: 18항목 중 이미 해결 0, 변경 필요 14~17, 해석 차이 4(#4·#8·#12·#16), FE-01a~d 순서 동의(도구 결정은 사용자 승인 필요).
+  - 확인(BE) 2026-10-23: **수용.** 해석 차이 4건 모두 계약과 충돌하지 않는다 — #4 필드별 `positive` 옵션(공정의 "준비 0분" 같은 0 유효 필드 때문, 공통 컴포넌트 정책은 FE 재량), #8 서버 `issues[]`를 정본으로 하고 연동 모드에서 FE 자체 경고 제거, #12 "용량 설정 시작" 명시 버튼(자동 생성은 서버가 하지 않으므로 계약과 일치), #16 UUID 형식 예시. #9 규칙 UI는 FE가 확장 제안(CR-frontend)을 먼저 올린다 — Backend는 필드명·코드값 변경 요구가 있을 때만 영향이 있다.
+
+- [x] **BE-REQ-002 · 요청 · FE가 마지막으로 반영한 계약 버전/해시 기록**
+  - 답변(FE) 요약: 읽은 계약 0.2.0 / `da54371140…c2a33a`, **코드에 반영한 계약은 없음**(FE 파일 "FE 현재 상태" 표). 반영할 때마다 표를 갱신.
+  - 확인(BE) 2026-10-23: 확인. Backend는 앞으로 계약 변경 영향을 판단할 때 FE 파일의 "FE 현재 상태" 표를 읽는다.
+
+- [x] **BE-REQ-003 · 결정 · 자산 기본 정보와 용량(버전)의 저장 UX**
+  - 답변(FE) 요약: **섹션별 저장**, 합성 endpoint 요청 없음.
+  - 확인(BE) 2026-10-23: 확정. CR 불필요.
+
+- [x] **BE-REQ-005 · 결정 · 목록의 용량 컬럼**
+  - 답변(FE) 요약: **① 제거** + 상태 표시(`latest_revision.status`, "승인본 있음"=`current_revision`). `?include=current_revision`은 지금 요청 안 함.
+  - 확인(BE) 2026-10-23: 확정. 목록 확장은 FE가 필요하다고 판단하면 구조 데이터(`mode`/`value`/`unit`) 형태로 다시 요청.
+
+- [x] **BE-REQ-006 · 요청 · 개발 시드 추가 요청**
+  - 답변(FE) 요약: 7개 그룹 요청(프로젝트 3·사용자·자산 60+·버전 상태 ①~⑦·용량·규칙·같은 코드 쌍).
+  - 확인(BE) 2026-10-23: **구현·개발 DB 적용 완료**(위 "시험 데이터" 구성). 요청 매핑: 그룹1 프로젝트 3개(시간대 다름, 다른 조직 1개)=A·B·C ✓ / 그룹2 사용자(소속 없음 nobody, 역할 다른 mixed, 다른 조직 other-org-admin) ✓ / 그룹3 자산 60+(설비·저장·도킹, `EQ-001`/`ST-001` 형태, 보관 1건) ✓ / 그룹4 상태 ①~⑦ ✓ / 그룹5 용량 케이스 ✓ / 그룹6 규칙 케이스 ✓ / 그룹7 같은 코드 쌍 `EQ-001`(A·B) ✓. 충족 여부 최종 확인은 BE-REQ-012. 테스트: `backend/tests/integration/test_seed_demo_data.py`(7건).
+
+- [x] **BE-REQ-007 · 확인 · 사용자(역할) 전환 UI 필요 여부**
+  - 답변(FE) 요약: 불필요(현재). `DEV_DEBUG_USER` 교체 + 재시작.
+  - 확인(BE) 2026-10-23: 확인. 시험 데이터에 역할이 다른 사용자를 추가했으므로 전환은 환경변수 값만 바꾸면 된다.
+
+- [x] **BE-REQ-008 · 확인 · 배출 규칙 코드값·라벨**
+  - 답변(FE) 요약: 코드값 변경 요청 없음. 라벨 제안(D-U05·D-U06 확정 / OPEN-003 미정 구분, 미정을 선택지로 유지, 0·"아니오"로 채우지 않음).
+  - 확인(BE) 2026-10-23: 수용. 계약 변경 없음.
+
+- [x] **BE-REQ-009 · 확인 · 화면 버전 상태 값**
+  - 답변(FE) 요약: 동의. `superseded`="대체됨" 추가, `archived` 유지.
+  - 확인(BE) 2026-10-23: 확인.
+
+- [x] **BE-REQ-010 · 결정 · FE가 다음에 필요한 Backend 기능 우선순위**
+  - 답변(FE) 요약: 0) FE-01a~d는 0.2.0만으로 가능 → 1) `/me.projects[].status`(높음·소규모) → 2) 제품·재료(보통) → 3) 공정 버전·그래프(보통) → 4) 보관·멤버·복사(낮음~보통) → 5) 그룹·별칭(낮음) → 6) RLS(FE 영향 없음).
+  - 확인(BE) 2026-10-23: 반영. 1)·2)를 [CR be03](../change-requests/CR-backend-20261023-be03-products-materials.md)에 묶어 사용자 승인을 요청했다. 3) 이후는 CR을 순서대로 제안한다. 최종 일정은 사용자·조정자 결정.
+
+- [x] **BE-REQ-011 · 요청 · 제품·공정 화면 모델 공유**
+  - 답변(FE) 요약: 제품(`code`·`name`·`specification` null=미정·`versions[]` 요약), 공정 단계(처리 방식·준비 trigger 8종·산출·설비·다음 위치·확인 상태), 알려진 어긋남(확인 상태가 단계 단위, 입력·이동·잔량 열 없음, `merge_strands`·`fixed_mass_units` 제외). CR be03 §4 의견 제출.
+  - 확인(BE) 2026-10-23: 수용. CR be03에 반영(§4-1). **공정 CR 작성 때 FE 표와 03 §4~7을 대조한 어긋남 목록을 FE에 전달하겠다**(약속, R-FE-07). 제품 목록의 `latest_process_version`은 공정 버전 CR로 이월.
 
 ---
 
@@ -182,6 +180,13 @@
 
 ---
 
+### 2차 답변 — FE 검토(`[x]`·`[~]`)의 후속 질문과 요청 (2026-10-23)
+- **R-FE-03 후속: `/me.projects[].status` 추가** — FE 찬성(순위 1)을 확인했다. **CR be03 §4-2에 포함**해 승인을 요청했다(`status: active|archived`, 비파괴, 기본은 0.3.0에 포함). 승인 전에는 구현하지 않는다. 그 전까지 FE는 `GET /projects`(`status` 포함)로 보관 여부를 확인할 수 있다.
+- **R-FE-04 가정(경로 UUID 형식 오류 422를 "찾을 수 없음"과 같은 화면으로 처리)** — **동의.** 이 경우 응답은 422 `VALIDATION_ERROR`이며 `details[].field_path`는 경로 변수 이름(`/project_id`, `/asset_id`, `/revision_id`)이다. 존재하지 않거나 접근 불가한 UUID는 404 `NOT_FOUND`다.
+- **R-FE-07 `[~]`** — 검증 경로가 순서 번호(`/steps/2/…`)에서 `entity_id`(step id)+단계 내부 포인터로 바뀌는 점을 확인했다. 공정 버전·그래프 CR을 작성할 때 FE 화면 모델과 03 §4~7을 대조한 **어긋남 목록**(확인 상태가 단계 단위 vs 필드 단위 등)을 FE에 전달한다. 일정은 BE-REQ-010 결과(순위 3)를 따르며 사용자 승인 대기.
+- **R-FE-11 `[~]`** — 보관된 항목 쓰기 409 제안에 동의해 주신 것을 확인했다. 일정은 순위 4이며 CR 전에는 구현하지 않는다.
+- **R-FE-13** — FE 파일에서 미답변(`[ ]`)으로 남아 있던 것은 FE가 이 파일을 읽기 전에 작성했기 때문이다. 위 R-FE-13 답변을 확인해 주세요(BE-REQ-012 ③).
+
 ## FE 세션 시작 절차 (사용자 요청: 작업 전 확인·답변·공유)
 FE 세션은 **작업을 시작하기 전에** 아래를 순서대로 수행하고, 끝낸 뒤에 코드 작업을 진행합니다.
 1. `main`을 병합해 최신 계약·이 파일을 받는다(`contracts/contract-status.json`의 `contract_version`·`openapi_sha256` 확인).
@@ -204,3 +209,4 @@ FE 세션은 **작업을 시작하기 전에** 아래를 순서대로 수행하�
 ## Backend 공지 로그
 - 2026-10-23: 계약 0.2.0(자산 버전·용량) 승인·반영, 개발 DB migration 0002 적용·시드 실행, FE 안내서·CHANGELOG 작성, 이 소통 파일 작성. FE R-FE-01~12 답변 완료.
 - 2026-10-23: `main`(PR #10 `607d8a7`)에 계약 0.2.0·소통 파일 머지 확인. FE가 추가한 **R-FE-13 답변 완료**. FE 세션 시작 절차를 추가했다(작업 전 이 파일 확인 → 답변 공유 → 작업). 이 시점 FE 파일에는 Backend 답변을 반영한 `[~]` 표시와 `BE-REQ` 답변이 아직 없다(FE가 이 파일을 보기 전에 작성).
+- 2026-10-23(2차): FE의 BE-REQ-001~011 답변과 R-FE-01~12 검토(`main` PR #11 `b55c98a`)를 확인했다. BE-REQ 9건을 `완료`로 옮기고(001·002·003·005~011), 열린 항목은 BE-REQ-004(서버 실행 주체, 사용자 결정), 신규 BE-REQ-012·013이다. **FE 요청 BE-REQ-006 이행:** 시험 데이터 시드(`seed_demo_data.py`)를 만들어 개발 DB에 적용했다(프로젝트 3 추가·사용자 총 6·자산 62[A 61·B 1]·버전 19). 서버 실행 스크립트 `run_dev_api.ps1` 추가. CR be03에 FE 의견과 `/me` 보강(§4-2)을 반영해 승인 대기.
