@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/me"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": {
+        "user": {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "display_name": "예시 사용자"
+        },
+        "organizations": [
+          {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "code": "example-00000000-0000-4000-8000-000000000001",
+            "name": "예시 조직",
+            "role": "admin"
+          }
+        ],
+        "projects": [
+          {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "organization_id": "00000000-0000-4000-8000-000000000001",
+            "code": "DEMO-WIRE",
+            "name": "전선 공장 예제",
+            "status": "active",
+            "role": "admin"
+          }
+        ]
+      }
+    }
+  }
+}

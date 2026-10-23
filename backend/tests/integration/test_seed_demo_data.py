@@ -122,12 +122,30 @@ def test_superseded_history_and_capacity_cases(client, seeded):
     assert spaces["DK-001"]["mode"] == "unknown"  # 도킹은 무제한으로 가정하지 않는다
 
 
+def test_catalog_samples_cover_unknown_and_known_values(client, seeded):
+    project, admin = seeded["projects"]["A"], seeded["users"]["admin"]
+    url = f"{API}/projects/{project}"
+    products = client.get(f"{url}/products?limit=50", headers=headers(admin)).json()["data"]
+    assert [p["code"] for p in products] == [f"P-{n:03d}" for n in range(1, 9)]
+    assert {p["specification"] is None for p in products} == {True, False}  # 규격 미정과 입력 혼합
+    materials = {m["code"]: m for m in client.get(
+        f"{url}/materials", headers=headers(admin)).json()["data"]}
+    assert set(materials) == {"M-001", "M-002", "M-003", "M-004"}
+    assert materials["M-001"]["default_spec"]["length_m"] == {"mode": "known", "value": "3000"}
+    assert materials["M-002"]["default_spec"]["unit_count"] == {"mode": "known", "value": 3}
+    assert materials["M-002"]["default_spec"]["weight_kg"]["mode"] == "not_applicable"
+    assert {f["mode"] for f in materials["M-003"]["default_spec"].values()} == {"unknown"}
+    other = client.get(f"{API}/projects/{seeded['projects']['B']}/products",
+                       headers=headers(admin)).json()["data"]
+    assert [p["code"] for p in other] == ["P-001"]  # 프로젝트 격리: 같은 코드, 다른 프로젝트
+
+
 def test_seed_is_idempotent(client, engine, seeded, db):
     before = db.scalar("select count(*) from asset where project_id = :p", p=seeded["projects"]["A"])
     audits = db.scalar("select count(*) from audit_log where project_id = :p",
                        p=seeded["projects"]["A"])
     second = seed_demo_data.seed(engine)
-    assert second["assets"]["skipped"] is True
+    assert second["assets"]["skipped"] is True and second["catalog"]["skipped"] is True
     assert second["projects"] == seeded["projects"] and second["users"] == seeded["users"]
     assert db.scalar("select count(*) from asset where project_id = :p",
                      p=seeded["projects"]["A"]) == before == 61

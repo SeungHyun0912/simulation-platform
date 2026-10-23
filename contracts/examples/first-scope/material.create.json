@@ -1,0 +1,60 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/materials",
+    "body": {
+      "code": "M-001",
+      "name": "[시험] 원자재 롤",
+      "form": "롤",
+      "default_spec": {
+        "length_m": {
+          "mode": "known",
+          "value": "3000"
+        },
+        "weight_kg": {
+          "mode": "known",
+          "value": "2000"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "ETag": "\"1\"",
+      "Location": "/api/v1/projects/00000000-0000-4000-8000-000000000002/materials/00000000-0000-4000-8000-000000000014"
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "code": "M-001",
+        "name": "[시험] 원자재 롤",
+        "form": "롤",
+        "default_spec": {
+          "length_m": {
+            "mode": "known",
+            "value": "3000"
+          },
+          "weight_kg": {
+            "mode": "known",
+            "value": "2000"
+          },
+          "unit_count": {
+            "mode": "unknown",
+            "value": null
+          },
+          "strand_count": {
+            "mode": "unknown",
+            "value": null
+          }
+        },
+        "notes": null,
+        "archived_at": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": null,
+        "row_version": 1
+      }
+    }
+  }
+}

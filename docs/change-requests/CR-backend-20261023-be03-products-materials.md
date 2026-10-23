@@ -1,6 +1,9 @@
 # CR-backend-20261023-be03-products-materials
 - 요청자: Backend / 작업 BE-03(제안) / 대상: contracts/04 §3(products·materials 행), ERD §5(product, material_definition)
-- 상태: **제안(미승인)**. 승인 전 구현하지 않는다. 승인 시 새 scope `products-materials`로 contract 0.3.0 승격.
+- 상태: **구현 완료(contract 0.3.0)**. 사용자가 CR 제시 후 "다음 개발 진행해주고"(2026-10-23)라고 지시한 것을 승인으로 해석해 진행했다
+  (§4 결정 5건은 FE 의견 §4-1과 Backend 기본 제안대로, `/me` 보강은 §4-2대로 0.3.0에 포함). 명시적 "승인" 문구는 없었으므로 사용자가 정정할 수 있다.
+  구현 commit `6f07b53`, 인계 `docs/handoffs/HANDOFF-backend-20261023-BE-03.md`, 계약 `contracts/04_api_contract.md` §3.3.
+  ~~(이전 상태: 제안·미승인)~~
 - 근거: FE에 제품 목록·상세 정적 화면이 있고(R-FE-07) 공정 버전·그래프의 선행 데이터다. 우선순위는 FE 답변(BE-REQ-010)으로 조정할 수 있다.
   입력 대기: BE-REQ-011(FE 화면 모델·단위), R-FE-07.
 
