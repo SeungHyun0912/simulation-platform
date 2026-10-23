@@ -18,7 +18,7 @@ export const SAMPLE_ASSETS: AssetView[] = [
     model: "",
     group: "",
     status: "draft",
-    capacity: { mode: "unknown", value: "" },
+    capacity: { mode: "unknown", value: "", unit: "item" },
     ports: [...inOut],
   },
   {
@@ -29,7 +29,7 @@ export const SAMPLE_ASSETS: AssetView[] = [
     model: "모델 미정",
     group: "압출",
     status: "approved",
-    capacity: { mode: "value", value: "2" },
+    capacity: { mode: "value", value: "2", unit: "item" },
     ports: [...inOut],
   },
   {
@@ -40,7 +40,7 @@ export const SAMPLE_ASSETS: AssetView[] = [
     model: "",
     group: "편조",
     status: "in_review",
-    capacity: { mode: "not_allowed", value: "" },
+    capacity: { mode: "not_allowed", value: "", unit: "item" },
     ports: [...inOut],
   },
   {
@@ -51,7 +51,7 @@ export const SAMPLE_ASSETS: AssetView[] = [
     model: "",
     group: "",
     status: "draft",
-    capacity: { mode: "unlimited", value: "" },
+    capacity: { mode: "unlimited", value: "", unit: "item" },
     ports: [{ kind: "ACCESS", placement: "unknown" }],
   },
   {
@@ -63,7 +63,7 @@ export const SAMPLE_ASSETS: AssetView[] = [
     group: "",
     status: "draft",
     // 도킹이라고 해서 적재 용량을 무제한으로 가정하지 않는다.
-    capacity: { mode: "unknown", value: "" },
+    capacity: { mode: "unknown", value: "", unit: "item" },
     ports: [{ kind: "ACCESS", placement: "unknown" }],
   },
 ];

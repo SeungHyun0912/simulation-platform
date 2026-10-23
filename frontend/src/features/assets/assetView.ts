@@ -1,5 +1,6 @@
 import type { KnownValue } from "../../shared/components/KnownValueInput";
 import type { VersionStatus } from "../../shared/components/VersionStatusBadge";
+import { getUnit } from "../../shared/units/units";
 
 /**
  * 화면 전용 뷰 모델. 승인된 API DTO가 아니며(계약 PENDING_REVIEW),
@@ -38,8 +39,8 @@ const MODE_TEXT = {
 } as const;
 
 /** 목록·요약용 용량 문구. 미정을 0이나 빈칸으로 보이지 않게 한다. */
-export function capacityText(c: KnownValue, unit = "개"): string {
-  if (c.mode === "value") return `${c.value} ${unit}`;
+export function capacityText(c: KnownValue): string {
+  if (c.mode === "value") return `${c.value} ${getUnit(c.unit ?? "item")?.label ?? c.unit}`;
   return MODE_TEXT[c.mode];
 }
 

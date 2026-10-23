@@ -1,9 +1,10 @@
 import { useId } from "react";
 import { RadioGroup } from "radix-ui";
 import styles from "./KnownValueInput.module.css";
+import { QuantityRow, validateQuantity } from "./QuantityInput";
 
 /**
- * 미정 / 값 있음 / 무제한 / 해당 없음을 구분하는 입력.
+ * 미정 / 값 있음 / 무제한 / 해당 없음 / 대기 불가를 구분하는 입력.
  * 미정은 0도 빈 문자열도 아니다. 값 있음일 때 숫자는 decimal 문자열로만 다룬다.
  */
 export type KnownValueMode =
@@ -13,9 +14,10 @@ export type KnownValueMode =
   | "not_applicable"
   | "not_allowed";
 
-export type KnownValue = { mode: KnownValueMode; value: string };
+/** unit은 units 속성으로 단위를 고를 때만 쓴다. 모드가 value가 아니어도 선택한 단위는 유지한다. */
+export type KnownValue = { mode: KnownValueMode; value: string; unit?: string };
 
-/** decimal: 길이·중량 등 소수 허용. integer: 개수처럼 정수만 허용. */
+/** decimal: 길이·중량 등 소수 허용. integer: 개수처럼 정수만 허용. units를 쓰면 단위가 결정한다. */
 export type NumberKind = "decimal" | "integer";
 
 const MODE_LABELS: Record<KnownValueMode, string> = {
@@ -31,10 +33,13 @@ const PATTERNS: Record<NumberKind, RegExp> = {
   integer: /^\d+$/,
 };
 
-/** 값 있음 모드의 입력 오류 문구. 오류가 없으면 null. */
+const EMPTY_MESSAGE = "값을 입력하세요. 모르는 값이면 '미정'을 선택하세요.";
+
+/** 값 있음 모드의 입력 오류 문구. 오류가 없으면 null. v.unit이 있으면 그 단위의 규칙을 따른다. */
 export function validateKnownValue(v: KnownValue, kind: NumberKind = "decimal"): string | null {
   if (v.mode !== "value") return null;
-  if (v.value.trim() === "") return "값을 입력하세요. 모르는 값이면 '미정'을 선택하세요.";
+  if (v.value.trim() === "") return EMPTY_MESSAGE;
+  if (v.unit) return validateQuantity({ amount: v.value, unit: v.unit });
   if (!PATTERNS[kind].test(v.value)) {
     return kind === "integer"
       ? "0 이상의 정수만 입력할 수 있습니다."
@@ -49,8 +54,11 @@ type Props = {
   onChange: (next: KnownValue) => void;
   /** 이 필드에서 허용하는 상태. 계약이 허용하지 않는 상태는 노출하지 않는다. */
   allowedModes?: KnownValueMode[];
+  /** 고정 단위 표시 문구 */
   unit?: string;
   numberKind?: NumberKind;
+  /** 선택 가능한 단위 id 목록(shared/units). 지정하면 unit·numberKind보다 우선한다. */
+  units?: string[];
   disabled?: boolean;
 };
 
@@ -61,10 +69,13 @@ export function KnownValueInput({
   allowedModes = ["unknown", "value"],
   unit,
   numberKind = "decimal",
+  units,
   disabled,
 }: Props) {
   const id = useId();
-  const error = validateKnownValue(value, numberKind);
+  const effectiveUnit = units ? (value.unit ?? units[0]) : undefined;
+  const effective: KnownValue = effectiveUnit ? { ...value, unit: effectiveUnit } : value;
+  const error = validateKnownValue(effective, numberKind);
   const errorId = `${id}-error`;
 
   return (
@@ -74,7 +85,9 @@ export function KnownValueInput({
         className={styles.modes}
         aria-label={`${label} 상태`}
         value={value.mode}
-        onValueChange={(mode) => onChange({ mode: mode as KnownValueMode, value: "" })}
+        onValueChange={(mode) =>
+          onChange({ mode: mode as KnownValueMode, value: "", unit: effectiveUnit })
+        }
       >
         {allowedModes.map((mode) => (
           <label key={mode} className={styles.mode}>
@@ -83,20 +96,30 @@ export function KnownValueInput({
           </label>
         ))}
       </RadioGroup.Root>
-      {value.mode === "value" && (
-        <div className={styles.valueRow}>
-          <input
-            className={styles.input}
-            inputMode={numberKind === "integer" ? "numeric" : "decimal"}
-            aria-label={`${label} 값`}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
-            value={value.value}
-            onChange={(e) => onChange({ mode: "value", value: e.target.value })}
+      {value.mode === "value" &&
+        (units && effectiveUnit ? (
+          <QuantityRow
+            label={label}
+            units={units}
+            value={{ amount: value.value, unit: effectiveUnit }}
+            onChange={(q) => onChange({ mode: "value", value: q.amount, unit: q.unit })}
+            error={error}
+            errorId={errorId}
           />
-          {unit && <span className={styles.unit}>{unit}</span>}
-        </div>
-      )}
+        ) : (
+          <div className={styles.valueRow}>
+            <input
+              className={styles.input}
+              inputMode={numberKind === "integer" ? "numeric" : "decimal"}
+              aria-label={`${label} 값`}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? errorId : undefined}
+              value={value.value}
+              onChange={(e) => onChange({ mode: "value", value: e.target.value })}
+            />
+            {unit && <span className={styles.unit}>{unit}</span>}
+          </div>
+        ))}
       {error && (
         <p id={errorId} role="alert" className={styles.error}>
           {error}
