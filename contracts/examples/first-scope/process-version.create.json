@@ -1,0 +1,96 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/products/00000000-0000-4000-8000-000000000013/process-versions"
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "ETag": "\"1\"",
+      "Location": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000015"
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "product_id": "00000000-0000-4000-8000-000000000013",
+        "version_no": 1,
+        "status": "draft",
+        "base_version_id": null,
+        "submitted_at": null,
+        "approved_at": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": null,
+        "row_version": 1,
+        "schema_version": "1.0",
+        "raw_unit_spec": {
+          "length_m": {
+            "mode": "unknown",
+            "value": null
+          },
+          "weight_kg": {
+            "mode": "unknown",
+            "value": null
+          },
+          "unit_count": {
+            "mode": "unknown",
+            "value": null
+          },
+          "strand_count": {
+            "mode": "unknown",
+            "value": null
+          }
+        },
+        "finished_unit_spec": {
+          "length_m": {
+            "mode": "unknown",
+            "value": null
+          },
+          "weight_kg": {
+            "mode": "unknown",
+            "value": null
+          },
+          "unit_count": {
+            "mode": "unknown",
+            "value": null
+          },
+          "strand_count": {
+            "mode": "unknown",
+            "value": null
+          }
+        },
+        "notes": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "rule_id": "VAL-VER-001",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/raw_unit_spec",
+            "message": "원자재 기본 단위가 미정입니다.",
+            "resolution": null
+          },
+          {
+            "severity": "warning",
+            "rule_id": "VAL-VER-002",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/finished_unit_spec",
+            "message": "완제품 단위가 미정입니다.",
+            "resolution": null
+          },
+          {
+            "severity": "warning",
+            "rule_id": "VAL-GRAPH-010",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/nodes",
+            "message": "operation(단계) 노드가 없습니다.",
+            "resolution": null
+          }
+        ],
+        "submitted_by": null,
+        "rejection_reason": null,
+        "rejected_at": null,
+        "approved_by": null
+      }
+    }
+  }
+}

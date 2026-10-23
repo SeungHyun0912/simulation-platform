@@ -5,6 +5,24 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.4.0 — 2026-10-23 · scope `process-versions`(BE-04a) · sha256 `1da94db0…cb45` · 기준 commit `18754cf`
+- **호환성: 0.3.1 클라이언트와 호환(추가만).** 기존 operation의 요청·응답 필드는 그대로이며 `ProductOut`에 nullable 필드 2개(`current_process_version`, `latest_process_version`)가 늘었다.
+- **추가 operation 11개:** 제품의 공정 버전 목록/생성, 버전 조회·수정(원자재 기본 단위·완제품 단위·메모), 그래프 조회/전체 교체(PUT), 단계 수정, 검증(`validate?scope=knowledge|run_template`), 제출·반려·승인.
+- **새 오류 코드:** `PROCESS_DRAFT_EXISTS`(409, 제품당 열린 버전 하나), `PROCESS_VALIDATION_FAILED`(422, 구조 오류가 있어 제출·승인 불가). 승인·불변·충돌은 자산 버전과 같은 `VERSION_IMMUTABLE`·`INVALID_STATE_TRANSITION`·`EDIT_CONFLICT`·`PRECONDITION_REQUIRED`.
+- **핵심 규칙(FE가 알아야 할 것):**
+  - 공정 버전은 `draft → in_review → approved → superseded`. **수정은 draft에서만**(그래프·단계·단위·메모 모두), 제출·승인·반려도 `If-Match` 필수, 승인·반려는 project admin만.
+  - 그래프는 **노드·간선 전체 교체(PUT, 한 트랜잭션)** 이며 보내지 않은 노드·간선은 삭제된다. 노드·간선 `id`는 **클라이언트가 만든 UUID**(다른 버전이 쓰는 id는 422 `VAL-REF-003`). 간선이 없는 노드를 가리키거나 자기 자신을 가리키면 422.
+  - **ETag는 단계가 아니라 공정 버전(`row_version`) 단위**다. 그래프 저장·단계 수정·단위 수정·전이가 모두 같은 버전 ETag를 올린다. 단계 id = operation 노드 id.
+  - 단계 PATCH는 보낸 **최상위 필드를 통째로 교체**한다(`timing_rule`을 보내면 `setup` 등 하위도 보낸 값으로 교체, 보내지 않은 하위는 기본 `unknown`). `resources`도 통째 교체.
+  - 모든 규칙은 판별자가 있는 닫힌 객체이며 기본값은 **`unknown`(0이 아님)**. 값은 `{mode: unknown|known|not_applicable, value}`(처리 시간·선속·길이는 0 초과, **준비·대기 시간은 0 허용**, 개수는 JSON 정수).
+  - 설비 후보는 표시 코드가 아니라 **asset UUID**(같은 프로젝트의 설비만), 노드의 위치는 저장·도킹 공간 asset UUID. 노동자는 `resource_kind=worker`(+`capacity_mode=unlimited`).
+  - **미정은 경고라 승인을 막지 않고, 실행 가능성(`validate?scope=run_template`)에서만 필수 미정이 오류**다. 검증 항목은 `{severity, rule_id, entity_id, field_path, message, resolution}`이며 `entity_id`는 단계·노드·간선 id, `field_path`는 그 엔티티 내부 JSON Pointer(순서 번호가 아님).
+  - 새 초안은 승인본이 있으면 **그래프를 새 id로 복사**하고(`base_version_id` 기록), 없으면 빈 그래프·미정 단위로 시작한다.
+  - 단계는 `operation_type`·`handler_version` 문자열로 엔진 handler를 지정한다. 등록은 자유롭고 지원하지 않는 handler는 `run_template`에서 `UNSUPPORTED_HANDLER` 오류.
+- **프런트가 해야 할 일(요약):** [CR be04 §5](../docs/change-requests/CR-backend-20261023-be04-process-versions.md)의 어긋남 13항목 참조. 핵심: ① 직선 표 ↔ 그래프 어댑터(operation → buffer → operation, 자산 UUID 매핑) ② 단계의 `assumed` 확인 상태 제거(마스터 값에 불가) ③ 03 필수 입력 추가(`parallel_streams`·`basis`·`output_schedule`·`precondition_delay`·`quantity_basis`·`accounting_mode`·`required_count`·후보 `eligibility_status`) ④ 검증 경로를 `entity_id`+내부 포인터로 ⑤ 제출·승인·반려 UI와 버전 단위 ETag 처리.
+- **아직 없는 것(BE-04b/c):** 복제 선택(`base_version_id` 지정)·버전 비교(diff)·`process_editor_state`, 단계 입출력 재료 spec, 합류(join)·공급(supply) 간선의 spec 연결, 완료 milestone.
+- **상세:** [04 §4.1](04_api_contract.md), [CR be04](../docs/change-requests/CR-backend-20261023-be04-process-versions.md), 예제 `examples/first-scope/process-*`.
+
 ## 0.3.1 — 2026-10-23 · scope `products-materials`(패치) · sha256 `4821718a…3b5c` · 기준 commit `64e66c0`
 - **호환성: 0.3.0 클라이언트와 호환(필드 추가만).** operation은 그대로이고 `GET /me`의 `projects[]`에 `timezone`이 늘었다.
 - **`GET /me`:** `projects[].timezone`(IANA 이름, 예 `Asia/Seoul`, `GET /projects/{id}`의 `timezone`과 같은 값) 추가. 서버 시각은 항상 UTC(`Z`)이므로 화면은 이 값으로 변환해 보여 준다. FE 요청 R-FE-14.

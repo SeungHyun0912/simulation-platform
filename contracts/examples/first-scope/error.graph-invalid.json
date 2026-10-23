@@ -1,0 +1,118 @@
+{
+  "request": {
+    "method": "PUT",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000015/graph",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000016",
+          "node_key": "src",
+          "kind": "source",
+          "label": "[시험] 원자재",
+          "display_order": 0
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000017",
+          "node_key": "insulate",
+          "kind": "operation",
+          "label": "[시험] insulate",
+          "display_order": 1,
+          "step": {
+            "operation_type": "output_units_by_time",
+            "handler_version": "1",
+            "timing_rule": {
+              "processing": {
+                "kind": "output_speed",
+                "speed_m_per_min": {
+                  "mode": "known",
+                  "value": "30"
+                },
+                "basis": "per_stream",
+                "output_schedule": "sequential_units",
+                "parallel_streams": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              "setup": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable"
+              },
+              "precondition_delay": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable",
+                "occupancy": "unknown"
+              }
+            },
+            "input_rule": {
+              "acquire_scope": "per_operation",
+              "consume_policy": "consume"
+            },
+            "output_rule": {
+              "mode": "configured_units",
+              "length_m": {
+                "mode": "known",
+                "value": "1000"
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 2
+              },
+              "quantity_basis": "per_operation",
+              "schedule": "sequential_units",
+              "accounting_mode": "physical"
+            },
+            "handoff_rule": {
+              "mode": "per_output_unit"
+            },
+            "resources": [
+              {
+                "role_key": "main",
+                "candidates": [
+                  {
+                    "asset_id": "00000000-0000-4000-8000-000000000003",
+                    "eligibility_status": "confirmed"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "00000000-0000-4000-8000-000000000018",
+          "edge_key": "insulate-wait",
+          "from_node_id": "00000000-0000-4000-8000-000000000017",
+          "to_node_id": "00000000-0000-4000-8000-000000000019",
+          "edge_kind": "material"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "그래프 구조가 올바르지 않습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "간선이 그래프에 없는 노드를 가리킵니다. 노드를 함께 보내거나 간선을 제거하세요.",
+            "severity": "error",
+            "rule_id": "VAL-GRAPH-001",
+            "field_path": "/edges/0/to_node_id"
+          }
+        ]
+      }
+    }
+  }
+}

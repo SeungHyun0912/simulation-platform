@@ -140,12 +140,44 @@ def test_catalog_samples_cover_unknown_and_known_values(client, seeded):
     assert [p["code"] for p in other] == ["P-001"]  # 프로젝트 격리: 같은 코드, 다른 프로젝트
 
 
+def test_process_version_samples_cover_states_and_validation_levels(client, seeded):
+    project, admin = seeded["projects"]["A"], seeded["users"]["admin"]
+    url = f"{API}/projects/{project}"
+    products = {p["code"]: p for p in client.get(f"{url}/products?limit=50",
+                                                 headers=headers(admin)).json()["data"]}
+    state = {code: (p["latest_process_version"] and p["latest_process_version"]["status"],
+                    p["current_process_version"] and p["current_process_version"]["version_no"])
+             for code, p in products.items()}
+    assert state["P-001"] == ("approved", 1) and state["P-002"] == ("draft", None)
+    assert state["P-003"] == ("in_review", None) and state["P-004"] == ("draft", 1)
+    assert state["P-005"] == (None, None)  # 공정이 없는 제품
+    p4 = client.get(f"{url}/products/{products['P-004']['id']}/process-versions",
+                    headers=headers(admin)).json()["data"]
+    assert [(v["version_no"], v["status"]) for v in p4] == [(2, "draft"), (1, "approved")]
+    assert p4[0]["base_version_id"] == p4[1]["id"]  # 승인본에서 복사한 새 초안
+    approved = next(p for p in client.get(
+        f"{url}/products/{products['P-001']['id']}/process-versions",
+        headers=headers(admin)).json()["data"])
+    graph = client.get(f"{url}/process-versions/{approved['id']}/graph",
+                       headers=headers(admin)).json()["data"]
+    assert [n["kind"] for n in graph["nodes"]] == ["source", "operation", "buffer", "operation", "sink"]
+    run = client.post(f"{url}/process-versions/{approved['id']}/validate?scope=run_template",
+                      headers=headers(admin)).json()["data"]
+    assert run["error_count"] == 0  # 확정된 그래프는 실행 판정도 오류 없음(원자재 단위 미정은 경고)
+    unknown = client.get(f"{url}/products/{products['P-003']['id']}/process-versions",
+                         headers=headers(admin)).json()["data"][0]
+    run = client.post(f"{url}/process-versions/{unknown['id']}/validate?scope=run_template",
+                      headers=headers(admin)).json()["data"]
+    assert run["error_count"] > 0  # 미정 단계는 실행 판정에서 오류
+
+
 def test_seed_is_idempotent(client, engine, seeded, db):
     before = db.scalar("select count(*) from asset where project_id = :p", p=seeded["projects"]["A"])
     audits = db.scalar("select count(*) from audit_log where project_id = :p",
                        p=seeded["projects"]["A"])
     second = seed_demo_data.seed(engine)
     assert second["assets"]["skipped"] is True and second["catalog"]["skipped"] is True
+    assert second["process"]["skipped"] is True
     assert second["projects"] == seeded["projects"] and second["users"] == seeded["users"]
     assert db.scalar("select count(*) from asset where project_id = :p",
                      p=seeded["projects"]["A"]) == before == 61

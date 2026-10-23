@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/products/00000000-0000-4000-8000-000000000013/process-versions"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "project_id": "00000000-0000-4000-8000-000000000002",
+          "product_id": "00000000-0000-4000-8000-000000000013",
+          "version_no": 1,
+          "status": "approved",
+          "base_version_id": null,
+          "submitted_at": "2026-10-23T00:00:00Z",
+          "approved_at": "2026-10-23T00:00:00Z",
+          "created_at": "2026-10-23T00:00:00Z",
+          "updated_at": "2026-10-23T00:00:00Z",
+          "row_version": 5
+        }
+      ],
+      "page": {
+        "limit": 50,
+        "next_cursor": null
+      }
+    }
+  }
+}

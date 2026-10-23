@@ -1,22 +1,23 @@
 {
   "workspace_package": "1.1.0",
   "status": "PARTIALLY_APPROVED",
-  "contract_version": "0.3.1",
+  "contract_version": "0.4.0",
   "openapi_path": "contracts/openapi.json",
-  "openapi_sha256": "4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c",
-  "approved_scopes": ["project-assets-ports", "asset-revisions", "products-materials"],
+  "openapi_sha256": "1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45",
+  "approved_scopes": ["project-assets-ports", "asset-revisions", "products-materials", "process-versions"],
   "approved_by": "SeungHyun0912",
   "approved_at": "2026-10-23",
-  "baseline_commit": "64e66c0",
-  "approval_record": "사용자가 대화에서 CR-backend-20261023-be01c(0.1.0)와 be02(0.2.0)를 각각 승인하고 계약 문서 반영을 위임(2026-10-23). BE-03(0.3.0)은 CR be03을 제시한 뒤 사용자가 '다음 개발 진행해주고'라고 지시한 것을 승인으로 해석해 구현·승격함(명시적 문구로 'be03 승인'을 말한 기록은 없으므로 사용자가 정정할 수 있음). FE 의견(request-from-frontend.md BE-REQ-010·011)은 CR be03 §4-1에 반영. 0.3.0은 PR #15로 main에 게시됨(sha256 a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48, baseline 6f07b53, 불변). FE 요청 R-FE-14(`/me.projects[].timezone`)는 게시된 0.3.0을 고치지 않고 0.3.1(패치, 비파괴 필드 추가)로 승격함(현재 해시·baseline은 이 파일의 최상위 값). 0.3.1에 대한 사용자의 명시적 승인 문구는 없고 FE 요청 범위 안의 소규모 추가를 Backend가 판단했으므로 사용자가 정정할 수 있음. 승인 시각의 시·분은 기록되지 않음.",
+  "baseline_commit": "18754cf",
+  "approval_record": "사용자가 대화에서 CR-backend-20261023-be01c(0.1.0)와 be02(0.2.0)를 각각 승인하고 계약 문서 반영을 위임(2026-10-23). be03(0.3.0)·0.3.1(`/me.timezone`, FE 요청 R-FE-14)은 CR 제시 후 사용자의 진행 지시를 승인으로 해석해 구현·승격. BE-04a(0.4.0 `process-versions`)도 CR be04 제시 후 사용자가 '다음 단계 진행해 줘'라고 지시한 것을 CR의 권장안(BE-04a 범위)에 대한 승인으로 해석해 구현·승격함 — 명시적 'be04 승인' 문구는 없고, 이 시점 FE의 의견 요청(BE-REQ-015)에는 답변이 없어 CR §6의 권장안을 적용했으므로 사용자·FE가 정정할 수 있음. 게시된 버전은 불변이며(0.3.0 a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48 PR #15, 0.3.1 4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c PR #16) 0.4.0은 main이 0.3.1임을 확인한 뒤 새 버전으로 승격. 승인 시각의 시·분은 기록되지 않음.",
   "approved_change_requests": [
     "docs/change-requests/CR-backend-20261023-be01c-first-scope-api.md",
     "docs/change-requests/CR-backend-20261023-be02-asset-revision-capacity.md",
-    "docs/change-requests/CR-backend-20261023-be03-products-materials.md"
+    "docs/change-requests/CR-backend-20261023-be03-products-materials.md",
+    "docs/change-requests/CR-backend-20261023-be04-process-versions.md"
   ],
   "scope_excludes": [
     "group, alias, 장비 가동 달력·처리 능력(asset_revision의 나머지 속성)",
-    "공정 버전·그래프·단계, 제품 목록의 latest_process_version 요약(공정 버전 CR에서 추가 필드로 도입)",
+    "공정 BE-04b(복제 선택·diff·process_editor_state)와 BE-04c(step_material_spec, join/supply 간선의 spec 연결, completion_node_id), 단계 execution_rule·input_match_policy·condition_rule·후보 parameter_override",
     "project archive/clone/members, asset·product·material archive endpoint",
     "운영 인증 adapter(TECH-002), 역할 정책 확정(TECH-006), RLS",
     "시나리오·실행·위키·CAD API 전체(PROPOSED 유지)"
@@ -24,5 +25,5 @@
   "examples_path": "contracts/examples/first-scope",
   "changelog_path": "contracts/CHANGELOG.md",
   "first_scope_proposal": "project-assets-ports",
-  "note": "승인 scope는 openapi.json의 operation 전체(0.1.0: 11개, 0.2.0: +7개, 0.3.0: +8개, 0.3.1: operation 변경 없음·`/me` 필드 추가). 그 밖의 04 문서 항목은 PROPOSED. 프런트 영향은 contracts/CHANGELOG.md가 정본."
+  "note": "승인 scope는 openapi.json의 operation 전체(0.1.0: 11개, 0.2.0: +7개, 0.3.0: +8개, 0.3.1: 필드 추가, 0.4.0: +11개). 그 밖의 04 문서 항목은 PROPOSED. 프런트 영향은 contracts/CHANGELOG.md가 정본."
 }
