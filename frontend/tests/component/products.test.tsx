@@ -58,13 +58,19 @@ describe("제품 목록", () => {
 });
 
 describe("제품 상세·편집", () => {
-  it("공정 버전을 최신순으로 보여 주고 편집 동작은 계약 필요로 막는다", () => {
+  it("공정 버전을 최신순으로 보여 주고 초안 UI 링크로 연결한다", () => {
     renderApp(`/projects/p1/products/${WITH_SPEC.id}`);
     const table = screen.getByRole("table", { name: `${WITH_SPEC.code} 공정 버전` });
     const rows = within(table).getAllByRole("row");
     expect(rows[1]).toHaveTextContent("v2");
     expect(rows[2]).toHaveTextContent("v1");
-    for (const b of within(table).getAllByRole("button")) expect(b).toBeDisabled();
+    const edit = within(table).getByRole("link", { name: "v2 공정 편집" });
+    expect(edit).toHaveAttribute(
+      "href",
+      `/projects/p1/products/${WITH_SPEC.id}/processes/${WITH_SPEC.versions[1]!.id}`,
+    );
+    expect(within(table).getByRole("link", { name: "v1 공정 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /새 초안 만들기/ })).toBeDisabled();
   });
 
   it("공정이 없는 제품은 빈 상태를 보여 준다", () => {

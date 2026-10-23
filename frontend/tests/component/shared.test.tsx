@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { renderApp } from "../renderApp";
 import { StateNotice } from "../../src/shared/components/StateNotice";
+import { ValidationPanel } from "../../src/shared/components/ValidationPanel";
 import { VersionStatusBadge } from "../../src/shared/components/VersionStatusBadge";
 import { projectKey } from "../../src/shared/api/queryKeys";
 
@@ -27,6 +28,26 @@ describe("StateNotice", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("요청에 실패했습니다");
     rerender(<StateNotice kind="loading" />);
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
+  });
+});
+
+describe("ValidationPanel", () => {
+  const warn = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ severity: "warning" as const, message: `경고 ${i}` }));
+
+  it("경고가 적으면 그대로 보여 주고, 많으면 접되 건수는 항상 보인다", () => {
+    const { rerender } = render(<ValidationPanel issues={warn(3)} />);
+    expect(screen.getByText("경고 0")).toBeVisible();
+    rerender(<ValidationPanel issues={warn(4)} />);
+    expect(screen.getByRole("alert", { name: "검증 결과" })).toHaveTextContent("경고 4건");
+    expect(screen.getByText("경고 0")).not.toBeVisible();
+  });
+
+  it("오류는 경고가 많아도 접지 않는다", () => {
+    render(
+      <ValidationPanel issues={[{ severity: "error", message: "오류 하나" }, ...warn(5)]} />,
+    );
+    expect(screen.getByText("오류 하나")).toBeVisible();
   });
 });
 

@@ -1,6 +1,5 @@
-import type { KnownValue } from "../../shared/components/KnownValueInput";
+import { knownValueText, type KnownValue } from "../../shared/components/KnownValueInput";
 import type { VersionStatus } from "../../shared/components/VersionStatusBadge";
-import { getUnit } from "../../shared/units/units";
 
 /**
  * 화면 전용 뷰 모델. 승인된 API DTO가 아니며(계약 PENDING_REVIEW),
@@ -31,17 +30,9 @@ export const KIND_LABELS: Record<AssetKind, string> = {
   dock: "도킹",
 };
 
-const MODE_TEXT = {
-  unknown: "미정",
-  unlimited: "무제한",
-  not_applicable: "해당 없음",
-  not_allowed: "대기 불가",
-} as const;
-
-/** 목록·요약용 용량 문구. 미정을 0이나 빈칸으로 보이지 않게 한다. */
+/** 목록·요약용 용량 문구. 단위가 없으면 개(item)로 본다. */
 export function capacityText(c: KnownValue): string {
-  if (c.mode === "value") return `${c.value} ${getUnit(c.unit ?? "item")?.label ?? c.unit}`;
-  return MODE_TEXT[c.mode];
+  return knownValueText(c, "item");
 }
 
 export function portsText(ports: PortView[]): string {

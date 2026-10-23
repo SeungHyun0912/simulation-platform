@@ -106,9 +106,12 @@ function ProductForm({
       key: "edit",
       header: "작업",
       render: (v) => (
-        <Button disabled title="공정 편집 화면·API 계약 필요">
-          {v.status === "draft" ? "공정 편집" : "공정 보기"} (계약 필요)
-        </Button>
+        <Link
+          to={`/projects/${projectId}/products/${base.id}/processes/${v.id}`}
+          aria-label={`v${v.versionNo} ${v.status === "draft" ? "공정 편집" : "공정 보기"}`}
+        >
+          {v.status === "draft" ? "공정 편집 (초안 UI)" : "공정 보기 (초안 UI)"}
+        </Link>
       ),
     },
   ];
@@ -198,8 +201,8 @@ function ProductForm({
 
       <Section id="sec-versions" title="공정 버전">
         <Note>
-          승인된 버전은 수정할 수 없고, 변경하려면 복사하여 새 초안을 만듭니다. 공정 편집과 새 초안
-          생성은 공정 계약 승인 후 제공됩니다.
+          승인된 버전은 수정할 수 없고, 변경하려면 복사하여 새 초안을 만듭니다. 공정 화면은 계약
+          승인 전의 초안 UI이며, 새 초안 생성은 계약 승인 후 제공됩니다.
         </Note>
         {versions.length === 0 ? (
           <StateNotice kind="empty" title="공정 버전이 없습니다">
