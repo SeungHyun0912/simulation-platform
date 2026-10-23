@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
+import { useDataSource } from "../../shared/api/ApiContext";
 import { Button } from "../../shared/components/Button";
 import { SelectField, TextAreaField, TextField } from "../../shared/components/Fields";
 import {
@@ -11,6 +12,7 @@ import {
   Section,
 } from "../../shared/components/Layout";
 import { PageHeader } from "../../shared/components/PageHeader";
+import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { ValidationPanel, type ValidationIssue } from "../../shared/components/ValidationPanel";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
@@ -20,18 +22,18 @@ import {
   type ProjectDraft,
   type ProjectFieldErrors,
 } from "./projectView";
-import { SAMPLE_ORGANIZATIONS } from "./sampleProjects";
+import { useMe } from "./queries";
+import type { OrganizationView } from "./projectView";
 
-// 프로젝트는 role이 admin인 조직에서만 만들 수 있다(R-FE-13). 서버가 403/404로 최종 판정한다.
-const CREATABLE_ORGS = SAMPLE_ORGANIZATIONS.filter((o) => o.role === "admin");
-
-const INITIAL: ProjectDraft = {
-  organizationId: CREATABLE_ORGS.length === 1 ? CREATABLE_ORGS[0]!.id : "",
-  code: "",
-  name: "",
-  timezone: "Asia/Seoul",
-  description: "",
-};
+function makeInitial(orgs: OrganizationView[]): ProjectDraft {
+  return {
+    organizationId: orgs.length === 1 ? orgs[0]!.id : "",
+    code: "",
+    name: "",
+    timezone: "Asia/Seoul",
+    description: "",
+  };
+}
 
 const FIELD_LABELS: Record<keyof ProjectDraft, string> = {
   organizationId: "조직",
@@ -41,8 +43,36 @@ const FIELD_LABELS: Record<keyof ProjectDraft, string> = {
   description: "설명",
 };
 
-/** 프로젝트 생성 폼. 저장은 계약 승인 후 연결하며 지금은 입력 검증만 한다. */
+/** 프로젝트 생성. 조직은 내 정보(/me)에서 오며 role이 admin인 조직만 고를 수 있다(R-FE-13, 서버가 최종 판정). */
 export function ProjectCreatePage() {
+  const me = useMe();
+  const head = (
+    <PageHeader
+      title="프로젝트 만들기"
+      breadcrumbs={[{ label: "프로젝트", to: "/" }, { label: "만들기" }]}
+      renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
+    />
+  );
+  if (me.status === "pending")
+    return (
+      <>
+        {head}
+        <StateNotice kind="loading" />
+      </>
+    );
+  if (me.status === "error")
+    return (
+      <>
+        {head}
+        <QueryErrorNotice error={me.error} subject="내 정보" onRetry={me.retry} />
+      </>
+    );
+  return <ProjectCreateForm orgs={me.data.organizations.filter((o) => o.role === "admin")} />;
+}
+
+function ProjectCreateForm({ orgs }: { orgs: OrganizationView[] }) {
+  const source = useDataSource();
+  const INITIAL = useMemo(() => makeInitial(orgs), [orgs]);
   const [draft, setDraft] = useState<ProjectDraft>(INITIAL);
   // 사용자가 건드린 필드만 오류를 보여 준다. 빈 새 폼에 오류가 가득 보이지 않게 한다.
   const [touched, setTouched] = useState<Set<keyof ProjectDraft>>(new Set());
@@ -64,7 +94,7 @@ export function ProjectCreatePage() {
     setTouched((t) => new Set(t).add(key));
   }
 
-  if (CREATABLE_ORGS.length === 0)
+  if (orgs.length === 0)
     return (
       <>
         <PageHeader
@@ -92,7 +122,9 @@ export function ProjectCreatePage() {
         }
       />
       <SampleDataNotice>
-        입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다. 조직 목록은 예시입니다.
+        {source === "static"
+          ? "입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다. 조직 목록은 예시입니다."
+          : "입력은 이 화면에서만 유지됩니다. 프로젝트 생성은 아직 연결되지 않았습니다."}
       </SampleDataNotice>
       {dirty && <DirtyIndicator />}
       {issues.length > 0 && (
@@ -111,7 +143,7 @@ export function ProjectCreatePage() {
             onChange={(e) => update("organizationId", e.target.value)}
           >
             <option value="">선택하세요</option>
-            {CREATABLE_ORGS.map((o) => (
+            {orgs.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.code} {o.name}
               </option>

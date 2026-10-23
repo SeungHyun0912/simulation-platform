@@ -61,7 +61,8 @@ describe("AppShell", () => {
   it("프로젝트 경로에서는 현재 프로젝트 ID와 계약 미승인 안내를 상시 표시한다", () => {
     renderApp("/projects/demo-1/assets");
     expect(screen.getByLabelText("현재 프로젝트")).toHaveTextContent("demo-1");
-    expect(screen.getByRole("note")).toHaveTextContent("PENDING_REVIEW");
+    expect(screen.getByRole("note")).toHaveTextContent("정적 예시 화면입니다");
+    expect(screen.getByRole("note")).toHaveAttribute("data-source", "static");
     expect(screen.getByRole("heading", { level: 1, name: "설비·공간" })).toBeInTheDocument();
   });
 
