@@ -1,7 +1,8 @@
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import { Button } from "../../shared/components/Button";
+import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
 import { CheckboxField, SelectField, TextField } from "../../shared/components/Fields";
-import { KnownValueInput } from "../../shared/components/KnownValueInput";
+import { KnownValueInput, knownValueText } from "../../shared/components/KnownValueInput";
 import { FieldGrid, Note, Section } from "../../shared/components/Layout";
 import {
   CONFIRMATION_LABELS,
@@ -38,9 +39,26 @@ export const StepEditPanel = forwardRef<HTMLHeadingElement, Props>(function Step
 ) {
   const set = (patch: Partial<StepView>) => onChange({ ...step, ...patch });
 
+  // 방식을 바꾸면 입력한 값이 사라질 때는 먼저 확인한다. 취소하면 선택은 그대로 유지된다.
+  const [pending, setPending] = useState<{ lost: string[]; apply: () => void } | null>(null);
+
+  function confirmIfLost(lost: string[], apply: () => void) {
+    if (lost.length === 0) apply();
+    else setPending({ lost, apply });
+  }
+
   function setProcessingKind(kind: ProcessingKind) {
     const unit = processingValueUnit(kind);
     const keep = unit !== null && step.processing.value.unit === unit;
+    const lost: string[] = [];
+    if (!keep && step.processing.value.mode === "value")
+      lost.push(`값: ${knownValueText(step.processing.value)}`);
+    if (kind !== "per_reference_length" && step.processing.referenceLength.mode === "value")
+      lost.push(`기준 길이: ${knownValueText(step.processing.referenceLength)}`);
+    confirmIfLost(lost, () => applyProcessingKind(kind, keep, unit));
+  }
+
+  function applyProcessingKind(kind: ProcessingKind, keep: boolean, unit: string | null) {
     set({
       processing: {
         kind,
@@ -53,6 +71,15 @@ export const StepEditPanel = forwardRef<HTMLHeadingElement, Props>(function Step
   }
 
   function setOutputMode(mode: OutputMode) {
+    const lost: string[] = [];
+    if (mode !== "configured_units" && step.output.unitCount.mode === "value")
+      lost.push(`산출 수량: ${knownValueText(step.output.unitCount)}`);
+    if (mode !== "configured_units" && mode !== "split_length" && step.output.length.mode === "value")
+      lost.push(`산출 길이: ${knownValueText(step.output.length)}`);
+    confirmIfLost(lost, () => applyOutputMode(mode));
+  }
+
+  function applyOutputMode(mode: OutputMode) {
     // 해당 방식에서 쓰지 않는 입력은 남기지 않는다.
     set({
       output: {
@@ -79,6 +106,24 @@ export const StepEditPanel = forwardRef<HTMLHeadingElement, Props>(function Step
 
   return (
     <div className={styles.panel}>
+      <ConfirmDialog
+        open={pending !== null}
+        title="입력한 값이 사라집니다"
+        confirmLabel="값을 버리고 변경"
+        cancelLabel="취소"
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          pending?.apply();
+          setPending(null);
+        }}
+      >
+        <p>방식을 바꾸면 아래 값이 지워집니다. 지워진 값은 되돌리기 전에는 복구되지 않습니다.</p>
+        <ul>
+          {pending?.lost.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      </ConfirmDialog>
       <div className={styles.head}>
         <h2 ref={headingRef} tabIndex={-1} className={styles.title}>
           단계 편집: {step.name || "(이름 없음)"}
