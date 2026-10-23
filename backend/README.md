@@ -57,6 +57,9 @@ python -m venv .venv
   자산 버전 `GET·POST .../assets/{id}/revisions`, `GET·PATCH /projects/{p}/asset-revisions/{rid}`, `POST .../submit|reject|approve`(0.2.0).
   사양: `contracts/04_api_contract.md` §3.1·§3.2, 변경 기록: `contracts/CHANGELOG.md`.
 - 개발용 시드(조직·사용자 3·프로젝트 1, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_dev_data.py --yes`. 개발 DB에는 migration을 먼저 적용해야 한다.
+- **시험 데이터 시드**(프로젝트 3·사용자 추가·자산 60+·버전 상태/용량/규칙 케이스, "[시험]" 표시, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_demo_data.py --yes`.
+  자산·버전은 실제 API(서비스 계층)로 생성하므로 검증 규칙·감사 로그가 운영 경로와 같다. 구성은 `docs/communication/request-from-backend.md`의 "현재 Backend 상태".
+- 개발 API 서버 한 줄 실행(개발 DB + `AUTH_MODE=local`): `.\scripts\run_dev_api.ps1 [-Port 8000]`.
 - 계약 변경 절차: CR 승인 → 코드 → `python -m simulation_platform.api.export_openapi` → `contracts/openapi.json`·`contract-status.json` 해시·`contracts/CHANGELOG.md` 갱신.
   `python scripts/generate_contract_examples.py ../contracts/examples/first-scope`로 예제 재생성(스키마가 head인 `_test` DB 필요).
   계약 테스트(`tests/contract`)가 스냅샷·해시·예제의 불일치를 실패로 처리한다.
