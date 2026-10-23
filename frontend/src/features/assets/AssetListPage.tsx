@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
-import { Button } from "../../shared/components/Button";
+import { Button, LinkButton } from "../../shared/components/Button";
 import { DataTable, type Column, type SortState } from "../../shared/components/DataTable";
 import { SelectField, TextField } from "../../shared/components/Fields";
 import { FilterBar, PreviewStateLinks, SampleDataNotice } from "../../shared/components/Layout";
@@ -10,6 +10,7 @@ import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
+import { canEdit } from "../projects/projectView";
 import { useCurrentProject } from "../projects/useCurrentProject";
 import { KIND_LABELS, portsText, type AssetInfo, type AssetKind } from "./assetView";
 import { useAssetList } from "./queries";
@@ -18,7 +19,7 @@ import { useAssetList } from "./queries";
 const SORT_KEYS = ["sort_order", "code", "name"] as const;
 
 export function AssetListPage() {
-  const { projectId, label } = useCurrentProject();
+  const { projectId, label, project } = useCurrentProject();
   const source = useDataSource();
   const [params, setParams] = useSearchParams();
   // ?state= 미리보기는 정적 모드에서만 쓴다. API 모드에서는 실제 요청 결과만 보여 준다.
@@ -148,9 +149,15 @@ export function AssetListPage() {
         breadcrumbs={[{ label: "프로젝트", to: "/" }, { label }, { label: "설비·공간" }]}
         renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
         actions={
-          <Button variant="primary" disabled title="자산 생성은 아직 연결되지 않았습니다">
-            자산 추가 (연동 후)
-          </Button>
+          canEdit(project?.role) ? (
+            <LinkButton to={`/projects/${projectId}/assets/new`} variant="primary">
+              자산 추가
+            </LinkButton>
+          ) : (
+            <Button variant="primary" disabled title="이 역할은 자산을 만들 수 없습니다(관리자·편집자만)">
+              자산 추가
+            </Button>
+          )
         }
       />
       {source === "static" && (

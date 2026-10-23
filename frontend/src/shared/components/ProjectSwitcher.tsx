@@ -2,7 +2,14 @@ import { DropdownMenu } from "radix-ui";
 import styles from "./ProjectSwitcher.module.css";
 
 /** 화면용 프로젝트 항목. accent는 색 외에 이름·코드도 함께 보여 주는 보조 구분이다. */
-export type ProjectOption = { id: string; code: string; name: string; accent: 1 | 2 | 3 | 4 };
+export type ProjectOption = {
+  id: string;
+  code: string;
+  name: string;
+  accent: 1 | 2 | 3 | 4;
+  /** 보관된 프로젝트. 목록에는 포함하되 보관됨을 표시한다(제외 여부는 화면이 정한다). */
+  archived?: boolean;
+};
 
 type Props = {
   projects: ProjectOption[];
@@ -43,7 +50,10 @@ export function ProjectSwitcher({ projects, currentId, onSelect }: Props) {
                     data-accent={p.accent}
                   >
                     <DropdownMenu.ItemIndicator className={styles.check}>✓</DropdownMenu.ItemIndicator>
-                    <span className={styles.name}>{p.name}</span>
+                    <span className={styles.name}>
+                      {p.name}
+                      {p.archived ? " (보관됨)" : ""}
+                    </span>
                     <code className={styles.code}>{p.code}</code>
                   </DropdownMenu.RadioItem>
                 ))}
