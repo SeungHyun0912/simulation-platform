@@ -13,7 +13,7 @@ describe("API 모드: 앱 셸과 프로젝트", () => {
     expect(screen.getByRole("note")).toHaveAttribute("data-source", "api");
     // 계약 버전은 생성물(CONTRACT.json)에서 읽으므로 계약이 바뀌어도 하드코딩된 값과 어긋나지 않는다.
     expect(screen.getByRole("note")).toHaveTextContent(`API 연동 모드입니다(계약 ${contractMeta.contract_version})`);
-    expect(screen.getByRole("note")).toHaveTextContent("용량·규칙 저장");
+    expect(screen.getByRole("note")).toHaveTextContent("용량·규칙(버전)의 저장·검토 흐름은 연결되어 있고");
     await waitFor(() => expect(screen.getByRole("group", { name: "현재 프로젝트" })).toHaveTextContent("SRV-P1"));
     await user.click(screen.getByRole("button", { name: /프로젝트 전환/ }));
     const menu = await screen.findByRole("menu");

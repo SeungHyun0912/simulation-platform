@@ -108,10 +108,11 @@ describe("assetView·ruleLabels", () => {
     expect(validateInfoDraft({ ...d, sortOrder: "-1" }, "equipment").sortOrder).toBeDefined();
     expect(validateInfoDraft({ ...d, spaceType: "" }, "storage").spaceType).toBeDefined();
   });
-  it("버전 편집본은 포트별 용량을 portId로 담는다", () => {
+  it("버전 편집본은 포트별 용량·규칙을 portId로 담는다", () => {
     const rev = SAMPLE_REVISIONS[EQ1.id]![0]!;
     const edit = toRevisionEdit(rev);
-    expect(Object.keys(edit.portCapacities)).toEqual(rev.ports.map((p) => p.portId));
+    expect(Object.keys(edit.ports)).toEqual(rev.ports.map((p) => p.portId));
+    expect(Object.keys(edit.ports[rev.ports[0]!.portId]!)).toEqual(["capacity", "dispatch", "release"]);
   });
   it("확정(D-U05·D-U06)과 미정(OPEN-003)을 구분해 표시하고 미정을 채우지 않는다", () => {
     const rule = SAMPLE_REVISIONS[EQ1.id]![0]!.ports[0]!;
@@ -219,10 +220,14 @@ describe("설비 상세: 설비(승인본 + 초안)", () => {
     expect(panel).toHaveTextContent("OPEN-003");
   });
 
-  it("배출 규칙은 읽기 전용으로 확정과 미정을 구분해 보여 준다", () => {
+  it("이동·배출 규칙은 선택 입력이며 확정(D-U05·D-U06)과 미정(OPEN-003)을 구분해 보여 준다", () => {
     renderApp(at(A, EQ1));
-    expect(screen.getAllByText(/확정, D-U05/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/미정, OPEN-003/).length).toBeGreaterThan(0);
+    const dispatch = screen.getByLabelText("IN 이동 조건") as HTMLSelectElement;
+    expect(dispatch.value).toBe("when_destination_available");
+    expect(within(dispatch).getByRole("option", { name: /D-U05 확정/ })).toBeInTheDocument();
+    expect((screen.getByLabelText("IN 배출 조건") as HTMLSelectElement).value).toBe("when_destination_accepts");
+    expect((screen.getByLabelText("IN 이동 중 설비 예약") as HTMLSelectElement).value).toBe("unknown"); // 미정을 채우지 않는다
+    expect(within(dispatch).getByRole("option", { name: /OPEN-003/ })).toBeInTheDocument(); // 미정 선택지도 근거를 표시한다
   });
 
   it("용량에 0을 입력하면 오류이고 대기 불가를 안내한다", async () => {
@@ -249,14 +254,14 @@ describe("설비 상세: 설비(승인본 + 초안)", () => {
     ]);
   });
 
-  it("기본 정보 변경과 용량 변경은 각각 따로 표시되고 저장 버튼은 연동 전이라 비활성이다", async () => {
+  it("기본 정보 변경과 용량 변경은 각각 따로 표시되고 정적 예시에서는 저장 버튼이 비활성이다", async () => {
     const user = userEvent.setup();
     renderApp(at(A, EQ1));
     await user.type(screen.getByLabelText("모델"), "X");
     expect(screen.getByText(/기본 정보에 저장하지 않은 변경/)).toBeInTheDocument();
     expect(screen.queryByText(/용량·규칙에 저장하지 않은 변경/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /기본 정보 저장/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /용량 저장/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /용량·규칙 저장/ })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "기본 정보 되돌리기" }));
     expect(screen.queryByText(/기본 정보에 저장하지 않은 변경/)).not.toBeInTheDocument();
   });

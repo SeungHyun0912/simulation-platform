@@ -183,8 +183,18 @@ export type FakeRequest = {
 export type FakeResponse = { status: number; body?: unknown; headers?: Record<string, string> };
 
 /** 가짜 서버의 가변 상태. 서버마다 새로 복제하므로 테스트끼리 영향을 주지 않는다. */
-export type FakeState = { assets: Schemas["AssetOut"][] };
-export const freshState = (): FakeState => ({ assets: structuredClone(ASSETS) });
+export type FakeState = {
+  assets: Schemas["AssetOut"][];
+  /** 모든 자산의 버전. 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
+  revisions: Schemas["AssetRevisionOut"][];
+  /** 현재 요청자의 프로젝트 역할. editor/viewer는 승인·반려(admin 전용)나 쓰기에서 403을 받는다. */
+  role: "admin" | "editor" | "viewer";
+};
+export const freshState = (): FakeState => ({
+  assets: structuredClone(ASSETS),
+  revisions: structuredClone(REVISIONS_OF_ASSET_1),
+  role: "admin",
+});
 
 export const errorBody = (status: number, code: string, message: string, details: unknown[] = []): FakeResponse => ({
   status,
@@ -306,6 +316,160 @@ function createAsset(state: FakeState, req: FakeRequest): FakeResponse {
   return { status: 201, headers: { ...etag(1), Location: `/api/v1/projects/${P1}/assets/${id}` }, body: { data: created } };
 }
 
+const forbidden = () => errorBody(403, "FORBIDDEN", "이 작업을 할 권한이 없습니다.");
+const missingIfMatch = () =>
+  errorBody(428, "PRECONDITION_REQUIRED", "If-Match 헤더가 필요합니다.", [{ message: "If-Match 필수", field_path: "/if-match" }]);
+const staleVersion = (current: number) =>
+  errorBody(412, "EDIT_CONFLICT", "다른 곳에서 먼저 수정되었습니다.", [{ message: `현재 버전은 ${current}입니다.`, field_path: "/row_version" }]);
+
+/** 서버가 저장 시 다시 계산하는 검증 결과(단순화): 배출 규칙이 미정인 포트마다 경고 */
+function revisionIssues(r: Schemas["AssetRevisionOut"]): Schemas["AssetRevisionOut"]["issues"] {
+  return r.ports.flatMap((p, i) =>
+    p.release_rule.mode === "unknown"
+      ? [{ severity: "warning" as const, rule_id: "VAL-POLICY-002", entity_id: r.id, field_path: `/ports/${i}/release_rule`, message: `${p.role} 배출 규칙이 미정입니다.`, resolution: "배출 규칙을 확정하세요." }]
+      : [],
+  );
+}
+
+function summary(r: Schemas["AssetRevisionOut"]) {
+  return { id: r.id, revision_no: r.revision_no, status: r.status, approved_at: r.approved_at };
+}
+
+/** 버전 상태가 바뀌면 자산의 current/latest 요약도 서버처럼 같이 바꾼다. */
+function syncAsset(state: FakeState, assetId: string) {
+  const asset = state.assets.find((a) => a.id === assetId);
+  if (!asset) return;
+  const mine = state.revisions.filter((r) => r.asset_id === assetId).sort((a, b) => b.revision_no - a.revision_no);
+  const approved = mine.find((r) => r.status === "approved");
+  asset.current_revision = approved ? summary(approved) : null;
+  asset.latest_revision = mine[0] ? summary(mine[0]) : null;
+}
+
+function validCapacity(c: any, path: string): FakeResponse | null { // eslint-disable-line @typescript-eslint/no-explicit-any -- 요청 본문 검사
+  if (!c || !["unknown", "finite", "unlimited", "not_allowed"].includes(c.mode)) return invalid(path, "용량 모드가 올바르지 않습니다.");
+  if (c.mode === "finite") {
+    if (!/^(0|[1-9]\d*)(\.\d{1,6})?$/.test(String(c.value)) || Number(c.value) <= 0) return invalid(`${path}/value`, "0보다 큰 값이어야 합니다.");
+    if (!["item", "bobbin_slot", "pallet_slot", "kg", "m2"].includes(c.unit)) return invalid(`${path}/unit`, "용량에 쓸 수 없는 단위입니다.");
+  } else if ("value" in c || "unit" in c) return invalid(path, "finite가 아니면 value·unit을 보낼 수 없습니다.");
+  if ("status" in c) return invalid(`${path}/status`, "status는 서버가 계산합니다.");
+  return null;
+}
+
+function toCapacityOut(c: any): Schemas["Capacity"] { // eslint-disable-line @typescript-eslint/no-explicit-any -- 요청 본문 변환
+  return c.mode === "finite"
+    ? { mode: "finite", value: c.value, unit: c.unit, status: "confirmed" }
+    : { mode: c.mode, value: null, unit: null, status: c.mode === "unknown" ? "unknown" : "confirmed" };
+}
+
+function patchRevision(state: FakeState, req: FakeRequest, revisionId: string): FakeResponse {
+  const rev = state.revisions.find((r) => r.id === revisionId);
+  if (!rev) return notFound();
+  if (state.role === "viewer") return forbidden();
+  const ifMatch = req.headers["If-Match"];
+  if (ifMatch === undefined) return missingIfMatch();
+  if (rev.status !== "draft") return errorBody(409, "VERSION_IMMUTABLE", "초안이 아닌 버전은 수정할 수 없습니다.", [{ message: `현재 상태: ${rev.status}`, field_path: "/status" }]);
+  if (Number(ifMatch.replace(/"/g, "")) !== rev.row_version) return staleVersion(rev.row_version);
+  const b = req.body ?? {};
+  for (const k of Object.keys(b)) if (!["storage_capacity", "ports", "notes"].includes(k)) return invalid(`/${k}`, "허용되지 않는 필드입니다.");
+  if (Object.keys(b).length === 0) return invalid("/", "변경할 필드가 없습니다.");
+  if (b.storage_capacity) {
+    const e = validCapacity(b.storage_capacity, "/storage_capacity");
+    if (e) return e;
+  }
+  for (const [i, p] of (b.ports ?? []).entries()) {
+    const target = rev.ports.find((x) => x.port_id === p.port_id);
+    if (!target) return invalid(`/ports/${i}/port_id`, "이 버전에 없는 포트입니다.");
+    if (p.buffer_capacity) {
+      const e = validCapacity(p.buffer_capacity, `/ports/${i}/buffer_capacity`);
+      if (e) return e;
+    }
+    if (p.dispatch_rule && !["unknown", "when_destination_available"].includes(p.dispatch_rule.mode)) return invalid(`/ports/${i}/dispatch_rule/mode`, "알 수 없는 이동 규칙입니다.");
+    if (p.release_rule && !["unknown", "when_destination_accepts"].includes(p.release_rule.mode)) return invalid(`/ports/${i}/release_rule/mode`, "알 수 없는 배출 규칙입니다.");
+  }
+  if (b.storage_capacity) rev.storage_capacity = toCapacityOut(b.storage_capacity);
+  for (const p of b.ports ?? []) {
+    const target = rev.ports.find((x) => x.port_id === p.port_id)!;
+    if (p.buffer_capacity) target.buffer_capacity = toCapacityOut(p.buffer_capacity);
+    if (p.dispatch_rule) target.dispatch_rule = p.dispatch_rule;
+    if (p.release_rule) target.release_rule = p.release_rule;
+  }
+  rev.issues = revisionIssues(rev);
+  rev.row_version += 1;
+  rev.updated_at = "2026-10-23T01:00:00Z";
+  return { status: 200, headers: etag(rev.row_version), body: { data: rev } };
+}
+
+/** 전이 규칙: submit draft→in_review(edit 권한), approve in_review→approved(admin), reject in_review→draft(admin, 사유 필수) */
+function transitionRevision(state: FakeState, req: FakeRequest, revisionId: string, action: string): FakeResponse {
+  const rev = state.revisions.find((r) => r.id === revisionId);
+  if (!rev) return notFound();
+  if (state.role === "viewer" || (action !== "submit" && state.role !== "admin")) return forbidden();
+  const ifMatch = req.headers["If-Match"];
+  if (ifMatch === undefined) return missingIfMatch();
+  const from = action === "submit" ? "draft" : "in_review";
+  if (rev.status !== from) return errorBody(409, "INVALID_STATE_TRANSITION", "이 상태에서는 할 수 없는 작업입니다.", [{ message: `현재 상태: ${rev.status}`, field_path: "/status" }]);
+  if (Number(ifMatch.replace(/"/g, "")) !== rev.row_version) return staleVersion(rev.row_version);
+  if (action === "reject") {
+    const reason = req.body?.reason;
+    if (typeof reason !== "string" || reason.trim() === "" || reason.length > 1000) return invalid("/reason", "사유는 1~1000자여야 합니다.");
+    rev.rejection_reason = reason;
+    rev.rejected_at = "2026-10-23T03:00:00Z";
+    rev.status = "draft";
+  } else if (action === "submit") {
+    rev.status = "in_review";
+    rev.submitted_at = "2026-10-23T03:00:00Z";
+  } else {
+    for (const o of state.revisions) if (o.asset_id === rev.asset_id && o.status === "approved") o.status = "superseded";
+    rev.status = "approved";
+    rev.approved_at = "2026-10-23T03:00:00Z";
+  }
+  rev.row_version += 1;
+  syncAsset(state, rev.asset_id);
+  return { status: 200, headers: etag(rev.row_version), body: { data: rev } };
+}
+
+/** 새 초안: 열린 버전이 있으면 409 REVISION_DRAFT_EXISTS. 승인본(없으면 미정)의 값으로 시작한다. */
+function createRevision(state: FakeState, assetId: string): FakeResponse {
+  const asset = state.assets.find((a) => a.id === assetId);
+  if (!asset) return notFound();
+  if (state.role === "viewer") return forbidden();
+  const mine = state.revisions.filter((r) => r.asset_id === assetId);
+  if (mine.some((r) => r.status === "draft" || r.status === "in_review"))
+    return errorBody(409, "REVISION_DRAFT_EXISTS", "이미 열린 버전이 있습니다.", [{ message: "자산당 열린 버전은 하나입니다.", field_path: "/" }]);
+  const approved = mine.find((r) => r.status === "approved");
+  const unknownCap: Schemas["Capacity"] = { mode: "unknown", value: null, unit: null, status: "unknown" };
+  const n = Math.max(0, ...mine.map((r) => r.revision_no)) + 1;
+  const rev: Schemas["AssetRevisionOut"] = {
+    id: uuid(500 + state.revisions.length, "d"),
+    project_id: P1,
+    asset_id: assetId,
+    revision_no: n,
+    status: "draft",
+    schema_version: "1.0",
+    storage_capacity: approved ? structuredClone(approved.storage_capacity) : asset.kind === "equipment" ? null : unknownCap,
+    ports: approved
+      ? structuredClone(approved.ports)
+      : asset.kind === "equipment"
+        ? asset.ports.map((p) => ({ port_id: p.id, port_key: p.port_key, role: p.role as "IN" | "OUT", buffer_capacity: unknownCap, dispatch_rule: { mode: "unknown" as const }, release_rule: { mode: "unknown" as const } }))
+        : [],
+    notes: null,
+    issues: [],
+    submitted_at: null,
+    submitted_by: null,
+    rejection_reason: null,
+    rejected_at: null,
+    approved_at: null,
+    approved_by: null,
+    created_at: "2026-10-23T04:00:00Z",
+    updated_at: null,
+    row_version: 1,
+  };
+  rev.issues = revisionIssues(rev);
+  state.revisions.push(rev);
+  syncAsset(state, assetId);
+  return { status: 201, headers: etag(1), body: { data: rev } };
+}
+
 /** 표준 가짜 서버: P1은 접근 가능(관리자), P2는 조회자, 그 밖의 프로젝트는 404(접근 불가와 없음을 구분하지 않음). */
 export function standardHandler(req: FakeRequest, state: FakeState = freshState()): FakeResponse {
   const { method, path, query } = req;
@@ -328,12 +492,23 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
       if (revisions)
         return {
           status: 200,
-          body: { data: asset.id === uuid(1) ? REVISIONS_OF_ASSET_1 : [], page: { limit: 200, next_cursor: null } },
+          body: {
+            data: state.revisions.filter((r) => r.asset_id === asset.id).sort((a, b) => b.revision_no - a.revision_no),
+            page: { limit: 200, next_cursor: null },
+          },
         };
       return { status: 200, headers: etag(asset.row_version), body: { data: asset } };
     }
     if (method === "PATCH" && assetId && !revisions) return patchAsset(state, req, assetId);
+    if (method === "POST" && assetId && revisions) return createRevision(state, assetId);
     if (method === "POST" && !assetId) return createAsset(state, req);
+  }
+  const rm = /^\/projects\/([^/]+)\/asset-revisions\/([^/]+)(?:\/(submit|approve|reject))?$/.exec(path);
+  if (rm && rm[1] === P1) {
+    const rev = state.revisions.find((r) => r.id === rm[2]);
+    if (method === "GET") return rev ? { status: 200, headers: etag(rev.row_version), body: { data: rev } } : notFound();
+    if (method === "PATCH" && !rm[3]) return patchRevision(state, req, rm[2]!);
+    if (method === "POST" && rm[3]) return transitionRevision(state, req, rm[2]!, rm[3]);
   }
   return notFound();
 }

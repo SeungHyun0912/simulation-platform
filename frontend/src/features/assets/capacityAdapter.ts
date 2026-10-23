@@ -1,3 +1,4 @@
+import type { Schemas } from "../../shared/api/types";
 import { getUnit } from "../../shared/units/units";
 import type { KnownValue } from "../../shared/components/KnownValueInput";
 
@@ -20,15 +21,24 @@ export type CapacityDto = {
   status?: string;
 };
 
-/** 요청 모양(쓰기). finite 외 모드는 mode만 보낸다. */
+/** 계약이 받는 용량 단위(생성 타입의 열거형). 문자열 `string`으로 넓히지 않는다. */
+export type CapacityUnit = NonNullable<Schemas["Capacity"]["unit"]>;
+
+/** 요청 모양(쓰기). finite 외 모드는 mode만 보낸다. 생성된 `Capacity` 스키마에 대입 가능해야 한다. */
 export type CapacityRequest =
-  | { mode: "finite"; value: string; unit: string }
+  | { mode: "finite"; value: string; unit: CapacityUnit }
   | { mode: "unknown" | "unlimited" | "not_allowed" };
+
+function asCapacityUnit(unit: string): CapacityUnit {
+  if ((CAPACITY_UNITS as readonly string[]).includes(unit)) return unit as CapacityUnit;
+  // 입력 검증(validateCapacity)이 먼저 막아야 하는 값이다. 잘못된 단위를 조용히 바꿔 보내지 않는다.
+  throw new Error(`용량에 쓸 수 없는 단위입니다: ${unit}`);
+}
 
 export function toCapacityRequest(kv: KnownValue): CapacityRequest {
   switch (kv.mode) {
     case "value":
-      return { mode: "finite", value: kv.value, unit: kv.unit ?? CAPACITY_UNITS[0] };
+      return { mode: "finite", value: kv.value, unit: asCapacityUnit(kv.unit ?? CAPACITY_UNITS[0]) };
     case "unknown":
     case "unlimited":
     case "not_allowed":
