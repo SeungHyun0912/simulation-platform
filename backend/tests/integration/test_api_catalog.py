@@ -306,6 +306,10 @@ def test_create_and_update_are_audited(client, db, ctx, kind, prefix):
     assert actions == f"{prefix}.create,{prefix}.update"
 
 
-def test_me_projects_include_status(client, ctx):
+def test_me_projects_include_status_and_timezone(client, ctx):
     me = client.get(f"{API}/me", headers=ctx["admin"]).json()["data"]
     assert {p["status"] for p in me["projects"]} == {"active"}
+    # /me의 시간대는 GET /projects/{id}의 값과 같아야 한다(화면 시각 표시 기준).
+    project = client.get(f"{API}/projects/{ctx['pid']}", headers=ctx["admin"]).json()["data"]
+    listed = next(p for p in me["projects"] if p["id"] == str(ctx["pid"]))
+    assert listed["timezone"] == project["timezone"] == "Asia/Seoul"

@@ -36,7 +36,8 @@ def test_me_lists_organizations_and_projects(client, db, world):
     assert data["user"]["id"] == str(world["users"]["admin"])
     assert [o["role"] for o in data["organizations"]] == ["admin"]
     assert {"id": str(pid), "organization_id": str(world["org"]), "code": "ME-1",
-            "name": "프로젝트", "status": "active", "role": "admin"} in data["projects"]
+            "name": "프로젝트", "status": "active", "timezone": "Asia/Seoul",
+            "role": "admin"} in data["projects"]
 
 
 # --- 프로젝트 생성 ---------------------------------------------------------------
