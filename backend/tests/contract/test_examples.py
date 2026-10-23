@@ -11,26 +11,39 @@ import pytest
 from simulation_platform.schemas.asset import AssetCreate, AssetOut, AssetPatch
 from simulation_platform.schemas.common import ErrorEnvelope, ListOut, Single
 from simulation_platform.schemas.project import ProjectCreate, ProjectOut
+from simulation_platform.schemas.revision import AssetRevisionOut, RejectBody, RevisionPatch
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "contracts" / "examples" / "first-scope"
 
-# 파일 이름 → (요청 모델 또는 None, 응답 모델)
+ASSET = Single[AssetOut]
+REVISION = Single[AssetRevisionOut]
+ERROR = ErrorEnvelope
+
+# 파일 이름 → (요청 모델 또는 None, 응답 모델, 기대 상태 코드)
 EXPECTED = {
-    "project.create": (ProjectCreate, Single[ProjectOut]),
-    "asset.create.equipment": (AssetCreate, Single[AssetOut]),
-    "asset.create.storage": (AssetCreate, Single[AssetOut]),
-    "asset.list": (None, ListOut[AssetOut]),
-    "asset.patch": (AssetPatch, Single[AssetOut]),
-    "error.edit-conflict": (None, ErrorEnvelope),
-    "error.precondition-required": (None, ErrorEnvelope),
-    "error.asset-code-conflict": (None, ErrorEnvelope),
-    "error.validation": (None, ErrorEnvelope),
-    "error.not-found": (None, ErrorEnvelope),
+    "project.create": (ProjectCreate, Single[ProjectOut], 201),
+    "asset.create.equipment": (AssetCreate, ASSET, 201),
+    "asset.create.storage": (AssetCreate, ASSET, 201),
+    "asset.get": (None, ASSET, 200),
+    "asset.list": (None, ListOut[AssetOut], 200),
+    "asset.patch": (AssetPatch, ASSET, 200),
+    "revision.create.equipment": (None, REVISION, 201),
+    "revision.create.storage": (None, REVISION, 201),
+    "revision.patch.equipment": (RevisionPatch, REVISION, 200),
+    "revision.submit": (None, REVISION, 200),
+    "revision.reject": (RejectBody, REVISION, 200),
+    "revision.approve": (None, REVISION, 200),
+    "revision.list": (None, ListOut[AssetRevisionOut], 200),
+    "error.edit-conflict": (None, ERROR, 412),
+    "error.precondition-required": (None, ERROR, 428),
+    "error.asset-code-conflict": (None, ERROR, 409),
+    "error.validation": (None, ERROR, 422),
+    "error.not-found": (None, ERROR, 404),
+    "error.revision-draft-exists": (None, ERROR, 409),
+    "error.validation-capacity": (None, ERROR, 422),
+    "error.version-immutable": (None, ERROR, 409),
+    "error.invalid-state-transition": (None, ERROR, 409),
 }
-STATUS = {"project.create": 201, "asset.create.equipment": 201, "asset.create.storage": 201,
-          "asset.list": 200, "asset.patch": 200, "error.edit-conflict": 412,
-          "error.precondition-required": 428, "error.asset-code-conflict": 409,
-          "error.validation": 422, "error.not-found": 404}
 
 
 def _load(name):
@@ -43,11 +56,10 @@ def test_every_example_file_is_covered():
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_example_matches_dto(name):
-    request_model, response_model = EXPECTED[name]
+    request_model, response_model, status = EXPECTED[name]
     example = _load(name)
-    response = example["response"]
-    assert response["status"] == STATUS[name]
-    response_model.model_validate(response["body"])
+    assert example["response"]["status"] == status
+    response_model.model_validate(example["response"]["body"])
     if request_model is not None:
         request_model.model_validate(example["request"]["body"])
 
@@ -55,7 +67,22 @@ def test_example_matches_dto(name):
 def test_success_examples_carry_etag_and_errors_do_not_expose_internals():
     assert _load("asset.create.equipment")["response"]["headers"]["ETag"] == '"1"'
     assert _load("asset.patch")["response"]["headers"]["ETag"] == '"2"'
+    assert _load("revision.create.equipment")["response"]["headers"]["ETag"] == '"1"'
+    assert _load("revision.approve")["response"]["headers"]["ETag"] == '"4"'
     for name in (n for n in EXPECTED if n.startswith("error.")):
         body = _load(name)["response"]["body"]["error"]
         assert body["request_id"] == "req-example"
         assert "Traceback" not in json.dumps(body)
+
+
+def test_revision_examples_show_the_documented_workflow():
+    created = _load("revision.create.equipment")["response"]["body"]["data"]
+    assert created["status"] == "draft" and created["storage_capacity"] is None
+    assert all(p["buffer_capacity"]["mode"] == "unknown" for p in created["ports"])
+    approved = _load("revision.approve")["response"]["body"]["data"]
+    assert approved["status"] == "approved" and approved["approved_by"]
+    rejected = _load("revision.reject")["response"]["body"]["data"]
+    assert rejected["status"] == "draft" and rejected["rejection_reason"]
+    asset = _load("asset.get")["response"]["body"]["data"]
+    assert asset["current_revision"]["status"] == "approved"
+    assert asset["latest_revision"]["revision_no"] == 2

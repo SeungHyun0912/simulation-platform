@@ -44,6 +44,11 @@ def require_write(access: ProjectAccess) -> None:
         raise ForbiddenError("이 프로젝트를 수정할 권한이 없습니다.")
 
 
+def require_admin(access: ProjectAccess, message: str) -> None:
+    if access.role != "admin":
+        raise ForbiddenError(message)
+
+
 def _validate_timezone(name: str) -> None:
     try:
         ZoneInfo(name)

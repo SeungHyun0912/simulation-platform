@@ -74,3 +74,20 @@ class ProjectCodeConflict(DomainError):
 class AssetCodeConflict(DomainError):
     code = "ASSET_CODE_CONFLICT"
     status_code = 409
+
+
+class VersionImmutableError(DomainError):
+    """초안이 아닌 버전의 내용을 바꾸려 할 때(승인·검토 중·대체됨)."""
+
+    code = "VERSION_IMMUTABLE"
+    status_code = 409
+
+
+class RevisionDraftExistsError(DomainError):
+    code = "REVISION_DRAFT_EXISTS"
+    status_code = 409
+
+
+class InvalidStateTransitionError(DomainError):
+    code = "INVALID_STATE_TRANSITION"
+    status_code = 409

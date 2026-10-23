@@ -12,6 +12,7 @@ from simulation_platform.schemas.common import (
     StrictIn,
     UtcDatetime,
 )
+from simulation_platform.schemas.revision import RevisionSummary
 
 AssetKind = Literal["equipment", "storage", "dock"]
 SortOrder = Annotated[int, Field(ge=0, le=2_147_483_647)]
@@ -49,6 +50,9 @@ class AssetOut(Out):
     equipment: EquipmentOut | None
     space: SpaceOut | None
     ports: list[PortOut]
+    # 0.2.0 추가(비파괴): 최신 승인본과 가장 최근 버전의 요약. 버전이 없으면 null.
+    current_revision: RevisionSummary | None
+    latest_revision: RevisionSummary | None
     created_at: UtcDatetime
     updated_at: UtcDatetime | None
     row_version: int

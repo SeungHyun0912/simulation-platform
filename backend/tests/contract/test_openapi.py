@@ -19,6 +19,14 @@ EXPECTED = {
     ("get", "/api/v1/projects/{project_id}/assets/{asset_id}"),
     ("patch", "/api/v1/projects/{project_id}/assets/{asset_id}"),
     ("get", "/api/v1/projects/{project_id}/assets/{asset_id}/ports"),
+    # scope asset-revisions (contract 0.2.0)
+    ("get", "/api/v1/projects/{project_id}/assets/{asset_id}/revisions"),
+    ("post", "/api/v1/projects/{project_id}/assets/{asset_id}/revisions"),
+    ("get", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}"),
+    ("patch", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}"),
+    ("post", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}/submit"),
+    ("post", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}/reject"),
+    ("post", "/api/v1/projects/{project_id}/asset-revisions/{revision_id}/approve"),
 }
 
 
@@ -36,12 +44,50 @@ def test_local_debug_auth_is_not_exposed():
     assert "X-Debug-User" not in text and "x-debug-user" not in text.lower()
 
 
-def test_patch_operations_declare_if_match_and_precondition_errors():
+REVISION = "/api/v1/projects/{project_id}/asset-revisions/{revision_id}"
+
+
+def test_mutating_operations_declare_if_match_and_precondition_errors():
     paths = _schema()["paths"]
-    for path in ("/api/v1/projects/{project_id}", "/api/v1/projects/{project_id}/assets/{asset_id}"):
-        op = paths[path]["patch"]
-        assert any(p["name"] == "if-match" and p["in"] == "header" for p in op["parameters"])
-        assert {"412", "428"} <= set(op["responses"])
+    targets = [
+        ("patch", "/api/v1/projects/{project_id}"),
+        ("patch", "/api/v1/projects/{project_id}/assets/{asset_id}"),
+        ("patch", REVISION),
+        ("post", f"{REVISION}/submit"),
+        ("post", f"{REVISION}/reject"),
+        ("post", f"{REVISION}/approve"),
+    ]
+    for method, path in targets:
+        op = paths[path][method]
+        assert any(p["name"] == "if-match" and p["in"] == "header" for p in op["parameters"]), path
+        assert {"412", "428"} <= set(op["responses"]), path
+
+
+def test_revision_transitions_document_conflict_errors():
+    paths = _schema()["paths"]
+    for action in ("submit", "reject", "approve"):
+        assert {"403", "404", "409", "412", "428"} <= set(paths[f"{REVISION}/{action}"]["post"]["responses"])
+    assert "409" in paths[REVISION]["patch"]["responses"]
+
+
+def test_capacity_schema_is_closed_and_uses_contract_units():
+    schemas = _schema()["components"]["schemas"]
+    capacity = schemas["Capacity"]
+    assert capacity.get("additionalProperties") is False
+    assert capacity["properties"]["mode"]["enum"] == ["unknown", "finite", "unlimited", "not_allowed"]
+    unit = capacity["properties"]["unit"]
+    units = next(x for x in unit.get("anyOf", [unit]) if "enum" in x)["enum"]
+    assert units == ["item", "bobbin_slot", "pallet_slot", "kg", "m2"]
+    # master 값에는 가정(assumed)·해당 없음을 쓸 수 없다.
+    status = capacity["properties"]["status"]
+    assert next(x for x in status.get("anyOf", [status]) if "enum" in x)["enum"] == [
+        "unknown", "confirmed"]
+
+
+def test_asset_response_adds_revision_summaries_without_breaking_0_1_fields():
+    asset = _schema()["components"]["schemas"]["AssetOut"]["properties"]
+    assert {"current_revision", "latest_revision"} <= set(asset)
+    assert {"id", "project_id", "kind", "code", "name", "ports", "row_version"} <= set(asset)
 
 
 def test_asset_create_request_has_no_ports_and_forbids_extra_fields():
@@ -73,4 +119,5 @@ def test_contract_status_hash_matches_snapshot():
     digest = hashlib.sha256((REPO / "contracts" / "openapi.json").read_bytes()).hexdigest()
     assert status["openapi_sha256"] == digest
     assert status["status"] == "PARTIALLY_APPROVED"
-    assert status["approved_scopes"] == ["project-assets-ports"]
+    assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions"]
+    assert status["contract_version"] == "0.2.0"

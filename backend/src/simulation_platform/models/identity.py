@@ -136,6 +136,6 @@ class AuditLog(IdMixin, CreatedMixin, Base):
     action: Mapped[str] = mapped_column(Text)
     entity_type: Mapped[str] = mapped_column(Text)
     entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    before: Mapped[dict | None] = mapped_column(JSONB)
-    after: Mapped[dict | None] = mapped_column(JSONB)
+    before: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    after: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     request_id: Mapped[str | None] = mapped_column(Text)

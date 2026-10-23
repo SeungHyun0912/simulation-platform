@@ -131,6 +131,62 @@ def main(out_dir: Path) -> None:
     missing = f"{assets}/{uuid.uuid4()}"
     r = client.get(missing, headers=base)
     record("error.not-found", "GET", missing, r)
+
+    # --- asset-revisions (contract 0.2.0) ---------------------------------------------
+    def match(version):
+        return {**base, "If-Match": f'"{version}"'}
+
+    revisions_url = f"{assets}/{eq_id}/revisions"
+    r = client.post(revisions_url, headers=base)
+    record("revision.create.equipment", "POST", revisions_url, r)
+    rev = r.json()["data"]
+    rev_path = f"{api}/projects/{pid}/asset-revisions/{rev['id']}"
+    port_in, port_out = (p["port_id"] for p in rev["ports"])
+
+    r = client.post(revisions_url, headers=base)
+    record("error.revision-draft-exists", "POST", revisions_url, r)
+
+    zero_capacity = {"ports": [{"port_id": port_in, "buffer_capacity": {
+        "mode": "finite", "value": "0", "unit": "item"}}]}
+    r = client.patch(rev_path, json=zero_capacity, headers=match(1))
+    record("error.validation-capacity", "PATCH", rev_path, r, zero_capacity, {"If-Match": '"1"'})
+
+    patch_rev = {"ports": [
+        {"port_id": port_in, "buffer_capacity": {"mode": "finite", "value": "4", "unit": "item"}},
+        {"port_id": port_out, "buffer_capacity": {"mode": "not_allowed"},
+         "release_rule": {"mode": "when_destination_accepts",
+                          "block_machine_while_waiting": "yes"}}]}
+    r = client.patch(rev_path, json=patch_rev, headers=match(1))
+    record("revision.patch.equipment", "PATCH", rev_path, r, patch_rev, {"If-Match": '"1"'})
+
+    r = client.post(f"{rev_path}/submit", headers=match(2))
+    record("revision.submit", "POST", f"{rev_path}/submit", r, None, {"If-Match": '"2"'})
+    r = client.patch(rev_path, json={"notes": "검토 중 수정"}, headers=match(3))
+    record("error.version-immutable", "PATCH", rev_path, r, {"notes": "검토 중 수정"},
+           {"If-Match": '"3"'})
+    r = client.post(f"{rev_path}/approve", headers=match(3))
+    record("revision.approve", "POST", f"{rev_path}/approve", r, None, {"If-Match": '"3"'})
+
+    # 반려 흐름은 공간 자산으로 보여 준다(draft → in_review → draft).
+    st_id = client.get(f"{assets}?kind=storage", headers=base).json()["data"][0]["id"]
+    r = client.post(f"{assets}/{st_id}/revisions", headers=base)
+    record("revision.create.storage", "POST", f"{assets}/{st_id}/revisions", r)
+    st_rev = r.json()["data"]
+    st_path = f"{api}/projects/{pid}/asset-revisions/{st_rev['id']}"
+    r = client.post(f"{st_path}/approve", headers=match(1))
+    record("error.invalid-state-transition", "POST", f"{st_path}/approve", r, None,
+           {"If-Match": '"1"'})
+    client.post(f"{st_path}/submit", headers=match(1))
+    reject_body = {"reason": "저장 용량의 근거가 필요합니다."}
+    r = client.post(f"{st_path}/reject", json=reject_body, headers=match(2))
+    record("revision.reject", "POST", f"{st_path}/reject", r, reject_body, {"If-Match": '"2"'})
+
+    # 승인본이 있는 설비의 새 초안(값 복사) 후 목록과 자산 요약을 보여 준다.
+    client.post(revisions_url, headers=base)
+    r = client.get(f"{revisions_url}?limit=1", headers=base)
+    record("revision.list", "GET", f"{revisions_url}?limit=1", r)
+    r = client.get(target, headers=base)
+    record("asset.get", "GET", target, r)
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 
