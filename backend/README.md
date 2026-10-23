@@ -29,3 +29,23 @@ project/asset/port migration → 생성·조회·수정 API → OpenAPI 후보 �
 
 계약 없이 전체 미래 테이블을 선행 생성하지 않습니다.
 앱 실행·OpenAPI 내보내기·테스트 명령은 구현 후 이 문서에 검증한 명령만 추가합니다.
+
+## 검증된 명령 (BE-01a, backend/ 에서 실행, Python 3.12)
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+.\.venv\Scripts\python.exe -m pytest -q        # 단위 5건 + 통합 18건(DB 없으면 통합은 skip)
+.\.venv\Scripts\python.exe -m ruff check .
+```
+- DB 통합 테스트(실제 PostgreSQL 필요, 기본 대상 `simulation_platform_test`):
+  ```powershell
+  $env:REQUIRE_DB="1"; .\.venv\Scripts\python.exe -m pytest tests/integration -q
+  ```
+  세션 시작 시 테스트 DB를 `downgrade base → upgrade head`로 재생성한다. DB 이름이 `_test`로 끝나지
+  않으면 거부한다. 다른 대상은 `TEST_DATABASE_URL`로 지정. `REQUIRE_DB`가 없으면 DB 미연결 시 skip된다.
+- Migration 수동 적용(대상 DB를 반드시 확인): `$env:DATABASE_URL="..."; .\.venv\Scripts\python.exe -m alembic upgrade head`
+  (현재 head `0001`). 개발/공유 DB에는 자동 적용하지 않는다.
+- 의존성 정확한 버전은 `requirements.lock`(pip freeze 산출)이 기준이다. 패키지 매니저 확정은 ADR 대기.
+- 로컬 PostgreSQL: 루트 `docker-compose.yml`(WSL에서 `docker compose up -d postgres`).
+- 앱 import 경로: `simulation_platform.api.app:app`. uvicorn 실행은 아직 검증하지 않았다.
