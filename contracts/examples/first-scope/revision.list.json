@@ -1,0 +1,104 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets/00000000-0000-4000-8000-000000000003/revisions?limit=1"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "project_id": "00000000-0000-4000-8000-000000000002",
+          "asset_id": "00000000-0000-4000-8000-000000000003",
+          "revision_no": 2,
+          "status": "draft",
+          "schema_version": "1.0",
+          "storage_capacity": null,
+          "ports": [
+            {
+              "port_id": "00000000-0000-4000-8000-000000000004",
+              "port_key": "IN",
+              "role": "IN",
+              "buffer_capacity": {
+                "mode": "finite",
+                "value": "4",
+                "unit": "item",
+                "status": "confirmed"
+              },
+              "dispatch_rule": {
+                "mode": "when_destination_available",
+                "reservation": "unknown",
+                "wait_at_in_if_busy": true
+              },
+              "release_rule": {
+                "mode": "when_destination_accepts",
+                "block_machine_while_waiting": "unknown"
+              }
+            },
+            {
+              "port_id": "00000000-0000-4000-8000-000000000005",
+              "port_key": "OUT",
+              "role": "OUT",
+              "buffer_capacity": {
+                "mode": "not_allowed",
+                "value": null,
+                "unit": null,
+                "status": "confirmed"
+              },
+              "dispatch_rule": {
+                "mode": "when_destination_available",
+                "reservation": "unknown",
+                "wait_at_in_if_busy": true
+              },
+              "release_rule": {
+                "mode": "when_destination_accepts",
+                "block_machine_while_waiting": "yes"
+              }
+            }
+          ],
+          "notes": null,
+          "issues": [
+            {
+              "severity": "warning",
+              "rule_id": "VAL-POLICY-001",
+              "entity_id": "00000000-0000-4000-8000-000000000012",
+              "field_path": "/ports/0/dispatch_rule/reservation",
+              "message": "IN 포트의 이동 중 설비 예약 여부가 미정입니다(OPEN-003).",
+              "resolution": "예약 여부를 확정하거나 시나리오 가정으로 승인하세요."
+            },
+            {
+              "severity": "warning",
+              "rule_id": "VAL-POLICY-002",
+              "entity_id": "00000000-0000-4000-8000-000000000012",
+              "field_path": "/ports/0/release_rule/block_machine_while_waiting",
+              "message": "IN 포트 출력이 막힐 때 설비를 점유하는지 미정입니다(OPEN-003).",
+              "resolution": "점유 여부를 확정하거나 시나리오 가정으로 승인하세요."
+            },
+            {
+              "severity": "warning",
+              "rule_id": "VAL-POLICY-001",
+              "entity_id": "00000000-0000-4000-8000-000000000012",
+              "field_path": "/ports/1/dispatch_rule/reservation",
+              "message": "OUT 포트의 이동 중 설비 예약 여부가 미정입니다(OPEN-003).",
+              "resolution": "예약 여부를 확정하거나 시나리오 가정으로 승인하세요."
+            }
+          ],
+          "submitted_at": null,
+          "submitted_by": null,
+          "rejection_reason": null,
+          "rejected_at": null,
+          "approved_at": null,
+          "approved_by": null,
+          "created_at": "2026-10-23T00:00:00Z",
+          "updated_at": null,
+          "row_version": 1
+        }
+      ],
+      "page": {
+        "limit": 1,
+        "next_cursor": "opaque-cursor-example"
+      }
+    }
+  }
+}

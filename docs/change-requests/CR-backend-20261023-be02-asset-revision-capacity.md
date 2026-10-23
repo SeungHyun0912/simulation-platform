@@ -45,6 +45,20 @@
 5. **`superseded` 자동 전환** 허용 여부.
 6. **FE 영향:** 0.2.0 승인 후 `AssetView`의 capacity/status를 API 값으로 대체. 기존 0.1.0 endpoint 응답은 추가 필드만 늘어남.
 
+## 4-1. 승인 결과와 구현 해석 (2026-10-23)
+- 사용자가 "전체 승인"했으며 §4의 결정 5건은 **제안안대로** 확정으로 기록한다: ① 승인·반려 = project admin만(제출 = admin·editor)
+  ② 제출자=승인자 허용(감사 로그 기록) ③ 범용 `properties` 대신 `storage_capacity` 컬럼 ④ `in_review` 편집 불가 ⑤ `superseded` 자동 전환.
+- 구현 중 CR 문구를 구체화·조정한 부분(contract 0.2.0에 반영, 04 §3.2):
+  1. **포트 정책은 설비 IN/OUT에만** 만든다. §2 초안의 "자산의 모든 포트" 대신, 공간 ACCESS 포트는 정책이 없다(ERD §4 "공간 용량을 포트와 이중 계산 금지"). `port_policy.port_role`을 IN/OUT으로 제한하는 복합 FK로 DB가 강제한다.
+  2. **`field_meta` 제외.** 용량의 `status`(unknown/confirmed)가 미정 표현을 담당하므로 이번 scope에서 컬럼·DTO를 두지 않았다(필요해지면 추가).
+  3. **`INVALID_UNIT`은 쓰지 않는다.** 단위·값 형식 오류는 모두 422 `VALIDATION_ERROR`(OpenAPI에서 `unit`이 enum이라 FE가 사전에 막을 수 있음).
+  4. **전이(submit/reject/approve)도 `If-Match` 필수**(ERD §11 "승인 직전 수정 방지"). 반려 사유는 `rejection_reason`·`rejected_at`에 저장하고 다시 제출하면 비운다.
+  5. **기본값:** 새 초안의 용량은 모두 `unknown`, 규칙은 사용자 확정 D-U05·D-U06 모드(`when_destination_available`/`when_destination_accepts`)이며 미정인 `reservation`·`block_machine_while_waiting`(OPEN-003)은 `unknown`.
+  6. **용량 값 규칙:** `finite`는 0 초과. 개수 단위(`item`·`bobbin_slot`·`pallet_slot`)는 정수, `kg`·`m2`는 소수 6자리까지(DB `numeric(24,6)` 정책과 일치). `assumed`/`not_applicable` status는 master에서 거부.
+  7. **DB 불변 강제:** 상태 전이 표와 "초안 외 내용 동결"을 트리거(`asset_revision_guard`)로, 부모가 초안일 때만 `port_policy` 변경 가능(`port_policy_guard`), 자산당 열린 버전·승인본 각 1개를 부분 유일 인덱스로 강제.
+  8. **자산 응답에 `current_revision`·`latest_revision` 추가**(비파괴). 목록의 용량 표시용 확장(`include`)은 하지 않았다.
+- 0.1.0에서 결정하지 못한 `AssetView.capacity/group/status` 화면 모델과의 차이는 FE 안내서에 정리: [HANDOFF-backend-20261023-BE-02-for-frontend](../handoffs/HANDOFF-backend-20261023-BE-02-for-frontend.md).
+
 ## 5. 구현 계획(승인 후)
 1. migration 0002 + 불변 트리거 + 모델, DB 통합 테스트(복합 FK·불변·타 자산 포트 거부·unknown 기본값 보존).
 2. 서비스/API/스키마, 상태 전이·동시성(승인 직전 PATCH 경쟁) 테스트.

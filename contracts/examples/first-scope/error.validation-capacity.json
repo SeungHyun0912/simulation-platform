@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/asset-revisions/00000000-0000-4000-8000-000000000009",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "ports": [
+        {
+          "port_id": "00000000-0000-4000-8000-000000000004",
+          "buffer_capacity": {
+            "mode": "finite",
+            "value": "0",
+            "unit": "item"
+          }
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "요청 형식이 올바르지 않습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "severity": "error",
+            "field_path": "/ports/0/buffer_capacity",
+            "message": "item 용량은 0보다 큰 정수여야 합니다."
+          }
+        ]
+      }
+    }
+  }
+}

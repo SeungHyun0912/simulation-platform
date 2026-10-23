@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/asset-revisions/00000000-0000-4000-8000-000000000009",
+    "headers": {
+      "If-Match": "\"3\""
+    },
+    "body": {
+      "notes": "검토 중 수정"
+    }
+  },
+  "response": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "VERSION_IMMUTABLE",
+        "message": "초안이 아닌 버전은 수정할 수 없습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "현재 상태는 in_review입니다. 승인본을 고치려면 새 초안을 만드세요.",
+            "severity": "error",
+            "field_path": "/status"
+          }
+        ]
+      }
+    }
+  }
+}

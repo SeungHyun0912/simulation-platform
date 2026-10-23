@@ -111,6 +111,15 @@ equipment_detail은 식별 분류만, 능력·운전 용량·가용 달력·버�
 asset.code/name 변경은 식별 표시 변경이며 과거 snapshot에는 당시 표시를 보존한다.
 asset_revision은 승인을 위한 상태와 미정 필드를 보유할 수 있다. 시나리오는 승인된 revision을 명시적으로 선택한다.
 
+> **구현 반영(migration 0001·0002, 승인 CR 기준, 이 ERD 표와 다른 점만):**
+> - 0001: `project_member`·`audit_log`에 `organization_id`(복합 FK로 조직 멤버·프로젝트 일치 강제), `equipment_detail`·`space_detail`·`asset_port`에
+>   `asset_kind`(복합 FK로 subtype·포트 role 일치 강제), 조직당 사용자 1역할(`UNIQUE(organization_id,user_id)`), `audit_log` append-only 트리거,
+>   설비 IN/OUT·공간 ACCESS≥1 지연 제약 트리거. 근거: [CR be01-contract-gaps §6](../change-requests/CR-backend-20261023-be01-contract-gaps.md).
+> - 0002: 범용 `properties jsonb` 대신 `asset_revision.storage_capacity`(공간만, 설비는 NULL)를 두고, `port_policy`는 **설비 IN/OUT 포트에만** 만든다.
+>   상태는 `draft|in_review|approved|superseded`, 자산당 열린 버전·승인본 각 1개(부분 유일 인덱스), 상태 전이·초안 외 내용 동결·부모가 초안일 때만 정책 변경을 트리거로 강제.
+>   `field_meta`는 두지 않았다(용량 `status`가 미정을 표현). 근거: [CR be02 §4-1](../change-requests/CR-backend-20261023-be02-asset-revision-capacity.md).
+> - 이 ERD 문서의 승인 상태(PROPOSED)는 바뀌지 않았다. 위는 구현이 따른 해석의 기록이다.
+
 ### 포트 정합성
 
 - 설비 생성 서비스는 asset + equipment_detail + IN/OUT을 같은 트랜잭션에서 생성.
