@@ -76,6 +76,16 @@ class AssetCodeConflict(DomainError):
     status_code = 409
 
 
+class ProductCodeConflict(DomainError):
+    code = "PRODUCT_CODE_CONFLICT"
+    status_code = 409
+
+
+class MaterialCodeConflict(DomainError):
+    code = "MATERIAL_CODE_CONFLICT"
+    status_code = 409
+
+
 class VersionImmutableError(DomainError):
     """초안이 아닌 버전의 내용을 바꾸려 할 때(승인·검토 중·대체됨)."""
 
