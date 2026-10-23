@@ -11,6 +11,7 @@ import {
   Section,
 } from "../../shared/components/Layout";
 import { PageHeader } from "../../shared/components/PageHeader";
+import { StateNotice } from "../../shared/components/StateNotice";
 import { ValidationPanel, type ValidationIssue } from "../../shared/components/ValidationPanel";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import {
@@ -21,8 +22,11 @@ import {
 } from "./projectView";
 import { SAMPLE_ORGANIZATIONS } from "./sampleProjects";
 
+// 프로젝트는 role이 admin인 조직에서만 만들 수 있다(R-FE-13). 서버가 403/404로 최종 판정한다.
+const CREATABLE_ORGS = SAMPLE_ORGANIZATIONS.filter((o) => o.role === "admin");
+
 const INITIAL: ProjectDraft = {
-  organizationId: SAMPLE_ORGANIZATIONS.length === 1 ? SAMPLE_ORGANIZATIONS[0]!.id : "",
+  organizationId: CREATABLE_ORGS.length === 1 ? CREATABLE_ORGS[0]!.id : "",
   code: "",
   name: "",
   timezone: "Asia/Seoul",
@@ -60,6 +64,20 @@ export function ProjectCreatePage() {
     setTouched((t) => new Set(t).add(key));
   }
 
+  if (CREATABLE_ORGS.length === 0)
+    return (
+      <>
+        <PageHeader
+          title="프로젝트 만들기"
+          breadcrumbs={[{ label: "프로젝트", to: "/" }, { label: "만들기" }]}
+          renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
+        />
+        <StateNotice kind="forbidden" title="프로젝트를 만들 권한이 없습니다">
+          프로젝트는 조직 관리자만 만들 수 있습니다. 조직 관리자에게 요청하세요.
+        </StateNotice>
+      </>
+    );
+
   return (
     <>
       {guard}
@@ -87,13 +105,13 @@ export function ProjectCreatePage() {
         <FieldGrid>
           <SelectField
             label="조직"
-            hint="프로젝트는 하나의 조직에 속하며 만든 뒤 바꿀 수 없다고 가정합니다."
+            hint="조직 관리자인 조직만 고를 수 있습니다. 만든 뒤 조직은 바꿀 수 없다고 가정합니다."
             value={draft.organizationId}
             error={shown.organizationId}
             onChange={(e) => update("organizationId", e.target.value)}
           >
             <option value="">선택하세요</option>
-            {SAMPLE_ORGANIZATIONS.map((o) => (
+            {CREATABLE_ORGS.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.code} {o.name}
               </option>

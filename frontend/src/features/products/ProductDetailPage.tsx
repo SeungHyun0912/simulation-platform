@@ -20,17 +20,19 @@ import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import type { ProcessVersionView, ProductView } from "./productView";
+import { useCurrentProject } from "../projects/useCurrentProject";
 import { SAMPLE_PRODUCTS } from "./sampleProducts";
 
 export function ProductDetailPage() {
-  const { projectId = "", productId = "" } = useParams();
+  const { projectId, label: projectLabel } = useCurrentProject();
+  const { productId = "" } = useParams();
   const preview = usePreviewState();
   const product = SAMPLE_PRODUCTS.find((p) => p.id === productId);
 
   const header = (title: string) => (
     <PageHeader
       title={title}
-      breadcrumbs={[{ label: "프로젝트" }, { label: projectId }, { label: "제품" }]}
+      breadcrumbs={[{ label: "프로젝트" }, { label: projectLabel }, { label: "제품" }]}
     />
   );
 
@@ -72,6 +74,7 @@ function ProductForm({
   projectId: string;
   showConflict: boolean;
 }) {
+  const { label: projectLabel } = useCurrentProject();
   const [draft, setDraft] = useState<ProductView>(base);
   const [conflictDismissed, setConflictDismissed] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(base);
@@ -124,7 +127,7 @@ function ProductForm({
         title={`${base.code} ${base.name}`}
         breadcrumbs={[
           { label: "프로젝트" },
-          { label: projectId },
+          { label: projectLabel },
           { label: "제품", to: `/projects/${projectId}/products` },
           { label: base.code },
         ]}

@@ -2,28 +2,50 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { Button } from "../../shared/components/Button";
 import { ConflictNotice } from "../../shared/components/ConflictNotice";
-import { TextField } from "../../shared/components/Fields";
+import { DataTable, type Column } from "../../shared/components/DataTable";
+import { SelectField, TextAreaField, TextField } from "../../shared/components/Fields";
+import { KnownValueInput, type KnownValue } from "../../shared/components/KnownValueInput";
 import {
-  KnownValueInput,
-  validateKnownValue,
-  type KnownValueMode,
-} from "../../shared/components/KnownValueInput";
+  Block,
+  FieldGrid,
+  Note,
+  PreviewStateLinks,
+  SampleDataNotice,
+  Section,
+} from "../../shared/components/Layout";
 import { PageHeader } from "../../shared/components/PageHeader";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { ValidationPanel, type ValidationIssue } from "../../shared/components/ValidationPanel";
 import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
-import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
-import { KIND_LABELS, type AssetView } from "./assetView";
-import styles from "./AssetDetailPage.module.css";
-import { SAMPLE_ASSETS } from "./sampleAssets";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
+import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
+import { formatDateTime } from "../../shared/format/datetime";
+import { canApprove, canEdit, projectRoleLabel } from "../projects/projectView";
+import { useCurrentProject } from "../projects/useCurrentProject";
+import {
+  isOpenStatus,
+  isRevisionEditable,
+  KIND_LABELS,
+  statusLabel,
+  toInfoDraft,
+  toRevisionEdit,
+  validateInfoDraft,
+  type AssetInfo,
+  type InfoDraft,
+  type RevisionDetail,
+  type RevisionEdit,
+} from "./assetView";
+import styles from "./AssetDetailPage.module.css";
+import { CAPACITY_UNITS, validateCapacity } from "./capacityAdapter";
+import { describeDispatch, describeRelease, type RuleLine } from "./ruleLabels";
+import { SAMPLE_ASSETS, SAMPLE_REVISIONS } from "./sampleAssets";
 
-const CAPACITY_MODES: KnownValueMode[] = ["unknown", "value", "unlimited", "not_allowed"];
-/** 03 계약 §3의 지원 단위. 초기 실행 엔진은 item만 지원한다. */
-const CAPACITY_UNITS = ["item", "bobbin_slot", "pallet_slot", "kg", "m2"];
+const CAPACITY_MODES = ["unknown", "value", "unlimited", "not_allowed"] as const;
+const CAPACITY_UNIT_LIST = [...CAPACITY_UNITS];
 
 export function AssetDetailPage() {
-  const { projectId = "", assetId = "" } = useParams();
+  const { projectId, project, label } = useCurrentProject();
+  const { assetId = "" } = useParams();
   const preview = usePreviewState();
   const asset = SAMPLE_ASSETS.find((a) => a.id === assetId);
 
@@ -31,8 +53,8 @@ export function AssetDetailPage() {
     <PageHeader
       title={title}
       breadcrumbs={[
-        { label: "프로젝트" },
-        { label: projectId },
+        { label: "프로젝트", to: "/" },
+        { label },
         { label: "설비·공간", to: `/projects/${projectId}/assets` },
         { label: code ?? "상세" },
       ]}
@@ -48,7 +70,7 @@ export function AssetDetailPage() {
       </>
     );
   if (!asset)
-    // 서버가 다른 프로젝트의 ID와 존재하지 않는 ID를 구분해 알려 주지 않는 정책을 가정한다.
+    // 서버는 다른 프로젝트의 자산과 없는 자산을 구분하지 않고 404로 답한다. 형식이 틀린 id(422)도 같은 화면으로 처리한다.
     return (
       <>
         {header("자산을 찾을 수 없습니다")}
@@ -60,198 +82,475 @@ export function AssetDetailPage() {
 
   // key로 프로젝트·자산이 바뀌면 입력 중인 폼 상태를 완전히 버린다.
   return (
-    <AssetForm
+    <AssetDetail
       key={`${projectId}:${asset.id}`}
-      base={asset}
+      asset={asset}
+      revisions={SAMPLE_REVISIONS[asset.id] ?? []}
       projectId={projectId}
-      showConflict={preview === "conflict"}
+      projectLabel={label}
+      role={project?.role}
+      timeZone={project?.timezone}
+      infoConflict={preview === "conflict"}
+      revisionConflict={preview === "conflict-revision"}
     />
   );
 }
 
-function AssetForm({
-  base,
-  projectId,
-  showConflict,
-}: {
-  base: AssetView;
+type DetailProps = {
+  asset: AssetInfo;
+  revisions: RevisionDetail[];
   projectId: string;
-  showConflict: boolean;
-}) {
-  const [draft, setDraft] = useState<AssetView>(base);
-  const [conflictDismissed, setConflictDismissed] = useState(false);
-  const readOnly = base.status !== "draft";
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
-  const guard = useUnsavedChangesGuard(dirty);
+  projectLabel: string;
+  role: string | undefined;
+  timeZone: string | undefined;
+  infoConflict: boolean;
+  revisionConflict: boolean;
+};
 
-  const capacityUnit = draft.capacity.unit ?? CAPACITY_UNITS[0]!;
-  const capacityError = validateKnownValue({ ...draft.capacity, unit: capacityUnit });
-  const nameError = draft.name.trim() === "" ? "이름을 입력하세요." : null;
-  const codeError = draft.code.trim() === "" ? "표시 코드를 입력하세요." : null;
+function AssetDetail({
+  asset,
+  revisions,
+  projectId,
+  projectLabel,
+  role,
+  timeZone,
+  infoConflict,
+  revisionConflict,
+}: DetailProps) {
+  const baseInfo = toInfoDraft(asset);
+  const [info, setInfo] = useState<InfoDraft>(baseInfo);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    asset.latestRevision?.id ?? revisions[0]?.id ?? null,
+  );
+  // 사용자가 건드린 버전만 편집본을 가진다. 없으면 서버 값 그대로다.
+  const [edits, setEdits] = useState<Record<string, RevisionEdit>>({});
+  const [infoConflictDismissed, setInfoConflictDismissed] = useState(false);
+  const [revConflictDismissed, setRevConflictDismissed] = useState(false);
 
-  const issues: ValidationIssue[] = [];
-  if (nameError) issues.push({ severity: "error", message: nameError, field_path: "/name" });
-  if (codeError) issues.push({ severity: "error", message: codeError, field_path: "/code" });
-  if (capacityError)
-    issues.push({ severity: "error", message: capacityError, field_path: "/capacity" });
-  if (draft.capacity.mode === "value" && capacityUnit !== "item")
-    issues.push({
-      severity: "warning",
-      message: "등록은 가능하지만 현재 실행 엔진은 개(item) 단위 용량만 지원합니다.",
-      field_path: "/capacity/unit",
+  const mayEdit = canEdit(role);
+  const infoDirty = JSON.stringify(info) !== JSON.stringify(baseInfo);
+  const dirtyRevisionIds = revisions
+    .filter((r) => edits[r.id] && JSON.stringify(edits[r.id]) !== JSON.stringify(toRevisionEdit(r)))
+    .map((r) => r.id);
+  const guard = useUnsavedChangesGuard(infoDirty || dirtyRevisionIds.length > 0);
+
+  const infoErrors = validateInfoDraft(info, asset.kind);
+  const isEquipment = asset.kind === "equipment";
+
+  const selected = revisions.find((r) => r.id === selectedId) ?? null;
+  const edit = selected ? (edits[selected.id] ?? toRevisionEdit(selected)) : null;
+  const revisionDirty = selected ? dirtyRevisionIds.includes(selected.id) : false;
+  const editable = selected ? isRevisionEditable(selected.status, mayEdit) : false;
+  const openRevision = revisions.find((r) => isOpenStatus(r.status)) ?? null;
+
+  function setPortCapacity(portId: string, kv: KnownValue) {
+    if (!selected || !edit) return;
+    setEdits((cur) => ({
+      ...cur,
+      [selected.id]: { ...edit, portCapacities: { ...edit.portCapacities, [portId]: kv } },
+    }));
+  }
+  function setStorageCapacity(kv: KnownValue) {
+    if (!selected || !edit) return;
+    setEdits((cur) => ({ ...cur, [selected.id]: { ...edit, storageCapacity: kv } }));
+  }
+  function resetRevision() {
+    if (!selected) return;
+    setEdits((cur) => Object.fromEntries(Object.entries(cur).filter(([id]) => id !== selected.id)));
+  }
+
+  // 입력 형식 오류(클라이언트)와 서버 검증 결과(issues)를 함께 보여 준다. 서버 결과가 정본이며 저장하면 갱신된다.
+  const clientIssues: ValidationIssue[] = [];
+  if (selected && edit) {
+    selected.ports.forEach((p, i) => {
+      const cap = edit.portCapacities[p.portId];
+      const msg = cap ? validateCapacity(cap) : null;
+      if (msg)
+        clientIssues.push({
+          severity: "error",
+          message: `${p.role} 대기 용량: ${msg}`,
+          field_path: `/ports/${i}/buffer_capacity/value`,
+        });
     });
-  if (draft.capacity.mode === "unknown")
-    issues.push({
-      severity: "warning",
-      message: "대기 용량이 미정입니다. 초안 저장은 가능하지만 실행 전에 해소해야 합니다.",
-      field_path: "/capacity",
-    });
-  const hasError = issues.some((i) => i.severity === "error");
+    const msg = edit.storageCapacity ? validateCapacity(edit.storageCapacity) : null;
+    if (msg)
+      clientIssues.push({
+        severity: "error",
+        message: `저장 용량: ${msg}`,
+        field_path: "/storage_capacity/value",
+      });
+  }
+  const revisionIssues = [...clientIssues, ...(selected?.issues ?? [])];
 
-  const isStorage = base.kind !== "equipment";
+  const infoHasError = Object.keys(infoErrors).length > 0;
+  const revisionOptionLabel = (r: RevisionDetail) =>
+    `v${r.revisionNo} ${statusLabel(r.status)}` +
+    (r.id === asset.latestRevision?.id ? " · 최신" : "") +
+    (r.id === asset.currentRevision?.id ? " · 현재 승인본" : "");
+
+  const historyColumns: Column<RevisionDetail>[] = [
+    { key: "no", header: "버전", render: (r) => `v${r.revisionNo}` },
+    { key: "status", header: "상태", render: (r) => <VersionStatusBadge status={r.status} /> },
+    {
+      key: "mark",
+      header: "구분",
+      render: (r) =>
+        [r.id === asset.currentRevision?.id ? "현재 승인본" : "", r.id === asset.latestRevision?.id ? "최신" : ""]
+          .filter(Boolean)
+          .join(" · ") || "-",
+    },
+    { key: "approved", header: "승인 시각", render: (r) => formatDateTime(r.approvedAt, timeZone) },
+    {
+      key: "open",
+      header: "작업",
+      render: (r) => (
+        <Button
+          onClick={() => setSelectedId(r.id)}
+          aria-label={`v${r.revisionNo} 보기`}
+          disabled={r.id === selectedId}
+        >
+          {r.id === selectedId ? "보는 중" : "보기"}
+        </Button>
+      ),
+    },
+  ];
 
   return (
     <>
       {guard}
       <PageHeader
-        title={`${base.code} ${base.name}`}
+        title={`${asset.code} ${asset.name}`}
         breadcrumbs={[
-          { label: "프로젝트" },
-          { label: projectId },
+          { label: "프로젝트", to: "/" },
+          { label: projectLabel },
           { label: "설비·공간", to: `/projects/${projectId}/assets` },
-          { label: base.code },
+          { label: asset.code },
         ]}
         renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
-        actions={
-          <>
-            <Button disabled={!dirty} onClick={() => setDraft(base)}>
-              되돌리기
-            </Button>
-            <Button
-              variant="primary"
-              disabled
-              title="저장은 API 연동 후 사용할 수 있습니다 (계약 필요)"
-            >
-              저장 (계약 필요)
-            </Button>
-          </>
-        }
       />
-      <p className={styles.sample}>
-        예시 데이터입니다. 입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다.
-      </p>
+      <SampleDataNotice>
+        예시 데이터입니다(계약 0.2.0 예제 모양). 입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다.
+      </SampleDataNotice>
+      <Block>
+        <Note>
+          내 역할: {role ? projectRoleLabel(role) : "알 수 없음"}
+          {mayEdit
+            ? ""
+            : " — 수정할 수 없습니다(버튼 노출만 제한하며 최종 권한은 서버가 판정합니다)."}
+        </Note>
+      </Block>
 
-      {showConflict && !conflictDismissed && (
-        <div className={styles.block}>
+      {/* ───── 기본 정보: 버전이 없는 리소스. 항상 편집 가능(역할이 허용하면). 자산 ETag ───── */}
+      <Section id="sec-info" title="기본 정보">
+        {infoConflict && !infoConflictDismissed && (
           <ConflictNotice
+            resource="자산 기본 정보"
             onReload={() => {
-              setDraft(base);
-              setConflictDismissed(true);
+              setInfo(baseInfo);
+              setInfoConflictDismissed(true);
             }}
-            onKeepEditing={() => setConflictDismissed(true)}
+            onKeepEditing={() => setInfoConflictDismissed(true)}
           />
-        </div>
-      )}
-
-      {readOnly && (
-        <div className={styles.block}>
-          <StateNotice kind="contract-pending" title="읽기 전용">
-            초안이 아닌 버전은 수정할 수 없습니다. 복사하여 수정하는 기능은 계약 승인 후 제공됩니다.
-          </StateNotice>
-        </div>
-      )}
-
-      {dirty && <p className={styles.dirty}>● 저장하지 않은 변경이 있습니다</p>}
-      {issues.length > 0 && (
-        <div className={styles.block}>
-          <ValidationPanel issues={issues} />
-        </div>
-      )}
-
-      <section className={styles.section} aria-labelledby="sec-basic">
-        <h2 id="sec-basic" className={styles.heading}>
-          기본 정보 <VersionStatusBadge status={base.status} />
-        </h2>
-        <div className={styles.grid}>
-          <TextField label="내부 ID" value={base.id} readOnly hint="변경할 수 없습니다." />
-          <TextField label="유형" value={KIND_LABELS[base.kind]} readOnly />
+        )}
+        <FieldGrid>
+          <TextField label="내부 ID" value={asset.id} readOnly hint="변경할 수 없습니다." />
+          <TextField label="종류" value={KIND_LABELS[asset.kind]} readOnly hint="만든 뒤 바꿀 수 없습니다." />
           <TextField
             label="표시 코드"
-            value={draft.code}
-            readOnly={readOnly}
-            error={codeError}
-            onChange={(e) => setDraft({ ...draft, code: e.target.value })}
+            value={info.code}
+            readOnly={!mayEdit}
+            error={infoErrors.code}
+            onChange={(e) => setInfo({ ...info, code: e.target.value })}
           />
           <TextField
             label="이름"
-            value={draft.name}
-            readOnly={readOnly}
-            error={nameError}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            value={info.name}
+            readOnly={!mayEdit}
+            error={infoErrors.name}
+            onChange={(e) => setInfo({ ...info, name: e.target.value })}
+          />
+          {isEquipment ? (
+            <>
+              <TextField
+                label="설비 유형"
+                value={info.equipmentType}
+                readOnly={!mayEdit}
+                error={infoErrors.equipmentType}
+                onChange={(e) => setInfo({ ...info, equipmentType: e.target.value })}
+              />
+              <TextField
+                label="모델"
+                hint="비우면 입력 없음으로 저장됩니다."
+                value={info.modelName}
+                readOnly={!mayEdit}
+                error={infoErrors.modelName}
+                onChange={(e) => setInfo({ ...info, modelName: e.target.value })}
+              />
+            </>
+          ) : (
+            <TextField
+              label="공간 유형"
+              value={info.spaceType}
+              readOnly={!mayEdit}
+              error={infoErrors.spaceType}
+              onChange={(e) => setInfo({ ...info, spaceType: e.target.value })}
+            />
+          )}
+          <TextField
+            label="정렬 순서"
+            inputMode="numeric"
+            value={info.sortOrder}
+            readOnly={!mayEdit}
+            error={infoErrors.sortOrder}
+            onChange={(e) => setInfo({ ...info, sortOrder: e.target.value })}
           />
           <TextField
-            label="모델"
-            value={draft.model}
-            readOnly={readOnly}
-            onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+            label="외부 참조"
+            value={info.externalRef}
+            readOnly={!mayEdit}
+            error={infoErrors.externalRef}
+            onChange={(e) => setInfo({ ...info, externalRef: e.target.value })}
           />
-          <TextField
-            label="그룹"
-            value={draft.group}
-            readOnly={readOnly}
-            onChange={(e) => setDraft({ ...draft, group: e.target.value })}
-          />
-        </div>
-      </section>
-
-      <section className={styles.section} aria-labelledby="sec-ports">
-        <h2 id="sec-ports" className={styles.heading}>
-          {isStorage ? "접근 위치" : "입력(IN)·출력(OUT) 포트"}
-        </h2>
-        <p className={styles.note}>
-          포트는 자산과 함께 생성되는 고정 항목이어서 삭제할 수 없습니다. 위치 미정은 미배치 상태이며
-          생성·저장을 막지 않습니다.
-        </p>
-        <ul className={styles.ports}>
-          {base.ports.map((p) => (
-            <li key={p.kind} className={styles.port}>
-              <strong>{p.kind}</strong>
-              <span>{p.placement === "unknown" ? "위치 미정 (미배치)" : "배치됨"}</span>
+        </FieldGrid>
+        <TextAreaField
+          label="메모"
+          value={info.notes}
+          readOnly={!mayEdit}
+          error={infoErrors.notes}
+          onChange={(e) => setInfo({ ...info, notes: e.target.value })}
+        />
+        <h3 className={styles.rulesTitle}>포트</h3>
+        <Note>
+          포트는 자산과 함께 만들어지는 고정 항목이어서 삭제할 수 없습니다. 위치는 아직 API에 없어
+          "위치 미정(미배치)"으로 표시합니다.
+        </Note>
+        <ul className={styles.rules}>
+          {asset.ports.map((p) => (
+            <li key={p.id} className={styles.ruleRow}>
+              <strong>{p.role}</strong>
+              {p.label !== p.role && <span>{p.label}</span>}
+              <span>위치 미정 (미배치)</span>
             </li>
           ))}
         </ul>
-      </section>
+        <div className={styles.sectionActions}>
+          {infoDirty && <strong>● 기본 정보에 저장하지 않은 변경이 있습니다</strong>}
+          <Button disabled={!infoDirty} onClick={() => setInfo(baseInfo)}>
+            기본 정보 되돌리기
+          </Button>
+          <Button
+            variant="primary"
+            disabled
+            title={
+              infoHasError ? "오류를 해결해야 저장할 수 있습니다" : "저장은 API 연동 후 사용할 수 있습니다"
+            }
+          >
+            기본 정보 저장 (연동 후)
+          </Button>
+        </div>
+      </Section>
 
-      <section className={styles.section} aria-labelledby="sec-capacity">
-        <h2 id="sec-capacity" className={styles.heading}>
-          {isStorage ? "저장 용량" : "대기 용량"}
-        </h2>
-        <p className={styles.note}>
-          단위를 확인하세요. 개수 계열은 정수만 입력할 수 있습니다. 미정은 0이나 무제한이 아닙니다.
-          {base.kind === "dock" && " 도킹이라는 이유로 용량을 무제한으로 가정하지 않습니다."}
-        </p>
-        <KnownValueInput
-          label="용량"
-          value={draft.capacity}
-          onChange={(capacity) => setDraft({ ...draft, capacity })}
-          allowedModes={CAPACITY_MODES}
-          units={CAPACITY_UNITS}
-          disabled={readOnly}
-        />
-        {draft.capacity.mode === "not_allowed" && (
-          <p className={styles.note}>이 포트에는 대기 적재를 허용하지 않습니다.</p>
+      {/* ───── 버전: 상태·용량·규칙. 버전 ETag. 편집은 draft에서만 ───── */}
+      <Section id="sec-revision" title="용량·규칙 (버전)">
+        {revisions.length === 0 || !selected || !edit ? (
+          <>
+            <StateNotice kind="empty" title="버전이 없습니다">
+              자산을 만들어도 버전은 자동으로 만들어지지 않습니다. 용량을 설정하려면 새 버전(초안)을
+              시작합니다.
+            </StateNotice>
+            {mayEdit && (
+              <div>
+                <Button disabled title="새 버전 생성은 API 연동 후 사용할 수 있습니다">
+                  용량 설정 시작 (연동 후)
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {revisionConflict && !revConflictDismissed && (
+              <ConflictNotice
+                resource="용량 버전"
+                onReload={() => {
+                  resetRevision();
+                  setRevConflictDismissed(true);
+                }}
+                onKeepEditing={() => setRevConflictDismissed(true)}
+              />
+            )}
+            <div className={styles.status}>
+              <SelectField
+                label="버전"
+                value={selected.id}
+                onChange={(e) => setSelectedId(e.target.value)}
+              >
+                {revisions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {revisionOptionLabel(r)}
+                  </option>
+                ))}
+              </SelectField>
+              <span>
+                상태: <VersionStatusBadge status={selected.status} />
+              </span>
+            </div>
+
+            {!editable && (
+              <StateNotice
+                kind="contract-pending"
+                title={mayEdit ? "읽기 전용 버전" : "수정할 수 없음"}
+              >
+                {selected.status !== "draft"
+                  ? `${statusLabel(selected.status)} 상태의 버전은 수정할 수 없습니다.`
+                  : "현재 역할로는 수정할 수 없습니다."}{" "}
+                {mayEdit && selected.status !== "draft" && openRevision && openRevision.id !== selected.id && (
+                  <Button onClick={() => setSelectedId(openRevision.id)}>
+                    열린 버전(v{openRevision.revisionNo}) 보기
+                  </Button>
+                )}
+                {mayEdit && !openRevision && (
+                  <Button disabled title="새 초안 생성은 API 연동 후 사용할 수 있습니다">
+                    새 초안 만들기 (연동 후)
+                  </Button>
+                )}
+              </StateNotice>
+            )}
+            {selected.rejectionReason && (
+              <Note>반려 사유: {selected.rejectionReason}</Note>
+            )}
+
+            {revisionIssues.length > 0 && (
+              <>
+                <ValidationPanel issues={revisionIssues} />
+                {revisionDirty && (
+                  <Note>
+                    아래 서버 검증 결과는 마지막으로 저장된 값 기준이며 저장하면 갱신됩니다.
+                  </Note>
+                )}
+              </>
+            )}
+
+            <div className={styles.sectionActions}>
+              {revisionDirty && <strong>● 용량·규칙에 저장하지 않은 변경이 있습니다</strong>}
+              <Button disabled={!revisionDirty} onClick={resetRevision}>
+                용량 되돌리기
+              </Button>
+              <Button
+                variant="primary"
+                disabled
+                title={
+                  clientIssues.length > 0
+                    ? "오류를 해결해야 저장할 수 있습니다"
+                    : "저장은 API 연동 후 사용할 수 있습니다"
+                }
+              >
+                용량 저장 (연동 후)
+              </Button>
+              {mayEdit && selected.status === "draft" && (
+                <Button disabled title="제출은 API 연동 후 사용할 수 있습니다(저장 후 제출)">
+                  검토 요청 (연동 후)
+                </Button>
+              )}
+              {canApprove(role) && selected.status === "in_review" && (
+                <>
+                  <Button disabled title="승인은 API 연동 후 사용할 수 있습니다">
+                    승인 (연동 후)
+                  </Button>
+                  <Button
+                    disabled
+                    title="반려는 사유 입력 창이 필요합니다(확장 제안 승인 후, API 연동 후)"
+                  >
+                    반려 (연동 후)
+                  </Button>
+                </>
+              )}
+            </div>
+          </>
         )}
-      </section>
+      </Section>
 
-      {hasError && <p className={styles.note}>오류를 해결해야 저장할 수 있습니다.</p>}
-      <p className={styles.preview}>
-        상태 미리보기:{" "}
-        {["", "conflict", "forbidden"].map((s) => (
-          <Link key={s} to={s ? `?state=${s}` : "."} className={styles.previewLink}>
-            {s || "정상"}
-          </Link>
-        ))}
-      </p>
+      {selected && edit && (
+        <>
+          {isEquipment ? (
+            selected.ports.map((p) => (
+              <Section key={p.portId} id={`sec-port-${p.role}`} title={`${p.role} 포트`}>
+                <KnownValueInput
+                  label={`${p.role} 대기 용량`}
+                  value={edit.portCapacities[p.portId] ?? p.bufferCapacity}
+                  onChange={(kv) => setPortCapacity(p.portId, kv)}
+                  allowedModes={[...CAPACITY_MODES]}
+                  units={CAPACITY_UNIT_LIST}
+                  validator={validateCapacity}
+                  disabled={!editable}
+                />
+                <Note>미정은 0이나 무제한이 아닙니다. 대기 적재를 허용하지 않으면 "대기 불가"를 선택하세요.</Note>
+                <h3 className={styles.rulesTitle}>이동·배출 규칙 (읽기 전용)</h3>
+                <RuleList lines={[...describeDispatch(p.dispatchRule), ...describeRelease(p.releaseRule)]} />
+              </Section>
+            ))
+          ) : (
+            <Section id="sec-storage" title="저장 용량">
+              {edit.storageCapacity && (
+                <KnownValueInput
+                  label="저장 용량"
+                  value={edit.storageCapacity}
+                  onChange={setStorageCapacity}
+                  allowedModes={[...CAPACITY_MODES]}
+                  units={CAPACITY_UNIT_LIST}
+                  validator={validateCapacity}
+                  disabled={!editable}
+                />
+              )}
+              <Note>
+                {asset.kind === "dock"
+                  ? "도킹이라는 이유로 용량을 무제한으로 가정하지 않습니다. "
+                  : ""}
+                접근 포트(ACCESS)에는 용량·규칙 정책이 없고, 저장 용량은 이 공간 전체에 하나만 둡니다.
+              </Note>
+            </Section>
+          )}
+        </>
+      )}
+
+      {revisions.length > 0 && (
+        <Section id="sec-history" title="버전 이력">
+          <DataTable
+            caption={`${asset.code} 버전 이력`}
+            columns={historyColumns}
+            rows={revisions}
+            getRowKey={(r) => r.id}
+            currentRowKey={selectedId ?? undefined}
+          />
+        </Section>
+      )}
+
+      <PreviewStateLinks states={["conflict", "conflict-revision", "forbidden"]} />
     </>
+  );
+}
+
+const TONE_MARK: Record<RuleLine["tone"], string> = { confirmed: "✓ 확정", unknown: "? 미정", plain: "" };
+
+function RuleList({ lines }: { lines: RuleLine[] }) {
+  return (
+    <dl className={styles.rules}>
+      {lines.map((l) => (
+        <div key={l.name} className={styles.ruleRow}>
+          <dt className={styles.ruleName}>{l.name}</dt>
+          <dd style={{ margin: 0 }}>
+            {l.text}
+            {l.tone !== "plain" && (
+              <>
+                {" "}
+                <span>
+                  ({TONE_MARK[l.tone]}
+                  {l.basis ? `, ${l.basis}` : ""})
+                </span>
+              </>
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

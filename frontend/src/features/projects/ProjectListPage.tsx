@@ -7,7 +7,7 @@ import { FilterBar, PreviewStateLinks, SampleDataNotice } from "../../shared/com
 import { PageHeader } from "../../shared/components/PageHeader";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
-import type { ProjectView } from "./projectView";
+import { projectRoleLabel, type ProjectView } from "./projectView";
 import { SAMPLE_PROJECTS } from "./sampleProjects";
 
 /** 접근 가능한 프로젝트 목록. 프로젝트를 고르기 전의 첫 화면이다. */
@@ -36,7 +36,7 @@ export function ProjectListPage() {
     },
     { key: "name", header: "이름", render: (p) => p.name },
     { key: "timezone", header: "시간대", render: (p) => p.timezone },
-    { key: "role", header: "내 역할", render: (p) => p.role },
+    { key: "role", header: "내 역할", render: (p) => projectRoleLabel(p.role) },
     { key: "status", header: "상태", render: (p) => p.status },
     { key: "description", header: "설명", render: (p) => p.description ?? "-" },
   ];

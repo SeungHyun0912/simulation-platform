@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { Button } from "../../shared/components/Button";
 import { DataTable, type Column, type SortState } from "../../shared/components/DataTable";
 import { TextField } from "../../shared/components/Fields";
@@ -8,11 +8,12 @@ import { PageHeader } from "../../shared/components/PageHeader";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
+import { useCurrentProject } from "../projects/useCurrentProject";
 import { latestVersion, specificationText, type ProductView } from "./productView";
 import { SAMPLE_PRODUCTS } from "./sampleProducts";
 
 export function ProductListPage() {
-  const { projectId = "" } = useParams();
+  const { projectId, label: projectLabel } = useCurrentProject();
   const [params, setParams] = useSearchParams();
   const preview = usePreviewState();
 
@@ -113,7 +114,7 @@ export function ProductListPage() {
     <>
       <PageHeader
         title="제품"
-        breadcrumbs={[{ label: "프로젝트" }, { label: projectId }, { label: "제품" }]}
+        breadcrumbs={[{ label: "프로젝트" }, { label: projectLabel }, { label: "제품" }]}
         actions={
           <Button variant="primary" disabled title="제품 생성 API 계약 필요">
             제품 추가 (계약 필요)

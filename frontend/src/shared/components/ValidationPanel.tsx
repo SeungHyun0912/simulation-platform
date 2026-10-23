@@ -4,6 +4,8 @@ import styles from "./ValidationPanel.module.css";
 export type ValidationIssue = {
   severity: "error" | "warning";
   rule_id?: string;
+  /** 검증 대상 엔티티 id(자산 버전 id, 공정 단계 id 등) */
+  entity_id?: string;
   field_path?: string;
   message: string;
   resolution?: string;

@@ -31,6 +31,7 @@ import {
   type ProcessVersionDetail,
   type StepView,
 } from "./processView";
+import { useCurrentProject } from "../projects/useCurrentProject";
 import { SAMPLE_PROCESS_VERSIONS } from "./sampleProcesses";
 import styles from "./ProcessEditorPage.module.css";
 import { StepEditPanel, type CodeOption } from "./StepEditPanel";
@@ -49,7 +50,8 @@ const LOCATION_OPTIONS: CodeOption[] = SAMPLE_ASSETS.filter((a) => a.kind !== "e
 );
 
 export function ProcessEditorPage() {
-  const { projectId = "", productId = "", versionId = "" } = useParams();
+  const { projectId, label: projectLabel } = useCurrentProject();
+  const { productId = "", versionId = "" } = useParams();
   const preview = usePreviewState();
   const product = SAMPLE_PRODUCTS.find((p) => p.id === productId);
   // 제품과 버전이 함께 일치해야 한다. 다른 제품의 버전 ID를 붙인 URL은 찾을 수 없음으로 처리한다.
@@ -58,7 +60,7 @@ export function ProcessEditorPage() {
   const header = (title: string) => (
     <PageHeader
       title={title}
-      breadcrumbs={[{ label: "프로젝트" }, { label: projectId }, { label: "제품" }]}
+      breadcrumbs={[{ label: "프로젝트" }, { label: projectLabel }, { label: "제품" }]}
     />
   );
 
@@ -121,6 +123,7 @@ function ProcessEditor({
   productId: string;
   showConflict: boolean;
 }) {
+  const { label: projectLabel } = useCurrentProject();
   const [steps, setSteps] = useState<StepView[]>(base.steps);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -238,7 +241,7 @@ function ProcessEditor({
         title={`${productCode} 공정 v${base.versionNo}`}
         breadcrumbs={[
           { label: "프로젝트" },
-          { label: projectId },
+          { label: projectLabel },
           { label: "제품", to: `/projects/${projectId}/products` },
           { label: productCode, to: `/projects/${projectId}/products/${productId}` },
           { label: `공정 v${base.versionNo}` },
