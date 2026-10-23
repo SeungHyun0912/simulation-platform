@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.3.0, openapi_sha256 a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48
+// 기준 계약: version 0.3.1, openapi_sha256 4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c
 // 승인 scope: project-assets-ports, asset-revisions, products-materials
 
 export interface paths {
@@ -786,6 +786,8 @@ export interface components {
             role: string;
             /** Status */
             status: string;
+            /** Timezone */
+            timezone: string;
         };
         /** MeUser */
         MeUser: {

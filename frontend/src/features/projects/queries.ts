@@ -1,18 +1,14 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useApiClient, useDataSource } from "../../shared/api/ApiContext";
 import { fromQuery, success, pending, type Loadable } from "../../shared/api/loadable";
-import { projectKey } from "../../shared/api/queryKeys";
 import type { Schemas } from "../../shared/api/types";
 import type { OrganizationView, ProjectView } from "./projectView";
 import { SAMPLE_ORGANIZATIONS, SAMPLE_PROJECTS } from "./sampleProjects";
 
 /**
- * `/me`가 주는 내 프로젝트 요약. 시간대·상태·설명은 `/me`에 없고 `GET /projects`(ProjectOut)에 있다.
- * timezone은 정적 예시에서만 채우고, API 모드에서는 비워 두어 화면이 기본 표시 시간대(KST)를 쓴다.
+ * `/me`가 주는 내 프로젝트 요약(코드·이름·역할·상태·시간대, 계약 0.3.1). 설명은 `GET /projects`(ProjectOut)에만 있다.
  */
-export type MyProject = Pick<ProjectView, "id" | "organizationId" | "code" | "name" | "role" | "status"> & {
-  timezone?: string;
-};
+export type MyProject = Pick<ProjectView, "id" | "organizationId" | "code" | "name" | "role" | "status" | "timezone">;
 
 export type MeView = {
   userName: string;
@@ -31,6 +27,7 @@ export function toMeView(me: Schemas["MeOut"]): MeView {
       name: p.name,
       role: p.role,
       status: p.status,
+      timezone: p.timezone,
     })),
   };
 }
@@ -76,21 +73,12 @@ export function useMe(): Loadable<MeView> {
 }
 
 /**
- * 프로젝트의 표시 시간대. `/me`에는 시간대가 없어 상세 화면이 필요할 때만 `GET /projects/{id}`로 가져온다.
- * 알 수 없는 동안(불러오는 중·실패)은 undefined이며 화면은 기본 표시 시간대(KST)를 쓰되 틀릴 수 있음을 알린다.
+ * 프로젝트의 표시 시간대(계약 0.3.1부터 `/me.projects[].timezone`). 별도 요청 없이 내 정보에서 읽는다.
+ * 알 수 없는 동안(불러오는 중·목록에 없음)은 undefined이며 화면은 기본 표시 시간대(KST)를 쓰되 틀릴 수 있음을 알린다.
  */
 export function useProjectTimezone(projectId: string): string | undefined {
-  const source = useDataSource();
-  const client = useApiClient();
-  const q = useQuery({
-    queryKey: projectKey(projectId, source, "project"),
-    enabled: source === "api" && projectId !== "",
-    staleTime: 5 * 60_000,
-    queryFn: async ({ signal }) =>
-      (await client.get<Schemas["Single_ProjectOut_"]>(`/projects/${projectId}`, { signal })).body.data.timezone,
-  });
-  if (source === "static") return STATIC_ME.projects.find((p) => p.id === projectId)?.timezone;
-  return q.data;
+  const me = useMe();
+  return me.status === "success" ? me.data.projects.find((p) => p.id === projectId)?.timezone : undefined;
 }
 
 export type ProjectListResult = {

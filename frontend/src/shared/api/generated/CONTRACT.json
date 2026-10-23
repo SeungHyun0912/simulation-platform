@@ -1,6 +1,6 @@
 {
-  "contract_version": "0.3.0",
-  "openapi_sha256": "a4610740d413de76664dff0ccf3f0d958fc96679fd3e05bb2440cca82aa78b48",
+  "contract_version": "0.3.1",
+  "openapi_sha256": "4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c",
   "approved_scopes": [
     "project-assets-ports",
     "asset-revisions",

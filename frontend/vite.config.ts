@@ -25,5 +25,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
     css: true,
+    // 화면 흐름 테스트(입력·저장·충돌)는 병렬 실행 시 5초를 넘길 수 있다. 느려서 생기는 거짓 실패를 막는다.
+    testTimeout: 20_000,
   },
 });

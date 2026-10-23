@@ -104,10 +104,10 @@ describe("toMeView", () => {
     const v = toMeView({
       user: { id: "u", display_name: "홍길동" },
       organizations: [{ id: "o", code: "O", name: "조직", role: "admin" }],
-      projects: [{ id: "p", organization_id: "o", code: "P", name: "프로젝트", role: "viewer", status: "active" }],
+      projects: [{ id: "p", organization_id: "o", code: "P", name: "프로젝트", role: "viewer", status: "active", timezone: "UTC" }],
     });
     expect(v.userName).toBe("홍길동");
-    expect(v.projects[0]).toEqual({ id: "p", organizationId: "o", code: "P", name: "프로젝트", role: "viewer", status: "active" });
+    expect(v.projects[0]).toEqual({ id: "p", organizationId: "o", code: "P", name: "프로젝트", role: "viewer", status: "active", timezone: "UTC" });
   });
 });
 

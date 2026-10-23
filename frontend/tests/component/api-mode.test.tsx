@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import contractMeta from "../../src/shared/api/generated/CONTRACT.json";
 import { ASSETS, createFakeServer, errorBody, ME, P1, P2 } from "../fakeApi";
 import { renderApp } from "../renderApp";
 
@@ -10,7 +11,8 @@ describe("API 모드: 앱 셸과 프로젝트", () => {
     const user = userEvent.setup();
     const { server } = api(`/projects/${P1}/assets`);
     expect(screen.getByRole("note")).toHaveAttribute("data-source", "api");
-    expect(screen.getByRole("note")).toHaveTextContent("API 연동 모드입니다(계약 0.3.0)");
+    // 계약 버전은 생성물(CONTRACT.json)에서 읽으므로 계약이 바뀌어도 하드코딩된 값과 어긋나지 않는다.
+    expect(screen.getByRole("note")).toHaveTextContent(`API 연동 모드입니다(계약 ${contractMeta.contract_version})`);
     expect(screen.getByRole("note")).toHaveTextContent("용량·규칙 저장");
     await waitFor(() => expect(screen.getByRole("group", { name: "현재 프로젝트" })).toHaveTextContent("SRV-P1"));
     await user.click(screen.getByRole("button", { name: /프로젝트 전환/ }));
@@ -263,13 +265,13 @@ describe("API 모드: 자산 상세", () => {
     expect(within(history).getAllByRole("row")).toHaveLength(3);
   });
 
-  it("승인 시각은 프로젝트의 시간대(GET /projects/{id})로 표시하고 어느 시간대인지 알린다", async () => {
+  it("승인 시각은 /me의 프로젝트 시간대로 표시하고 별도 요청 없이 어느 시간대인지 알린다(계약 0.3.1)", async () => {
     const { server } = api(`/projects/${P1}/assets/${A1}`);
     const history = await screen.findByRole("table", { name: "EQ-001 버전 이력" });
     // 서버 시각은 UTC 2026-10-23 00:00. 프로젝트 시간대(America/New_York, UTC-4)로는 10월 22일 20:00이다.
     await waitFor(() => expect(within(history).getByText(/2026\. 10\. 22\. 20:00/)).toBeInTheDocument());
     expect(within(history).getByRole("columnheader", { name: /America\/New_York/ })).toBeInTheDocument();
-    expect(server.requests.some((r) => r.path === `/projects/${P1}` && r.method === "GET")).toBe(true);
+    expect(server.requests.some((r) => r.path === `/projects/${P1}`)).toBe(false); // GET /projects/{id} 추가 호출 없음
   });
 
   it("역할은 /me에서 온다: 관리자 프로젝트에서는 편집 가능", async () => {

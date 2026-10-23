@@ -16,8 +16,8 @@ export const ME: Schemas["MeOut"] = {
     { id: ORG_MEMBER, code: "SRV-MEM", name: "구성원 조직", role: "member" },
   ],
   projects: [
-    { id: P1, organization_id: ORG_ADMIN, code: "SRV-P1", name: "서버 프로젝트 1", role: "admin", status: "active" },
-    { id: P2, organization_id: ORG_ADMIN, code: "SRV-P2", name: "서버 프로젝트 2", role: "viewer", status: "active" },
+    { id: P1, organization_id: ORG_ADMIN, code: "SRV-P1", name: "서버 프로젝트 1", role: "admin", status: "active", timezone: "America/New_York" },
+    { id: P2, organization_id: ORG_ADMIN, code: "SRV-P2", name: "서버 프로젝트 2", role: "viewer", status: "active", timezone: "UTC" },
   ],
 };
 
