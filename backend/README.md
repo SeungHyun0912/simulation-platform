@@ -29,3 +29,15 @@ project/asset/port migration → 생성·조회·수정 API → OpenAPI 후보 �
 
 계약 없이 전체 미래 테이블을 선행 생성하지 않습니다.
 앱 실행·OpenAPI 내보내기·테스트 명령은 구현 후 이 문서에 검증한 명령만 추가합니다.
+
+## 검증된 명령 (BE-01a, backend/ 에서 실행, Python 3.12)
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+.\.venv\Scripts\python.exe -m pytest -q        # 단위 테스트 5건 (DB 불필요)
+.\.venv\Scripts\python.exe -m ruff check .
+```
+- 의존성 정확한 버전은 `requirements.lock`(pip freeze 산출)이 기준이다. 패키지 매니저 확정은 ADR 대기.
+- 로컬 PostgreSQL: 루트 `docker-compose.yml`(WSL에서 `docker compose up -d postgres`).
+- 앱 import 경로: `simulation_platform.api.app:app`. uvicorn 실행은 아직 검증하지 않았다.
