@@ -1,6 +1,8 @@
 .shell {
   display: grid;
   min-height: 100vh;
+  /* minmax(0, 1fr): 표 같은 긴 내용이 열을 뷰포트보다 넓히지 않게 한다 */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto 1fr;
 }
 
@@ -78,4 +80,26 @@
   flex: 1;
   min-width: 0;
   padding: var(--space-6);
+}
+
+/* 좁은 화면: 메뉴를 본문 위로 올려 가로로 배치한다. (CSS 변수는 미디어 쿼리에 쓸 수 없어 값을 직접 쓴다) */
+@media (max-width: 48rem) {
+  .body {
+    flex-direction: column;
+  }
+
+  .menu {
+    flex: none;
+    border-right: 0;
+    border-bottom: var(--border-width) solid var(--color-border);
+  }
+
+  .menu ul {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .main {
+    padding: var(--space-4);
+  }
 }

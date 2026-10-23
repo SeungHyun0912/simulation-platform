@@ -14,7 +14,11 @@ export function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.length - errors;
   return (
-    <section className={styles.panel} role="alert" aria-label="검증 결과">
+    <section
+      className={`${styles.panel} ${errors > 0 ? styles.hasError : styles.onlyWarning}`}
+      role="alert"
+      aria-label="검증 결과"
+    >
       <h2 className={styles.title}>
         검증 결과: 오류 {errors}건, 경고 {warnings}건
       </h2>
