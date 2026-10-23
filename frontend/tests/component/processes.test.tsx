@@ -16,7 +16,7 @@ const DRAFT = SAMPLE_PROCESS_VERSIONS.find((v) => v.status === "draft")!;
 const APPROVED = SAMPLE_PROCESS_VERSIONS.find((v) => v.status === "approved")!;
 const EMPTY = SAMPLE_PROCESS_VERSIONS.find((v) => v.steps.length === 0)!;
 const url = (v: { id: string; productId: string }, query = "") =>
-  `/projects/p1/products/${v.productId}/processes/${v.id}${query}`;
+  `/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${v.productId}/processes/${v.id}${query}`;
 
 function step(patch: Partial<StepView>): StepView {
   return { ...newStep("s1"), name: "단계", ...patch };
@@ -230,7 +230,7 @@ describe("공정 표 편집 (초안 UI)", () => {
 
   it("미저장 변경이 있으면 프로젝트 전환 전에 확인한다", async () => {
     const user = userEvent.setup();
-    const { router } = renderApp(url(DRAFT).replace("/p1/", "/demo-a/"));
+    const { router } = renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "단계 추가" }));
     await user.click(screen.getByRole("button", { name: /프로젝트 전환/ }));
     await user.click(
@@ -238,7 +238,7 @@ describe("공정 표 편집 (초안 UI)", () => {
     );
     expect(await screen.findByRole("dialog")).toHaveTextContent("저장하지 않은 변경이 있습니다");
     await user.click(screen.getByRole("button", { name: "변경을 버리고 이동" }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/projects/demo-b/products"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/projects/aaaaaaaa-0000-4000-8000-000000000002/products"));
   });
 
   it("승인된 버전은 읽기 전용이다", async () => {
@@ -258,7 +258,7 @@ describe("공정 표 편집 (초안 UI)", () => {
   });
 
   it("다른 제품의 버전 ID를 붙이면 찾을 수 없음으로 표시한다", () => {
-    renderApp(`/projects/p1/products/${EMPTY.productId}/processes/${DRAFT.id}`);
+    renderApp(`/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${EMPTY.productId}/processes/${DRAFT.id}`);
     expect(screen.getAllByText("공정을 찾을 수 없습니다").length).toBeGreaterThan(0);
   });
 

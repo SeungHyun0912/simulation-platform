@@ -69,6 +69,11 @@ type Props = {
   numberKind?: NumberKind;
   /** 선택 가능한 단위 id 목록(shared/units). 지정하면 unit·numberKind보다 우선한다. */
   units?: string[];
+  /**
+   * 필드별 검증. 지정하면 기본 검증 대신 쓴다(값 있음 모드에서만 호출).
+   * 예: 용량은 0을 허용하지 않는다. 공정의 "준비 0분"처럼 0이 유효한 필드는 지정하지 않는다.
+   */
+  validator?: (v: KnownValue) => string | null;
   disabled?: boolean;
 };
 
@@ -80,12 +85,14 @@ export function KnownValueInput({
   unit,
   numberKind = "decimal",
   units,
+  validator,
   disabled,
 }: Props) {
   const id = useId();
   const effectiveUnit = units ? (value.unit ?? units[0]) : undefined;
   const effective: KnownValue = effectiveUnit ? { ...value, unit: effectiveUnit } : value;
-  const error = validateKnownValue(effective, numberKind);
+  const error =
+    validator && effective.mode === "value" ? validator(effective) : validateKnownValue(effective, numberKind);
   const errorId = `${id}-error`;
 
   return (

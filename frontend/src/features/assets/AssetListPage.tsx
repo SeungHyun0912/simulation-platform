@@ -1,36 +1,41 @@
 import { useMemo } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { Button } from "../../shared/components/Button";
 import { DataTable, type Column, type SortState } from "../../shared/components/DataTable";
 import { SelectField, TextField } from "../../shared/components/Fields";
+import { FilterBar, PreviewStateLinks, SampleDataNotice } from "../../shared/components/Layout";
 import { PageHeader } from "../../shared/components/PageHeader";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
-import {
-  capacityText,
-  KIND_LABELS,
-  portsText,
-  type AssetKind,
-  type AssetView,
-} from "./assetView";
-import styles from "./AssetListPage.module.css";
-import { SAMPLE_ASSETS } from "./sampleAssets";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
+import { useCurrentProject } from "../projects/useCurrentProject";
+import { KIND_LABELS, portsText, type AssetInfo, type AssetKind } from "./assetView";
+import { SAMPLE_ASSETS } from "./sampleAssets";
 
-type SortKey = "code" | "name";
+/** 서버가 지원하는 정렬 키(계약 0.2.0: sort_order | code | name, 앞에 -를 붙이면 내림차순). 상태·모델은 서버 정렬이 없다. */
+const SORT_KEYS = ["sort_order", "code", "name"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+
+function sortValue(a: AssetInfo, key: SortKey): string | number {
+  if (key === "sort_order") return a.sortOrder;
+  return a[key];
+}
 
 export function AssetListPage() {
-  const { projectId = "" } = useParams();
+  const { projectId, label } = useCurrentProject();
   const [params, setParams] = useSearchParams();
   const preview = usePreviewState();
 
-  // 검색·필터·정렬은 URL 상태로 둔다. 화면 이동 후 돌아와도 유지된다.
+  // 검색·필터·정렬은 URL 상태로 둔다. 실제 연동 시 이 값이 그대로 서버 쿼리(q, kind, sort)가 된다.
   const q = params.get("q") ?? "";
   const kind = params.get("kind") ?? "";
   const sortKey = params.get("sort");
   const sortDir = params.get("dir") === "desc" ? "desc" : "asc";
   const sort = useMemo<SortState>(
-    () => (sortKey === "code" || sortKey === "name" ? { key: sortKey, direction: sortDir } : null),
+    () =>
+      (SORT_KEYS as readonly string[]).includes(sortKey ?? "")
+        ? { key: sortKey as SortKey, direction: sortDir }
+        : null,
     [sortKey, sortDir],
   );
 
@@ -53,10 +58,15 @@ export function AssetListPage() {
     if (!sort) return filtered;
     const key = sort.key as SortKey;
     const sign = sort.direction === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => a[key].localeCompare(b[key], "ko") * sign);
+    return [...filtered].sort((a, b) => {
+      const x = sortValue(a, key);
+      const y = sortValue(b, key);
+      const cmp = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "ko");
+      return cmp * sign;
+    });
   }, [q, kind, sort]);
 
-  const columns: Column<AssetView>[] = [
+  const columns: Column<AssetInfo>[] = [
     {
       key: "code",
       header: "표시 코드",
@@ -70,8 +80,24 @@ export function AssetListPage() {
     { key: "name", header: "이름", sortable: true, render: (a) => a.name },
     { key: "kind", header: "유형", render: (a) => KIND_LABELS[a.kind] },
     { key: "ports", header: "포트", render: (a) => portsText(a.ports) },
-    { key: "capacity", header: "대기 용량", render: (a) => capacityText(a.capacity) },
-    { key: "status", header: "상태", render: (a) => <VersionStatusBadge status={a.status} /> },
+    { key: "sort_order", header: "정렬 순서", align: "end", sortable: true, render: (a) => a.sortOrder },
+    {
+      key: "latest",
+      header: "최신 버전",
+      render: (a) =>
+        a.latestRevision ? (
+          <>
+            v{a.latestRevision.revisionNo} <VersionStatusBadge status={a.latestRevision.status} />
+          </>
+        ) : (
+          "버전 없음"
+        ),
+    },
+    {
+      key: "current",
+      header: "승인본",
+      render: (a) => (a.currentRevision ? `v${a.currentRevision.revisionNo}` : "없음"),
+    },
   ];
 
   let body;
@@ -87,7 +113,7 @@ export function AssetListPage() {
   else if (preview === "empty")
     body = (
       <StateNotice kind="empty" title="등록된 설비·공간이 없습니다">
-        자산 생성은 API 계약 승인 후 사용할 수 있습니다.
+        자산 생성은 API 연동 후 사용할 수 있습니다.
       </StateNotice>
     );
   else if (rows.length === 0)
@@ -112,17 +138,19 @@ export function AssetListPage() {
     <>
       <PageHeader
         title="설비·공간"
-        breadcrumbs={[{ label: "프로젝트" }, { label: projectId }, { label: "설비·공간" }]}
+        breadcrumbs={[{ label: "프로젝트", to: "/" }, { label }, { label: "설비·공간" }]}
+        renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
         actions={
-          <Button variant="primary" disabled title="자산 생성 API 계약 필요">
-            자산 추가 (계약 필요)
+          <Button variant="primary" disabled title="자산 생성은 API 연동 후 사용할 수 있습니다">
+            자산 추가 (연동 후)
           </Button>
         }
       />
-      <p className={styles.sample}>
-        예시 데이터입니다. 실제 프로젝트 데이터가 아니며 서버에 요청하지 않습니다.
-      </p>
-      <form className={styles.toolbar} role="search" onSubmit={(e) => e.preventDefault()}>
+      <SampleDataNotice>
+        예시 데이터입니다(계약 0.2.0 예제 모양). 실제 프로젝트 데이터가 아니며 서버에 요청하지 않습니다.
+        용량은 목록에 없고 상세에서 확인합니다.
+      </SampleDataNotice>
+      <FilterBar>
         <TextField
           label="검색"
           hint="코드 또는 이름"
@@ -137,19 +165,12 @@ export function AssetListPage() {
             </option>
           ))}
         </SelectField>
-      </form>
-      <p className={styles.count} aria-live="polite">
+      </FilterBar>
+      <p aria-live="polite" className="visually-hidden">
         {preview ? "" : `${rows.length}건`}
       </p>
       {body}
-      <p className={styles.preview}>
-        상태 미리보기:{" "}
-        {["", "loading", "error", "empty", "forbidden"].map((s) => (
-          <Link key={s} to={s ? `?state=${s}` : "."} className={styles.previewLink}>
-            {s || "정상"}
-          </Link>
-        ))}
-      </p>
+      <PreviewStateLinks states={["loading", "error", "empty", "forbidden"]} />
     </>
   );
 }

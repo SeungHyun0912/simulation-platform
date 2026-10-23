@@ -2,7 +2,7 @@ import { DropdownMenu } from "radix-ui";
 import styles from "./ProjectSwitcher.module.css";
 
 /** 화면용 프로젝트 항목. accent는 색 외에 이름·코드도 함께 보여 주는 보조 구분이다. */
-export type ProjectOption = { id: string; name: string; accent: 1 | 2 | 3 | 4 };
+export type ProjectOption = { id: string; code: string; name: string; accent: 1 | 2 | 3 | 4 };
 
 type Props = {
   projects: ProjectOption[];
@@ -13,15 +13,20 @@ type Props = {
 /** 프로젝트 전환 메뉴. 전환 전 미저장 확인은 호출한 쪽의 내비게이션 가드가 처리한다. */
 export function ProjectSwitcher({ projects, currentId, onSelect }: Props) {
   const current = projects.find((p) => p.id === currentId);
+  // 목록에 없는 id는 이름을 알 수 없으므로 id를 그대로 보여 준다.
   const currentName = current?.name ?? currentId;
+  const currentCode = current?.code ?? currentId;
 
   return (
     <div className={styles.wrap} data-accent={current?.accent} role="group" aria-label="현재 프로젝트">
       <span className={styles.label}>현재 프로젝트</span>
       <DropdownMenu.Root>
-        <DropdownMenu.Trigger className={styles.trigger} aria-label={`프로젝트 전환, 현재: ${currentName ?? "선택 안 됨"}`}>
+        <DropdownMenu.Trigger
+          className={styles.trigger}
+          aria-label={`프로젝트 전환, 현재: ${currentName ?? "선택 안 됨"}`}
+        >
           <span>{currentName ?? "프로젝트 선택"}</span>
-          {currentId && <code className={styles.code}>{currentId}</code>}
+          {currentCode && <code className={styles.code}>{currentCode}</code>}
           <span aria-hidden="true">▾</span>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
@@ -39,7 +44,7 @@ export function ProjectSwitcher({ projects, currentId, onSelect }: Props) {
                   >
                     <DropdownMenu.ItemIndicator className={styles.check}>✓</DropdownMenu.ItemIndicator>
                     <span className={styles.name}>{p.name}</span>
-                    <code className={styles.code}>{p.id}</code>
+                    <code className={styles.code}>{p.code}</code>
                   </DropdownMenu.RadioItem>
                 ))}
               </DropdownMenu.RadioGroup>

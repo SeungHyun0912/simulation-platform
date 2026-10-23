@@ -48,7 +48,7 @@ export function AppShell() {
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>
         <ProjectSwitcher
-          projects={SAMPLE_PROJECTS.map(toProjectOption)}
+          projects={SAMPLE_PROJECTS.map((p) => toProjectOption(p))}
           currentId={projectId ?? null}
           onSelect={switchProject}
         />
