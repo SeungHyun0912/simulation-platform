@@ -2,7 +2,7 @@
 - 상태: 검토 요청
 - 역할 / 작업 ID / 관련 로드맵 ID: Frontend / FE-01d(자산 버전 용량·규칙 저장, 규칙 입력, 제출·승인·반려, 새 초안) + 계약 0.3.1 반영 / A-01
 - workspace 버전: 1.1.0
-- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-l / 138ad44(0.3.1 반영) / (커밋 후 기록)
+- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-l / 138ad44(0.3.1 반영) / 5e0aad4
 - 계약 버전 / OpenAPI hash / 승인 scope: **반영한 계약 0.3.1 / `4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c` / `project-assets-ports`, `asset-revisions`, `products-materials`** (`frontend/src/shared/api/generated/CONTRACT.json`)
 - 수정 파일: `frontend/**`, `docs/communication/request-from-frontend.md`, 이 문서. 계약·backend·`request-from-backend.md`는 수정하지 않았다.
 
