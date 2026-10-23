@@ -7,7 +7,7 @@ import styles from "./AppShell.module.css";
 
 const MENU = [
   { to: "assets", label: "설비·공간" },
-  { to: "products", label: "제품", pending: true },
+  { to: "products", label: "제품" },
   { to: "processes", label: "공정", pending: true },
   { to: "scenarios", label: "시나리오", pending: true },
   { to: "runs", label: "실행 결과", pending: true },

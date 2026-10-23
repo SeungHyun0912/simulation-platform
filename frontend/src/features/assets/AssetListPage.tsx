@@ -15,7 +15,7 @@ import {
 } from "./assetView";
 import styles from "./AssetListPage.module.css";
 import { SAMPLE_ASSETS } from "./sampleAssets";
-import { usePreviewState } from "./usePreviewState";
+import { usePreviewState } from "../../shared/hooks/usePreviewState";
 
 type SortKey = "code" | "name";
 
