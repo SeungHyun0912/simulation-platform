@@ -13,11 +13,11 @@
   - 자산 응답에 `current_revision`·`latest_revision` 추가(비파괴). 감사 로그 5종 기록.
   - 개발용 시드 스크립트, 계약 예제 22개(실제 응답에서 생성), 계약 동기화 테스트 확장.
   - 수정한 결함: SQLAlchemy JSONB가 `None`을 JSON null로 저장해 설비의 `storage_capacity IS NULL` 제약 위반 → `none_as_null=True`(audit_log before/after 포함).
-- DB migration head / 적용 DB / 데이터 변환: **0002** / simulation_platform_test만(테스트가 매 세션 downgrade→upgrade) / 변환 없음. 개발 DB 미적용.
+- DB migration head / 적용 DB / 데이터 변환: **0002** / simulation_platform_test(테스트가 매 세션 downgrade→upgrade)와, 사용자 승인 후 로컬 개발 DB `simulation_platform`(빈 DB에 `alembic upgrade head` → 0002, 개발용 시드 실행·재실행 멱등 확인; 조직 1·사용자 3·프로젝트 1·멤버 3) / 변환 없음.
 - 추가·변경 API / 예제 / 재생성 필요 여부: 위 7개 신규 + 자산 응답 필드 2개. **FE generated client 재생성 필요**(안내서 §5).
 - 채택 결정과 근거: CR be02 §4-1(포트 정책은 설비 IN/OUT만, field_meta 제외, INVALID_UNIT 미사용, 전이도 If-Match 필수 등).
 - 미정 또는 임시 가정: 역할 권한 매트릭스(TECH-006), 운영 인증(TECH-002), OPEN-003(예약·설비 점유)은 `unknown`으로 보존.
-- 상대 담당자에게 필요한 조치: **FE** — 안내서 `HANDOFF-backend-20261023-BE-02-for-frontend.md` §2 표 대조 후 FE-01a부터(프롬프트는 §8). **조정자/사용자** — approved_by·approved_at 확인, 개발 DB에 0001·0002 적용 승인, FE-01 배정, ADR(동기 Session, 패키지 매니저).
+- 상대 담당자에게 필요한 조치: **FE** — 안내서 `HANDOFF-backend-20261023-BE-02-for-frontend.md` §2 표 대조 후 FE-01a부터(프롬프트는 §8). **조정자/사용자** — approved_by·approved_at 확인(사용자가 "그대로 진행"으로 답함, 2026-10-23), FE-01 배정, 0.2.0 브랜치 PR 머지(FE가 계약 파일을 받으려면 필요), ADR(동기 Session, 패키지 매니저). FE와의 질의응답은 `docs/communication/request-from-*.md`.
 
 ## 실행 증거
 | 명령 | 실행 위치 | 환경·버전 | 종료 코드 | 결과·로그 |
@@ -32,7 +32,7 @@
 
 ## 미실행 테스트와 이유
 - RLS 정책: 미구현(앱/migration DB 계정 분리 선행).
-- 개발 DB(`simulation_platform`)에서의 migration 적용·시드 실행: 승인 대기라 미실행(시드는 테스트 DB에서만 검증).
+- (해소) 개발 DB의 migration 적용·시드 실행은 승인 후 수행했다(`alembic upgrade head` 종료 코드 0, `seed_dev_data.py --yes` 종료 코드 0). 이 DB를 대상으로 한 서버 기동·API 호출 검증은 하지 않았다(API 테스트는 테스트 DB 기준).
 - 새 venv에서의 lock 재설치 검증: 이번 단위에서 의존성 변경이 없어 미실행.
 - FE 연동·generated client 생성: FE 담당, 미실행. 부하·성능: 미실행.
 
@@ -42,5 +42,5 @@
 - 용량 UI는 포트별 구조라 FE 작업량이 0.1.0 화면 가정보다 크다(안내서 §2 #1–#5).
 
 ## 다음 세션의 첫 작업
-- 사용자 확인 후: 개발 DB에 migration 0001·0002 적용 + 시드(`scripts/seed_dev_data.py --yes`).
-- group·alias CR 또는 RLS·DB 계정 분리 제안(ERD §10), 이어서 제품·공정(두 번째 묶음의 나머지) CR.
+- 작업 전 `request-from-frontend.md`(FE worktree)를 읽고 답한다. FE의 BE-REQ 답변(`BE-REQ-001~011`)을 확인한다.
+- BE-03 제안(제품·재료, `CR-backend-20261023-be03-products-materials`)의 승인·FE 의견(BE-REQ-010·011) 확인 후 구현. 그 밖에 group·alias CR, RLS·DB 계정 분리 제안(ERD §10).

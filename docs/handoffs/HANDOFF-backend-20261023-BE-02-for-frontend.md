@@ -70,8 +70,8 @@
 
 ## 4. 실제 API로 개발하기 (로컬)
 1. 백엔드 실행(백엔드 담당 안내): PostgreSQL(WSL `docker compose up -d postgres`) → migration `alembic upgrade head` → `AUTH_MODE=local`로 uvicorn.
-   - 개발 DB(`simulation_platform`)에는 migration을 **아직 적용하지 않았다.** 적용은 사용자 승인 후 Backend가 수행한다.
-2. 개발용 사용자·프로젝트 시드: `python scripts/seed_dev_data.py --yes` (backend/에서, 멱등). 출력되는 `project_id`와 `X-Debug-User` 값(admin/editor/viewer 3종)을 사용한다.
+   - 로컬 개발 DB(`simulation_platform`)에는 migration 0002가 **적용되어 있다**(2026-10-23). 다른 DB·다른 컴퓨터에서는 `alembic upgrade head`를 직접 실행한다.
+2. 개발용 사용자·프로젝트 시드: `python scripts/seed_dev_data.py --yes` (backend/에서, 멱등). 로컬 개발 DB에는 **이미 실행했다.** 프로젝트 id와 `X-Debug-User` 값(admin/editor/viewer 3종)은 `docs/communication/request-from-backend.md`의 "현재 Backend 상태"에 있다.
 3. **브라우저 번들에 사용자 id를 넣지 않는다.** `VITE_*` 변수는 번들에 노출되므로 쓰지 말고, Vite dev proxy가 헤더를 붙이게 한다:
    ```ts
    // vite.config.ts (예시, FE가 결정)
