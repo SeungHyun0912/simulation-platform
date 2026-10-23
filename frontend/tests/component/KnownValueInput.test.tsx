@@ -47,6 +47,11 @@ describe("KnownValueInput", () => {
     expect(screen.queryByLabelText("용량 값")).not.toBeInTheDocument();
   });
 
+  it("정수 모드는 소수를 거부한다", () => {
+    expect(validateKnownValue({ mode: "value", value: "4" }, "integer")).toBeNull();
+    expect(validateKnownValue({ mode: "value", value: "4.5" }, "integer")).toMatch(/정수/);
+  });
+
   it("decimal 문자열만 허용하고 0은 유효한 값이다", () => {
     expect(validateKnownValue({ mode: "value", value: "0" })).toBeNull();
     expect(validateKnownValue({ mode: "value", value: "1000.000000" })).toBeNull();

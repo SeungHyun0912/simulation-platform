@@ -1,0 +1,29 @@
+.sample {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--status-warning-fg);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: start;
+  margin-bottom: var(--space-2);
+}
+
+.count {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.preview {
+  margin-top: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.previewLink {
+  margin-right: var(--space-3);
+}
