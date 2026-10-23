@@ -1,6 +1,18 @@
 # React 프런트엔드
-상태: 구조·기술서만 있음. package.json·lockfile·실행 앱은 아직 없습니다.
-React는 요구사항, TypeScript/Vite/Query/그래프 라이브러리는 기술서의 제안입니다.
+상태: 앱 골격(셸·토큰·공통 컴포넌트 일부)만 있고 화면은 정적 자리표시자입니다. API 연동·Mock은 없습니다.
+채택(2026-10-23 사용자 승인): pnpm, Node v24.17.0, TypeScript, Vite, TanStack Query, react-router,
+Radix 프리미티브 + CSS Modules, Vitest. React Flow는 제외(공정 그래프 단계에서 재검토).
+
+## 명령 (frontend/ 에서 실행, 결과는 docs/handoffs 참고)
+```bash
+pnpm install
+pnpm dev        # 개발 서버
+pnpm typecheck  # tsc --noEmit
+pnpm lint       # eslint
+pnpm test       # vitest run
+pnpm build
+```
+TypeScript는 typescript-eslint 호환 범위(<6.1.0) 때문에 6.0.x에 고정했습니다.
 
 읽기: 루트 AGENTS → 이 폴더 AGENTS → docs/06_frontend_react.md →
 contracts의 승인 상태·DTO/API → 도메인 문서와 미정 목록.

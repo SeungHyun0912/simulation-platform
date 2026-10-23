@@ -1,0 +1,99 @@
+.shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: auto auto 1fr;
+}
+
+.skip {
+  position: absolute;
+  top: -3rem;
+  left: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+}
+
+.skip:focus {
+  top: var(--space-2);
+}
+
+.banner {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--status-info-fg);
+  background: var(--status-info-bg);
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.project {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.projectLabel {
+  color: var(--color-text-muted);
+}
+
+.projectId {
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  background: var(--status-neutral-bg);
+  border-radius: var(--radius-sm);
+}
+
+.body {
+  display: flex;
+  min-height: 0;
+}
+
+.menu {
+  flex: 0 0 var(--sidebar-width);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border-right: var(--border-width) solid var(--color-border);
+}
+
+.menu ul {
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.menu a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.menu a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--status-info-fg);
+  background: var(--status-info-bg);
+}
+
+.disabled {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-6);
+}
