@@ -2,7 +2,11 @@
 
 # 04. 공통 API 계약
 
-> PROPOSED. Backend가 OpenAPI 후보를 만들고 계약 담당자가 검토·승인한 스냅샷으로 Frontend 타입/클라이언트를 생성한다. 정식 파일은 contracts/openapi.json이며 현재 미생성이다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1의 11개 operation)만 승인되었다.
+> 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
+> 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
+> Backend가 OpenAPI 후보를 만들고 계약 담당자가 검토·승인한 스냅샷으로 Frontend 타입/클라이언트를 생성한다.
+> 필드·타입·제약의 정본은 openapi.json이고, 이 문서는 의미와 규칙을 설명한다(둘이 다르면 변경 요청으로 올린다).
 > FastAPI는 OpenAPI 기반 API 명세 생성을 제공한다. [S04](../docs/reference/99_sources.md#s04)
 > URL 아래의 p/v/r은 각각 project_id/process_version_id/run_id를 나타내는 설명용 표기다.
 
@@ -11,13 +15,18 @@
 - base: `/api/v1`
 - 외부 business API는 project path 필수: `/projects/{project_id}/...`
 - 인증 주체와 조직/프로젝트 멤버십은 서버에서 확인.
-- 프로젝트 객체를 못 찾거나 접근 권한이 없으면 외부에는 동일한 404 정책을 적용할 것을 제안.
-- 목록: `limit`, `cursor`, 허용된 `sort`, `q`, `status` 필터. max limit=200 초기 제안.
+- 프로젝트 객체를 못 찾거나 접근 권한이 없으면 외부에는 동일한 404를 반환한다(**승인**: scope 내 모든 endpoint).
+  멤버라서 프로젝트 존재를 이미 아는 호출자가 역할이 부족한 경우만 403 `FORBIDDEN`.
+- 성공 응답은 단건 `{"data": {...}}`, 목록 `{"data": [...], "page": {"limit": 50, "next_cursor": "..."|null}}`(**승인**).
+- 목록: `limit`, `cursor`, 허용된 `sort`, `q`, `status` 필터. max limit=200(**승인**, 기본 50).
+  cursor는 서버가 발급한 불투명 문자열이며 정렬·필터·프로젝트가 바뀌면 재사용할 수 없다(422 `INVALID_CURSOR`).
 - 숫자 단위는 필드명과 DTO에 명시.
 - 실제 시각 ISO8601 UTC, UI에서 KST 변환.
 - `X-Request-ID` 응답, 사용자 입력 request ID 검증.
 - 수정 응답 `ETag: "17"`; 변경 요청 `If-Match: "17"`.
-  버전 누락 428, 불일치 412. 마지막 저장 승리 방식 금지.
+  버전 누락 428 `PRECONDITION_REQUIRED`, 불일치 412 `EDIT_CONFLICT`(**승인**). 마지막 저장 승리 방식 금지.
+  ETag 값은 해당 리소스의 `row_version` 정수이며 응답 body에도 `row_version`을 싣는다.
+  `If-Match`는 `"17"`, `W/"17"`, `17`을 허용하고 `*`·비숫자는 422.
 - 실행/복사/가져오기 POST: `Idempotency-Key`.
   동일 키+동일 body는 기존 결과, 동일 키+다른 body는 409.
 - validator 규칙의 결과는 단순 HTTP 성공과 분리. `/validate`는 오류 목록이 있어도 정상 검증 처리면 200.
@@ -51,6 +60,23 @@ EDIT_CONFLICT, UNSUPPORTED_HANDLER, MISSING_ASSUMPTION_ACK,
 NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE.
 프레임워크 기본 validation 오류도 위 envelope로 변환.
 
+승인 scope(`project-assets-ports`)에서 추가된 코드:
+
+| code | HTTP | 의미 |
+|---|---|---|
+| UNAUTHENTICATED | 401 | 인증 정보 없음·무효·비활성 사용자 |
+| FORBIDDEN | 403 | 프로젝트 멤버이지만 역할 부족, 또는 조직 멤버이지만 admin이 아님 |
+| NOT_FOUND | 404 | 없거나 접근 권한이 없음(구분하지 않음). 존재하지 않는 경로도 동일 |
+| EDIT_CONFLICT | 412 | `If-Match` 버전 불일치 |
+| PRECONDITION_REQUIRED | 428 | `If-Match` 누락 |
+| VALIDATION_ERROR | 422 | 요청 형식 오류. `details[].field_path`는 JSON Pointer이며 본문 전체 규칙 위반은 `/` |
+| INVALID_CURSOR | 422 | cursor가 올바르지 않거나 정렬·필터와 맞지 않음 |
+| PROJECT_CODE_CONFLICT | 409 | 같은 조직에 같은 프로젝트 코드 |
+| ASSET_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 자산 코드 |
+| INTERNAL_ERROR | 500 | 예기치 않은 서버 오류(상세 비노출, `request_id`로 추적) |
+
+`PROJECT_SCOPE_MISMATCH`는 이 scope에서 사용하지 않는다(타 프로젝트 자원은 404).
+
 ## 3. 프로젝트·기준정보 API
 
 | Method | Path | 역할 / 결과 |
@@ -78,6 +104,43 @@ NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE
 
 자산 생성은 kind에 따라 subtype·포트를 원자 생성한다. FE가 포트를 따로 두 번 요청하지 않음.
 설비군 candidate qualification 변경은 공정 새 버전에서 수행.
+
+위 표 중 **승인된 operation은 `/me`, `/projects`(GET·POST), `/projects/{p}`(GET·PATCH),
+`/projects/{p}/assets`(GET·POST), `/projects/{p}/assets/{id}`(GET·PATCH), `/projects/{p}/assets/{id}/ports`(GET)**
+뿐이다. 나머지 행(archive, clone, members, groups, revisions, materials, products)은 PROPOSED.
+
+### 3.1 승인 scope `project-assets-ports` (contract 0.1.0)
+
+정본은 [openapi.json](openapi.json), 예제는 [examples/first-scope](examples/first-scope/)(실제 API 응답에서 생성). 근거 CR:
+[CR-backend-20261023-be01c-first-scope-api](../docs/change-requests/CR-backend-20261023-be01c-first-scope-api.md).
+
+**프로젝트**
+- `POST /projects` `{organization_id, code, name, timezone, description?}` → 201 + ETag + Location.
+  호출자가 조직 admin이어야 하고(조직 비멤버는 404) 생성자는 project admin으로 자동 등록된다.
+  `timezone`은 IANA 이름(예: `Asia/Seoul`)이며 기본값이 없다. 같은 조직의 `code` 중복은 409.
+- `GET /projects`: 호출자가 멤버인 프로젝트만, `code` 오름차순, `q`·`limit`·`cursor`.
+- `PATCH /projects/{p}`: `name`, `timezone`, `description`만(project admin, If-Match 필수). `code`·`organization_id`·`status`는 변경 불가.
+- `GET /me`: 사용자, 소속 조직(역할), 소속 프로젝트(역할).
+
+**자산**
+- `POST /projects/{p}/assets` `{kind, code, name, sort_order?, external_ref?, notes?, equipment|space}`.
+  `kind=equipment`는 `equipment`(`equipment_type`, `model_name?`)만, `storage|dock`는 `space`(`space_type`)만 허용하며 반대 객체가 있으면 422.
+  **요청에 포트를 보내지 않는다.** 서버가 같은 트랜잭션에서 포트를 만든다: 설비 `IN`/`OUT`, 공간 `ACCESS-01`(`port_key`와 `label`은 같은 값).
+  프로젝트 안에서 `code` 중복은 409. admin·editor만 가능(viewer 403).
+- `GET /projects/{p}/assets`: `kind`, `q`(code/name 부분 일치, `%`·`_`는 문자), `include_archived`(기본 false),
+  `sort`(`sort_order|code|name`, `-` 접두 내림차순, 단일 필드, 기본 `sort_order`), `limit`, `cursor`. 항목마다 `ports`를 포함한다.
+- `PATCH /projects/{p}/assets/{id}`: `code, name, sort_order, external_ref, notes, equipment{equipment_type, model_name}, space{space_type}`.
+  `kind`와 포트는 변경할 수 없고(알 수 없는 필드로 422) 설비가 아닌 자산의 `equipment`(반대도 동일)는 422. If-Match 필수.
+  하위 상세 변경도 자산의 `row_version`을 올린다.
+- 선택 필드(`external_ref`, `notes`, `description`, `model_name`)의 `null`은 "입력 없음"이며 PATCH에서 `null`로 지울 수 있다.
+  빈 문자열은 `null`이 아니므로 422. 이 scope에는 숫자 단위 필드가 없다.
+
+**이 scope에 없는 것(FE 주의)**: 용량, 그룹, 버전 상태(`VersionStatus`)는 asset_revision 도입 후 제공된다. 자산 `ports`에는 위치(placement)가 없다.
+
+**권한(잠정, TECH-006 결정 시 조정)**: 조직 admin=프로젝트 생성. project admin=프로젝트 수정·자산 생성/수정, editor=자산 생성/수정, viewer=조회만.
+
+**인증**: 운영 인증 adapter(TECH-002)는 미결이다. 개발·테스트에서만 `X-Debug-User` 헤더(local 모드)를 쓰며 이는 계약이 아니고 openapi.json에도 없다.
+FE의 실제 API 모드는 운영 인증이 정해지기 전까지 local 모드 백엔드에서만 동작한다.
 
 ## 4. 공정 버전·그래프 API
 

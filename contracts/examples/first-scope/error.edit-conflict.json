@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets/00000000-0000-4000-8000-000000000003",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "name": "충돌"
+    }
+  },
+  "response": {
+    "status": 412,
+    "body": {
+      "error": {
+        "code": "EDIT_CONFLICT",
+        "message": "다른 곳에서 먼저 수정되었습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "현재 버전은 2입니다.",
+            "severity": "error",
+            "field_path": "/row_version"
+          }
+        ]
+      }
+    }
+  }
+}

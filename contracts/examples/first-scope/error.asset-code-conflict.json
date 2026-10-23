@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets",
+    "body": {
+      "kind": "equipment",
+      "code": "EQ-001",
+      "name": "중복 코드",
+      "sort_order": 10,
+      "equipment": {
+        "equipment_type": "extruder"
+      }
+    }
+  },
+  "response": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "ASSET_CODE_CONFLICT",
+        "message": "같은 프로젝트에 동일한 자산 코드가 이미 있습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "이미 사용 중인 코드입니다.",
+            "severity": "error",
+            "field_path": "/code"
+          }
+        ]
+      }
+    }
+  }
+}

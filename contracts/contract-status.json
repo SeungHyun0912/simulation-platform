@@ -1,12 +1,22 @@
 {
   "workspace_package": "1.1.0",
-  "status": "PENDING_REVIEW",
-  "contract_version": null,
+  "status": "PARTIALLY_APPROVED",
+  "contract_version": "0.1.0",
   "openapi_path": "contracts/openapi.json",
-  "openapi_sha256": null,
-  "approved_scopes": [],
-  "approved_by": null,
-  "approved_at": null,
+  "openapi_sha256": "6bbad0dd3307b54597fba19562eb8e9104f3c6f5498261e756f94a4a4077b66e",
+  "approved_scopes": ["project-assets-ports"],
+  "approved_by": "SeungHyun0912",
+  "approved_at": "2026-10-23",
+  "baseline_commit": "82eb6a2",
+  "approval_record": "사용자가 대화에서 CR-backend-20261023-be01c-first-scope-api 전부 승인(2026-10-23)하고 계약 문서 반영을 위임. 승인 시각의 시·분은 기록되지 않음.",
+  "approved_change_requests": ["docs/change-requests/CR-backend-20261023-be01c-first-scope-api.md"],
+  "scope_excludes": [
+    "asset_revision, 용량·port_policy, 그룹, 별칭",
+    "project archive/clone/members, asset archive",
+    "운영 인증 adapter(TECH-002), 역할 정책 확정(TECH-006), RLS",
+    "공정·시나리오·실행·위키·CAD API 전체(PROPOSED 유지)"
+  ],
+  "examples_path": "contracts/examples/first-scope",
   "first_scope_proposal": "project-assets-ports",
-  "note": "문서 초안만 있음. 실제 OpenAPI 및 endpoint는 미생성."
+  "note": "승인 scope는 openapi.json의 11개 operation. 그 밖의 04 문서 항목은 PROPOSED. 미승인 CR 항목(§4-1 임시 해석)은 contracts/04 §3.1에 표시."
 }

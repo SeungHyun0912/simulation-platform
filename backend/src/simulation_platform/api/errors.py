@@ -40,7 +40,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             {
                 "severity": "error",
                 "field_path": "/" + "/".join(str(p) for p in err["loc"][1:]),
-                "message": err["msg"],
+                # pydantic이 붙이는 'Value error, ' 접두사는 사용자에게 의미가 없다.
+                "message": err["msg"].removeprefix("Value error, "),
             }
             for err in exc.errors()
         ]

@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets/00000000-0000-4000-8000-000000000003",
+    "body": {
+      "name": "헤더 없음"
+    }
+  },
+  "response": {
+    "status": 428,
+    "body": {
+      "error": {
+        "code": "PRECONDITION_REQUIRED",
+        "message": "If-Match 헤더가 필요합니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "GET 응답의 ETag를 If-Match로 보내세요.",
+            "severity": "error"
+          }
+        ]
+      }
+    }
+  }
+}

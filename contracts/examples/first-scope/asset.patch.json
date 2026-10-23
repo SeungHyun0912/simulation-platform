@@ -1,0 +1,57 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets/00000000-0000-4000-8000-000000000003",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "name": "실리콘 절연 압출기(수정)",
+      "external_ref": "ERP-0001",
+      "equipment": {
+        "model_name": "EX-100"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"2\""
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "kind": "equipment",
+        "code": "EQ-001",
+        "name": "실리콘 절연 압출기(수정)",
+        "sort_order": 10,
+        "external_ref": "ERP-0001",
+        "notes": null,
+        "archived_at": null,
+        "equipment": {
+          "equipment_type": "extruder",
+          "model_name": "EX-100"
+        },
+        "space": null,
+        "ports": [
+          {
+            "id": "00000000-0000-4000-8000-000000000004",
+            "port_key": "IN",
+            "role": "IN",
+            "label": "IN"
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000005",
+            "port_key": "OUT",
+            "role": "OUT",
+            "label": "OUT"
+          }
+        ],
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": "2026-10-23T00:00:00Z",
+        "row_version": 2
+      }
+    }
+  }
+}

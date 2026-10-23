@@ -1,6 +1,8 @@
 """OpenAPI 후보가 CR-backend-20261023-be01c의 승인 범위와 일치하는지 확인한다(DB 불필요)."""
 
+import hashlib
 import json
+from pathlib import Path
 
 from simulation_platform.api.app import create_app
 from simulation_platform.api.export_openapi import render
@@ -53,3 +55,22 @@ def test_asset_create_request_has_no_ports_and_forbids_extra_fields():
 
 def test_render_is_deterministic():
     assert render() == render()
+
+
+REPO = Path(__file__).resolve().parents[3]
+
+
+def test_approved_snapshot_matches_current_code():
+    """코드가 바뀌어 승인 스냅샷과 달라지면 실패한다. 의도한 변경은 CR→재승격 절차로 갱신한다."""
+    snapshot = (REPO / "contracts" / "openapi.json").read_bytes()
+    assert snapshot == render().encode("utf-8"), (
+        "contracts/openapi.json이 현재 코드의 OpenAPI와 다릅니다. "
+        "계약 변경이면 CR 승인 후 export_openapi로 재생성·재승격하고 contract-status.json의 해시를 갱신하세요.")
+
+
+def test_contract_status_hash_matches_snapshot():
+    status = json.loads((REPO / "contracts" / "contract-status.json").read_text(encoding="utf-8"))
+    digest = hashlib.sha256((REPO / "contracts" / "openapi.json").read_bytes()).hexdigest()
+    assert status["openapi_sha256"] == digest
+    assert status["status"] == "PARTIALLY_APPROVED"
+    assert status["approved_scopes"] == ["project-assets-ports"]
