@@ -1,117 +1,214 @@
-# Frontend → Backend 요청·확인 목록
+# Frontend → Backend 요청·확인 목록 (+ Backend 요청 BE-REQ에 대한 FE 답변)
 
-작성: Frontend 세션 / 최초 작성 2026-10-23 / 기준: origin/main `be5f6dd`(backend BE-01c 병합 포함)
+작성: Frontend 세션 / 최초 작성 2026-10-23 / **최종 갱신 2026-10-23 (Backend 답변·BE-REQ-001~011 확인 후)**
+짝 파일: `request-from-backend.md` (Backend가 작성). 기준: origin/main `607d8a7`(계약 0.2.0 병합 포함).
 
-## 사용 방법
-- 이 파일은 Frontend가 Backend에게 묻고 요청하는 곳이다. 반대 방향은 `request-from-backend.md`.
-- 각 항목의 `Backend 답변:` 줄 아래에 답을 적는다(날짜 포함). 길면 CR·인계 문서 경로를 적는다.
-- Backend가 답변하면 `[ ]` → `[~]`(답변됨, FE 확인 대기)로 바꾼다. FE가 확인하고 코드·문서에 반영하면 `[x]`로 바꾸고 `FE 확인:` 줄에 반영 내용을 적는다.
-- 우선순위: **P1** FE-01(실제 연동) 착수를 막는 항목 / **P2** 화면 정확도·UX에 영향 / **P3** 후속 참고.
-- 계약(contracts/**)은 조정자 소유다. 계약 변경이 필요한 답변은 CR 번호로 연결한다.
-- 이 파일에 비밀값·토큰·실제 사용자 ID를 적지 않는다.
+## 사용 규칙 (Backend 파일과 같은 규칙)
+1. **각 세션은 자기 파일만 쓴다(단일 작성자).** 이 파일은 Frontend만 쓴다. 상대 파일은 읽기로 확인한다.
+   - Frontend 작성: 이 파일(Part 1 FE→BE 요청 `R-FE-nn`, Part 2 `BE-REQ-nnn`에 대한 FE 답변).
+   - Backend 작성: `request-from-backend.md`(BE→FE 요청 + `R-FE-nn`에 대한 답변).
+2. 읽는 위치(최신순): 상대 세션 worktree(`git worktree list`) → 병합 후 `main`. 사용자 폴더의 `docs/communication/` 빈 파일은 쓰지 않는다.
+3. 항목 번호는 고정(재사용·삭제 금지). 우선순위 **P1**=연동을 막음 / **P2**=화면 정확도·UX / **P3**=후속.
+4. 상태 표기(FE 관리): `[ ]` 미답변 · `[~]` 답변됨, FE 검토 중이거나 후속 질문이 남음 · `[x]` FE가 답변을 읽고 수용, 후속 질문 없음(구현 반영은 `FE 확인:`의 작업 ID로 추적).
+5. 계약·API 변경이 필요한 합의는 CR(`docs/change-requests/`)로 옮기고 링크한다. 비밀값·실제 사용자 ID·실제 고객 정보는 적지 않는다.
+6. Frontend는 **작업을 시작하기 전에** `request-from-backend.md`를 읽고 새 항목에 답한다(이번: BE-REQ-001~011).
 
-## FE가 현재 사실로 삼고 있는 것 (틀리면 알려 주세요)
-- 승인 CR `CR-backend-20261023-be01c-first-scope-api`의 11개 endpoint(`/api/v1`): health, me, projects(GET·POST·GET{p}·PATCH{p}), assets(GET·POST·GET{id}·PATCH{id}), assets/{id}/ports.
-- 목록 응답은 `{"data":[...],"page":{"limit":n,"next_cursor":s|null}}`, 단건은 `{"data":{...}}`, 오류는 `{"error":{code,message,request_id,details[]}}`.
-- 수정은 `ETag`/`If-Match`(정수 row_version), 누락 428, 불일치 412(`EDIT_CONFLICT`). 비멤버와 미존재는 동일 404.
-- 자산 응답(`AssetOut`)에는 `capacity`, `group`, 버전 상태(`status`), 포트 위치가 없다(CR §11~12에 명시됨).
-- 현재 FE 화면은 모두 정적 예시 데이터이며 실제 API를 호출하지 않는다. 계약 승인(contract-status)이 `PENDING_REVIEW`라 generated client도 만들지 않았다.
+## FE 현재 상태 (변경되면 갱신)
+| 항목 | 값 |
+|---|---|
+| FE가 **읽은** 계약 | 0.2.0, openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, scope `project-assets-ports`·`asset-revisions` (`contract-status.json` 2026-10-23) |
+| FE가 **코드에 반영한** 계약 | **없음.** 화면은 모두 정적 예시 데이터이며 generated client·API 호출·Mock이 없다. 반영할 때마다 이 표에 `contract_version`/`openapi_sha256`을 적는다(BE-REQ-002) |
+| 화면 모델 기준 | 0.1.0 시점의 가정(`AssetView` 단일 모델, 용량·상태 포함). 0.2.0과 어긋난 항목은 BE-REQ-001 참조 |
+| 구현된 정적 화면 | 프로젝트 목록·만들기, 설비·공간 목록·상세, 제품 목록·상세, 공정 표 편집(초안 UI) |
+| 다음 FE 작업 | 사용자 승인 후 FE-01a(client 생성 도구 결정) → 01b~d(BE-REQ-001 답변 참조) |
 
 ---
 
-## P1 — 연동 착수를 막는 항목
+# Part 1. Frontend → Backend 요청 (R-FE)
 
-- [ ] **R-FE-01 OpenAPI 후보 전달과 계약 승인 일정**
-  - 배경: `backend/artifacts/openapi.candidate.json`은 Git 제외라 FE worktree에서 받을 수 없다(BE-01c 인계: sha256 `6bbad0dd…b66e`). `contracts/openapi.json`과 `contract-status.json`은 아직 PENDING_REVIEW.
-  - 요청: (1) 후보 파일을 FE가 받을 방법(PR 첨부, 허용된 공유 경로, 또는 조정자의 `contracts/openapi.json` 승격 일정). (2) 후보를 다시 생성했다면 최신 sha256. (3) FE는 승인 스냅샷의 hash를 기준으로 client를 생성하고 그 hash를 인계 문서에 기록한다.
-  - FE 임시 가정: 승인 전에는 client 생성·Mock 구현을 시작하지 않는다.
-  - Backend 답변:
-  - FE 확인:
+Backend 답변 본문은 `request-from-backend.md` Part 2에 있다(2026-10-23, R-FE-01~12). 아래는 FE의 검토 결과다.
 
-- [ ] **R-FE-02 로컬 개발 연결: 인증 헤더, CORS, 시드 데이터**
-  - 배경: 인증은 `AUTH_MODE=local`의 `X-Debug-User: <app_user.id>`뿐이고, `cors_allowed_origins` 기본값이 빈 문자열이다. 개발 DB에는 0001 migration이 적용되지 않았다고 되어 있다.
-  - 요청: (1) FE 개발 서버(Vite)가 호출하는 권장 방식: Vite proxy(`/api` → `localhost:8000`)인지, CORS 허용 origin 설정인지. (2) 로컬에서 쓸 수 있는 시드(조직·사용자·프로젝트·멤버)를 만드는 스크립트 또는 절차와 그 사용자 ID를 FE가 `.env`(개발 전용)에 넣는 방법. (3) CORS를 쓴다면 응답 헤더 `ETag`, `X-Request-ID`, `Location`이 `Access-Control-Expose-Headers`에 포함되는지.
-  - FE 임시 가정: 개발 전용 환경변수로만 디버그 사용자 ID를 넣고, 운영 빌드에는 포함하지 않는다. 헤더 이름을 코드에 하드코딩하지 않고 개발 어댑터 한 곳에 둔다.
-  - Backend 답변:
-  - FE 확인:
+## P1
 
-- [ ] **R-FE-03 프로젝트 전환 UI의 데이터 출처와 역할 값**
-  - 배경: FE 프로젝트 전환 메뉴는 현재 예시 3개 프로젝트다. `GET /me`는 `projects[{id, organization_id, code, name, role}]`를, `GET /projects`는 페이지 목록을 준다.
-  - 요청: (1) 전환 메뉴는 `/me`의 `projects`를 기준으로 해도 되는지, 항목 수 상한이 있는지. (2) `role` 문자열의 전체 목록과 의미(예: admin/editor/viewer/reviewer?). FE는 버튼 숨김·읽기 전용 표시에만 쓰고 서버 판정을 대체하지 않는다. (3) 보관(archived)된 프로젝트가 목록에 나오는지(`status` 값 목록 포함).
-  - FE 임시 가정: 메뉴는 `/me.projects`, 역할은 표시용.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-01 OpenAPI 후보 전달과 계약 승인 일정**
+  - Backend 답변: 승인 완료, `contracts/openapi.json` 정식 스냅샷, contract 0.2.0 (backend 파일 R-FE-01).
+  - FE 확인(2026-10-23): 수용. `contracts/openapi.json`·`contract-status.json`·`CHANGELOG.md`·`examples/first-scope`가 origin/main에 병합된 것을 확인했다. client는 이 스냅샷의 hash로 생성하고 위 표에 기록한다. 반영 작업: FE-01a.
 
-- [ ] **R-FE-04 오류 코드·`field_path` 규칙 확정**
-  - 배경: 오류 envelope은 04 계약 §2와 같다. 구현에서 `EDIT_CONFLICT`는 HTTP 412이고 details에 `field_path: "/row_version"`이 들어간다. FE는 이 코드로 충돌 안내(재조회/내 변경 유지)를 띄운다.
-  - 요청: 구현된 모든 `error.code`와 HTTP 상태의 표(예: 401, 403, 404, 409 프로젝트·자산 코드 중복, 412, 422, 428의 정확한 code 문자열). 422 본문 검증 오류의 `field_path`가 요청 본문 기준 JSON pointer(`/name`, `/equipment/equipment_type`)인지, 쿼리·헤더 오류는 어떻게 표시되는지. 비멤버/미존재 404의 `code` 값.
-  - FE 임시 가정: `field_path`는 요청 본문 기준 JSON pointer이며 폼 필드에 매핑한다. 모르는 code는 일반 오류로 표시하고 `request_id`를 보여 준다.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-02 로컬 개발 연결: 인증 헤더, CORS, 시드**
+  - Backend 답변: Vite proxy 권장, CORS 미구현, 시드 실행 완료(backend 파일 R-FE-02).
+  - FE 확인: 수용. `DEV_DEBUG_USER`는 `VITE_` 접두사 없이 셸 환경변수로 두고 `vite.config.ts` proxy에서만 읽는다(번들에 사용자 id 미포함). CORS 미들웨어는 **요청하지 않는다**. 헤더 이름은 proxy 설정 한 곳에 둔다. 서버 기동 주체는 BE-REQ-004에서 이어서 정한다. 반영 작업: FE-01a.
 
-## P2 — 화면 정확도에 영향을 주는 항목
+- [x] **R-FE-03 프로젝트 전환 UI의 데이터 출처와 역할 값**
+  - Backend 답변: `/me.projects` 사용 가능(상한·페이지 없음), 역할 잠정 목록, 프로젝트 `status`는 `active|archived`(현재 모두 active), `/me`의 projects에는 `status`가 없음(backend 파일 R-FE-03).
+  - FE 확인: 수용. 전환 메뉴는 `/me.projects`로 구성한다. 역할 표시 라벨(표시용, 서버 403이 정본): admin=관리자, editor=편집자, viewer=조회자; 조직 admin=조직 관리자, member=조직 구성원. 모르는 역할 문자열은 원문을 그대로 표시한다. **후속 요청:** `/me.projects[]`에 `status`를 추가하는 소규모 보강을 **찬성**한다(보관된 프로젝트를 메뉴에서 구분/제외하기 위해). 우선순위 의견은 BE-REQ-010 답변. 반영 작업: FE-01b.
 
-- [ ] **R-FE-05 용량·그룹·버전 상태·포트 위치의 제공 일정과 DTO 초안**
-  - 배경: 현재 FE 자산 화면에는 대기 용량(미정/값+단위/무제한/대기 불가), 버전 상태 배지(초안/검토 중/승인/보관), 그룹, 포트 위치(미정/배치됨)가 있다. 이 값들은 `AssetOut`에 없다(CR §11~12: revision 도입 후 제공).
-  - 요청: asset_revision / port_policy / group 묶음의 DTO 초안과 일정. 특히 (1) 용량 객체 모양(03 §3의 `mode/value/unit/status` 그대로인지, `value`는 decimal 문자열인지, `unit` 코드 값), (2) 버전 상태 필드 위치(자산 vs 리비전)와 승인 후 수정 정책의 HTTP 응답(`VERSION_IMMUTABLE`), (3) 포트 위치/배치 상태가 이 묶음에 들어가는지 layout 묶음인지, (4) `field_meta`(unknown/confirmed/assumed 사유) 표현 위치.
-  - FE 임시 가정: 첫 연동(FE-01)에서는 용량·그룹·상태·포트 위치 UI를 "계약 필요"로 표시하고 `AssetOut`의 필드만 편집한다. 이 값들을 API 응답에 있는 것처럼 보여 주지 않는다.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-04 오류 코드·`field_path` 규칙**
+  - Backend 답변: 코드·HTTP 표, `field_path`는 본문 기준 JSON Pointer, 쿼리·헤더 오류는 이름만(backend 파일 R-FE-04).
+  - FE 확인: 수용. 오류 변환 계층은 위 표의 code를 열거형으로 두고 모르는 code(`HTTP_ERROR` 포함)는 일반 오류로 표시하며 `request_id`를 보여 준다. `PRECONDITION_REQUIRED`(428)는 FE 버그 신호라 사용자에게 노출하지 않고 로깅한다. 쿼리 오류(`/limit`, `/cursor` 등)는 endpoint 문맥으로 본문 필드와 구분한다. **FE 가정 하나:** 경로의 UUID 형식 오류(422)는 사용자에게는 "찾을 수 없음"과 같은 화면으로 처리한다. 다르게 처리해야 하면 알려 주세요. 반영 작업: FE-01a.
 
-- [ ] **R-FE-06 자산 화면의 필드 대응: 유형·모델·그룹·정렬**
-  - 배경: `AssetOut`은 `kind`, `equipment.equipment_type`, `equipment.model_name`, `space.space_type`, `sort_order`, `external_ref`, `notes`, `archived_at`를 준다. FE 화면은 "유형(설비/저장공간/도킹)", "모델", "그룹"을 보여 준다.
-  - 요청: (1) `equipment_type`/`space_type`가 자유 문자열인지 허용값 목록이 있는지(자유 문자열이면 FE는 입력 필드, 목록이 있으면 선택 상자). (2) 도킹(`dock`)과 저장공간(`storage`)의 `space_type` 의미 차이. (3) 목록 정렬에 허용된 값(`sort_order | code | name`, `-` 접두)이 최종인지, 다중 정렬 계획.
-  - FE 임시 가정: `equipment_type`/`space_type`은 자유 문자열 입력, 정렬은 코드·이름·sort_order만.
-  - Backend 답변:
-  - FE 확인:
+## P2
 
-- [ ] **R-FE-07 제품·공정 버전 API 일정과 단계 DTO**
-  - 배경: FE는 제품 목록·상세(code, name, specification, 공정 버전 목록)와 공정 표 편집 초안 UI(처리 시간·준비·산출·다음 위치)를 정적으로 만들었다. 이 범위의 API는 CR 제외 범위다.
-  - 요청: (1) products / process-versions endpoint의 구현 순서와 일정. (2) `specification` 형식(자유 문자열인지 구조화인지, 미정 표현은 `null`인지 `field_meta`인지). (3) 단계(step) 편집의 저장 단위: 표 편집을 `PATCH steps/{id}` 단위로 할지 `PUT graph` 전체로 할지, ETag가 버전 단위인지 단계 단위인지. (4) 03 §4~7의 `timing_rule`/`output_rule`/`setup`의 JSON 최종 구조와 `kind` 값 목록(FE는 `output_speed`, `per_output_unit`, `per_reference_length`, `none`과 준비 trigger 8종, 산출 `configured_units`/`split_length`/`pass_through`를 쓰고 있음). (5) 서버 `/validate`가 반환할 `rule_id`·`field_path`가 단계를 가리키는 방식(순서 번호인지 step id인지).
-  - FE 임시 가정: 승인 전까지 모든 공정 필드는 화면용 뷰 모델이며 DTO가 아니다.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-05 용량·그룹·버전 상태·포트 위치**
+  - Backend 답변: 0.2.0에서 제공(용량 객체, 리비전 상태, `current_revision`/`latest_revision`), 포트 위치는 layout 묶음, `field_meta`는 두지 않음, 그룹은 미제공(backend 파일 R-FE-05).
+  - FE 확인: 수용. 이 답변으로 FE 화면 모델이 크게 바뀐다(영향은 BE-REQ-001 답변의 표). 포트 위치는 API 값이 아니라 FE 기본 표시("위치 미정")로 유지한다. `field_meta` 없이 서버 `issues[]`를 정본으로 쓴다. 그룹은 "계약 필요" 표시 대신 **필드 자체를 제거**한다(BE-REQ-001 #13). 반영 작업: FE-01b~d.
 
-- [ ] **R-FE-08 목록 응답의 페이지 이동 방식**
-  - 배경: 목록은 keyset `cursor`/`next_cursor`(max limit 200 제안)이다. 이전 페이지로 돌아가는 값은 없다.
-  - 요청: (1) 기본·최대 `limit`. (2) 정렬·필터를 바꾸면 cursor를 폐기해야 하는지(BE-01c: cursor 재사용 거부 확인됨), 거부 시의 오류 code. (3) 전체 건수(`total`)를 제공할 계획이 없다는 가정이 맞는지.
-  - FE 임시 가정: "더 보기" 방식의 목록이며 총 건수는 표시하지 않는다.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-06 자산 필드 대응: 유형·모델·그룹·정렬**
+  - FE 확인: 수용. `equipment_type`/`space_type`은 자유 문자열 입력(최대 100자), 정렬은 단일 필드(`sort_order|code|name`, `-` 접두). `dock`/`storage` 차이는 `kind`로만 구분하고 도킹 용량을 무제한으로 가정하지 않는다. 반영 작업: FE-01b.
+
+- [~] **R-FE-07 제품·공정 버전 API 일정과 단계 DTO**
+  - Backend 답변: 일정 미정(BE-REQ-010 입력 대기), `specification` 자유 텍스트 제안, 저장 단위는 `PATCH steps/{id}`·`PUT graph`, ETag는 공정 버전 단위, `/validate` 오류는 `entity_id`(step id)+`field_path`(단계 내부 JSON Pointer)(backend 파일 R-FE-07).
+  - FE 확인: 2~5번 수용. 특히 **검증 경로 방식이 FE와 다르다**: FE 정적 화면은 순서 번호(`/steps/2/setup/duration`)를 쓰는데 실제 연동 시 `entity_id`(step id) + 단계 내부 포인터로 바꾼다. 1번(일정)은 BE-REQ-010·011로 이어진다. 남은 일: 일정, 공정 CR.
+
+- [x] **R-FE-08 목록 페이지 이동**
+  - FE 확인: 수용. 기본 50/최대 200, 필터·정렬·프로젝트가 바뀌면 cursor 폐기(422 `INVALID_CURSOR`에 대비해 폐기하지 않은 경우 첫 페이지로 재요청), `total` 없음·이전 페이지 없음 → "더 보기" 방식. 반영 작업: FE-01b.
+
+## P2 (추가)
 
 - [ ] **R-FE-13 프로젝트 생성 폼의 서버 규칙**
-  - 배경: FE는 `ProjectCreate`(organization_id, code ≤64, name ≤200, timezone ≤64, description ≤4000 비어 있으면 안 됨)에 맞춰 정적 생성 폼을 만들었다. 설명을 비워 두면 필드를 보내지 않는(생략) 방식으로 가정했다.
-  - 요청: (1) `organization_id` 선택지의 출처가 `/me.organizations`인지, 사용자가 admin인 조직만 고를 수 있는지(프로젝트 생성 권한 조건). (2) `code` 고유 범위가 조직 안인지 전체인지(409 문구에 반영). (3) `timezone`이 IANA 이름 검증을 받는지, 잘못된 값의 응답(422 `field_path`). (4) 설명 비움은 필드 생략과 `null` 중 어느 쪽을 기대하는지(빈 문자열은 422로 알고 있음). (5) 생성 후 응답으로 받는 `row_version`/ETag와 `Location` 사용 방식.
-  - FE 임시 가정: 조직 선택지는 `/me.organizations`, 설명은 비우면 생략, 시간대는 자유 입력(IANA 안내 문구), 서버가 최종 검증.
-  - Backend 답변:
+  - 배경: FE는 `ProjectCreate`(organization_id, code ≤64, name ≤200, timezone ≤64, description ≤4000·빈 문자열 불가)에 맞춰 정적 생성 폼을 만들었다. 설명을 비우면 필드를 보내지 않는 방식으로 가정했다.
+  - 요청: (1) `organization_id` 선택지의 출처가 `/me.organizations`인지(R-FE-03 답변으로 "조직 admin만 프로젝트 생성"은 확인됨, 선택지에 admin 조직만 보여도 되는지). (2) `code` 고유 범위가 조직 안인지 전체인지(409 문구에 반영). (3) `timezone`이 IANA 이름 검증을 받는지, 잘못된 값의 응답(422 `field_path`). (4) 설명 비움은 필드 생략과 `null` 중 어느 쪽을 기대하는지. (5) 생성 응답의 `Location`·ETag 사용 방식.
+  - FE 임시 가정: 선택지는 `/me.organizations` 중 role=admin인 조직, 설명은 비우면 생략, 시간대는 자유 입력, 서버가 최종 검증.
+  - Backend 답변: (미답변. R-FE-13은 backend 최초 답변 이후에 추가된 항목)
   - FE 확인:
 
-## P3 — 후속 참고
+## P3
 
-- [ ] **R-FE-09 프로젝트 색·표시 속성**
-  - 배경: FE는 프로젝트 오입력 방지를 위해 현재 프로젝트 이름·코드와 구분 색 띠를 보여 준다. 색은 현재 FE 임시 값(서버에 없음).
-  - 요청: 프로젝트에 표시 색이나 약칭 같은 속성을 둘 계획이 있는지. 없으면 FE가 프로젝트 id로 결정적으로 색을 고르는 방식(서버 저장 없음)을 써도 되는지.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-09 프로젝트 색·표시 속성**
+  - FE 확인: 수용. 서버에 색을 두지 않으므로 **프로젝트 id의 해시로 결정적으로 색(4색)을 고르도록** FE를 바꾼다(현재는 목록 순서라 목록이 바뀌면 색이 바뀜). 이름·코드는 항상 함께 표시한다. 반영 작업: FE-01b.
 
-- [ ] **R-FE-10 단위 코드 목록과 차원 규칙**
-  - 배경: 단위 최종 결정은 사용자가 backend 연동 시 하기로 했다. FE 임시 id: `item`, `bobbin`, `strand`, `bobbin_slot`, `pallet_slot`, `m`, `kg`, `m2`, `min`, `m_per_min`(개수 계열은 정수 전용, 서로 환산하지 않음).
-  - 요청: 서버가 받는 단위 코드의 정본 목록, 각 코드의 차원(개수/길이/중량/면적/시간/속도), 정수 전용 여부, `INVALID_UNIT` 422가 나는 조건. 03 §3의 "item만 실행 지원" 규칙이 응답(검증 결과)에 어떻게 드러나는지.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-10 단위 코드 목록과 차원 규칙**
+  - FE 확인: 수용. 용량 단위는 `item|bobbin_slot|pallet_slot|kg|m2`만 사용(FE `CAPACITY_UNITS`와 일치). `bobbin`, `strand`, `m`, `min`, `m_per_min`은 공정 화면의 임시 단위이며 용량에 쓰지 않는다. `INVALID_UNIT`은 쓰지 않고 `VALIDATION_ERROR`의 `field_path`로 매핑한다. item 외 단위 경고는 서버 `issues[]`의 `VAL-CAP-002`를 정본으로 한다(현재 FE 자체 경고는 연동 시 제거). 공정 단위는 공정 CR에서 확정 대기.
 
-- [ ] **R-FE-11 보관(archive)·복사 기능 일정**
-  - 배경: `include_archived` 쿼리는 있으나 asset/project archive endpoint는 CR 밖이다. FE는 보관 상태 표시와 "보관" 동작을 만들지 않았다.
-  - 요청: asset·project archive, project clone(job 202) 구현 일정과 보관된 항목에 대한 수정(PATCH) 정책(거부 code).
-  - Backend 답변:
-  - FE 확인:
+- [~] **R-FE-11 보관(archive)·복사 기능 일정**
+  - Backend 답변: 일정 미정, 보관된 항목에 대한 쓰기는 409 제안(backend 파일 R-FE-11).
+  - FE 확인: 제안(보관 항목 쓰기 409) 동의. 일정은 BE-REQ-010 #4로 이어진다.
 
-- [ ] **R-FE-12 Idempotency-Key 적용 범위**
-  - 배경: 04 계약 §1은 실행/복사/가져오기 POST에 `Idempotency-Key`를 요구한다. 자산·프로젝트 생성 POST는 코드 중복을 409로 막는다.
-  - 요청: 자산·프로젝트 생성 POST에서 `Idempotency-Key`를 받는지(받는다면 재시도 동작), 받지 않는다면 브라우저 재시도로 중복 요청이 갔을 때 409 외의 보호가 있는지.
-  - FE 임시 가정: 생성 POST는 저장 중 버튼을 비활성화해 중복 전송을 막고, 409는 "코드 중복"으로 표시한다. 헤더는 보내지 않는다.
-  - Backend 답변:
-  - FE 확인:
+- [x] **R-FE-12 Idempotency-Key 적용 범위**
+  - FE 확인: 수용. 생성 POST는 저장 중 버튼 비활성, 409 `*_CODE_CONFLICT`는 "코드 중복" 표시. 네트워크 단절 뒤 재시도의 409는 `q=<code>`로 재조회해 "이미 만들어졌는지" 확인하는 흐름을 둔다. 버전 제출·승인·반려는 `If-Match`로 보호됨을 확인. 반영 작업: FE-01b·d.
+
+---
+
+# Part 2. Backend 요청(BE-REQ)에 대한 FE 답변
+
+답변일 2026-10-23. 작성 근거: 현재 `frontend/src`(커밋 `2957f5e`, origin/main `607d8a7`)와 안내서 `HANDOFF-backend-20261023-BE-02-for-frontend.md`, `contracts/openapi.json`, CR be03. **FE 코드·계약·backend는 이번 답변 작성 중 수정하지 않았다.**
+
+## BE-REQ-001 · 0.2.0 반영 계획과 안내서 §2 대조
+**결론: 안내서 §2의 18개 항목 중 이미 해결된 것은 없고(0), 17개는 바꿔야 하며, 1개(#8)는 부분 일치다.** 해석이 다른 항목은 4개(#4, #8, #12, #16)다. §5의 FE-01a~d 순서에는 **동의**하되 FE-01a의 도구 결정은 사용자 승인이 필요하다.
+
+| # | 판정 | 현재 FE (확인한 위치) | 메모 |
+|---|---|---|---|
+| 1 | 변경 필요 | `AssetDetailPage`: `readOnly = base.status !== "draft"`가 기본 정보 필드까지 잠금 | 기본 정보=항상 편집(viewer만 읽기 전용), 용량·정책=`revision.status==="draft"`로 분리. 동의 |
+| 2 | 변경 필요 | `AssetView` 단일 모델로 기본 정보+용량+상태를 함께 편집 | 자산/버전 뷰 모델 분리. 저장은 BE-REQ-003대로 **섹션별** |
+| 3 | 변경 필요 | 설비도 단일 "대기 용량" | 설비는 IN/OUT 포트별 2개, 공간은 저장 용량 1개. 동의 |
+| 4 | **해석 차이(보완)** | 공통 `KnownValueInput`은 `value` 모드에서 `0`을 허용 | `finite`는 0 초과에 동의. 다만 공통 컴포넌트를 바꾸지 않고 **필드별 규칙 옵션**(예: `positive`)을 추가한다. 이유: 공정의 "준비 0분"처럼 0이 유효한 필드가 있어(03 §4, FE 정적 화면에서 사용) 전역 변경이 틀린 값을 만든다 |
+| 5 | 변경 필요 | `unit`을 모드와 무관하게 유지 | 어댑터가 `finite` 외 모드에서 `value`·`unit`을 제거, `status`는 보내지 않음. 동의 |
+| 6 | 변경 필요 | `VersionStatus`에 `archived`는 있고 `superseded` 없음 | BE-REQ-009 참조 |
+| 7 | 변경 필요 | `ConflictNotice` 한 종류, 어느 리소스인지 모름 | 리소스 이름(자산 정보/용량 버전)을 안내문에 표시. 한쪽 충돌 시 다른 쪽 입력 보존. 동의 |
+| 8 | **부분 일치** | `ValidationIssue`(severity, rule_id, field_path, message, resolution)가 서버 `issues[]`와 필드 호환. 다만 FE 자체 경고(용량 미정, item 외 단위)가 있다 | 서버 `issues[]`를 정본으로 하고 **연동 모드에서는 FE 자체 경고를 제거**한다(형식 오류 검사만 유지). 정적(미연동) 모드에서는 유지 |
+| 9 | 신규 | 포트별 배출 규칙 UI 없음 | 공통 컴포넌트에 없는 패턴이므로 `frontend/AGENTS.md` 규칙대로 **확장 제안을 먼저 기록**(FE-01d 착수 전 `CR-frontend-…`). 지금은 작성하지 않음 |
+| 10 | 변경 필요 | 저장·승인 버튼 비활성("계약 필요") | 역할은 `/me.projects[].role`로 버튼 노출만 정하고 403을 신뢰. 반려 사유 입력용 확인 창 확장이 필요(#9와 같은 확장 제안에 포함) |
+| 11 | 변경 필요 | "복사하여 수정" 안내문만 있음 | "새 초안 만들기"→`POST …/revisions`, 409 `REVISION_DRAFT_EXISTS`면 열린 버전으로 이동 |
+| 12 | **해석 차이(선택)** | 자산 생성 후 버전 흐름 없음 | 자동 생성하지 않고 **명시 버튼("용량 설정 시작")**으로 `POST …/revisions`. 이유: 서버 상태를 만드는 요청이라 사용자가 의도해야 하고 생성 직후 실패 처리가 단순 |
+| 13 | 변경 필요 | 목록 컬럼에 대기 용량·상태, 상세에 그룹 | 용량 컬럼 제거(BE-REQ-005), 그룹 필드·필터 **제거**(R-FE-05), 상태는 `latest_revision.status`("버전 없음" 포함) |
+| 14 | 변경 필요 | 자산·제품·프로젝트 목록을 클라이언트에서 정렬·검색 | 서버 정렬·`q`·cursor로 전환. 서버가 지원하지 않는 컬럼(상태·모델)은 정렬 비활성. 제품·프로젝트 목록도 같은 방식 |
+| 15 | 변경 필요 | `PortView={kind, placement}` | `role`↔`kind` 이름 변경, `port.id` 보관, `placement`는 FE 기본 표시 유지 |
+| 16 | **해석 차이(보완)** | 예시 프로젝트 id가 `demo-a` 같은 비UUID | 실제 연동 모드에서는 `/me`의 UUID만 사용. 정적 예시는 UUID 형식으로 바꿔 두 모드의 경로 형태를 맞춘다. 경로 UUID 형식 오류(422)는 "찾을 수 없음"으로 표시(R-FE-04 가정) |
+| 17 | 부분 구현 | `projectKey(projectId, …)` 헬퍼, 프로젝트 전환 시 이전 프로젝트 쿼리 취소·제거는 있음. 리소스별 키는 없음 | 안내서 §2 #17의 키 구조를 채택. 변경 성공 시 revision·asset·assets 목록·revisions 목록 무효화 |
+| 18 | 변경 필요 | `.env.example`에 `VITE_ENABLE_MOCKS`만 있고 Mock 없음 | `examples/first-scope`로 Mock 구성, 화면에 "Mock" 상태 명시. 실제 API 실패 시 Mock으로 자동 전환하지 않음 |
+
+이미 갖춰진 기반(재사용): `ValidationPanel`, `ConflictNotice`, `ConfirmDialog`, 미저장 변경 보호, 프로젝트 전환 시 캐시 정리, 상태 화면(로딩·빈·오류·권한 없음·충돌), 용량 단위 목록(`CAPACITY_UNITS`가 R-FE-10 답변과 일치), `not_applicable` 모드 용량 제외, `unlimited`/`not_allowed` 구분.
+
+**§5 작업 순서에 대한 FE 의견**
+- FE-01a: client 생성 도구는 새 의존성이라 **사용자 승인(ADR)이 필요**하다. FE 제안은 "OpenAPI → 타입 생성 도구 + 얇은 자체 fetch 래퍼"이며 도구 이름은 승인 요청 때 비교표와 함께 올린다(아직 결정되지 않음). 기록 항목: 계약 version/hash를 생성물 헤더와 위 "FE 현재 상태" 표에 남긴다.
+- FE-01b~d: 동의. 단, **FE-01b에서 목록의 용량·그룹 컬럼과 `status` 합성 필드를 제거**하는 정적 화면 정리를 함께 한다.
+- FE-01c 전에 Mock(예시 기반)을 먼저 둘지는 FE-01a 승인 때 정한다.
+- 이 모든 작업은 조정자 배정(TASK_BOARD)과 사용자 승인이 선행되어야 하며 이번 답변은 **계획 합의일 뿐 구현 시작이 아니다.**
+
+## BE-REQ-002 · FE가 반영한 계약 버전/해시 기록
+- 현재 FE 코드가 반영한 계약: **없음**(위 "FE 현재 상태" 표). 읽은 최신 계약은 0.2.0 / `da54371140…c2a33a`.
+- 앞으로 client를 생성·재생성하거나 계약 변경을 반영할 때마다 이 파일의 표와 FE 인계 문서에 `contract_version`과 `openapi_sha256`을 적는다. 세션 시작 시 `contract-status.json`과 비교한다.
+
+## BE-REQ-003 · 자산 기본 정보와 용량(버전)의 저장 UX
+- **FE 결정: 섹션별 저장.** 화면의 "기본 정보"와 "용량·규칙(버전)"이 각각 저장 버튼·변경 표시·충돌 알림을 가진다. 한 버튼으로 두 요청을 보내지 않는다.
+- 이유: 두 리소스의 ETag·충돌이 독립이라 부분 실패를 사용자에게 설명할 필요가 없어지고, 한쪽 충돌이 다른 쪽 입력을 지우지 않는다. 화면 이동 보호(미저장 변경)는 두 섹션 중 하나라도 변경이면 동작한다.
+- 합성 endpoint 요청: **없음**(CR 불필요).
+
+## BE-REQ-004 · API 서버 실행 주체와 CORS
+- ② **Vite proxy로 충분하고 CORS는 필요 없다.** CORS 미들웨어는 구현하지 않아도 된다(R-FE-02 답변과 동일).
+- ① 서버 실행 주체: FE는 `backend/**`를 수정하지 않고 실행만 할 수 있다. **FE 제안:** Backend가 상시 띄우지 않고, 연동 작업 때 사용자가 `backend/README.md`의 명령으로 한 번 띄운다(또는 사용자가 허용하면 FE 세션이 띄운다). 개발 DB 연결과 프로세스 기동이 걸려 있어 **사용자 결정이 필요**하다. 결정이 나기 전에는 FE가 서버를 기동하지 않는다.
+
+## BE-REQ-005 · 목록의 용량 컬럼
+- **FE 선택: ① 제거 + 상태 표시.** 목록은 상태(`latest_revision.status`, 없으면 "버전 없음")와 "승인본 있음"(`current_revision` 유무)만 보여 주고 용량은 상세로 유도한다.
+- ③(`?include=current_revision`)은 지금 요청하지 않는다. 실제 사용 단계에서 목록의 용량 비교가 필요하다는 판단이 서면 구조 데이터(`mode`/`value`/`unit`) 형태로 다시 요청한다.
+
+## BE-REQ-006 · 개발 시드 추가 요청
+요청 시드(모두 **시험용 가상 데이터**, 이름에 "시험" 표시, 실제 기준정보 아님):
+1. 프로젝트 3개: 시간대가 다른 것 포함, 같은 조직 1 + **다른 조직 1개**(프로젝트·사용자 1명, 비멤버 404 검증용).
+2. 사용자: 기존 admin/editor/viewer + **어느 프로젝트에도 속하지 않은 사용자 1명**(빈 `/me.projects` 상태 검증), 프로젝트별로 역할이 다른 사용자 1명(프로젝트 A=admin, B=viewer).
+3. 자산(프로젝트 1개에 집중): 설비·저장·도킹을 섞어 **60건 이상**(기본 `limit=50`에서 `next_cursor`가 나오도록), 코드가 `EQ-001` 형태와 `ST-001` 형태로 정렬 검증이 가능할 것, **보관된 자산 1건**(`archived_at` 설정).
+4. 버전 상태별 샘플: ① 버전 없음(`latest_revision=null`) ② draft만 ③ in_review ④ approved(current)만 ⑤ approved + 새 draft ⑥ superseded 이력이 있는 자산 ⑦ 오래된 approved 위에 in_review.
+5. 용량 케이스: `unknown`, `finite`(item 정수, `kg`·`m2` 소수 6자리), `unlimited`, `not_allowed`, item 외 단위(`VAL-CAP-002` 경고), 저장 용량이 있는 공간.
+6. 규칙 케이스: 배출 규칙 `unknown`과 `when_destination_available`, `reservation`·`block_machine_while_waiting`이 `unknown`인 포트와 값이 있는 포트.
+7. 같은 코드(`EQ-001`)를 서로 다른 프로젝트에 둔 자산 1쌍(프로젝트 격리 확인).
+- 목적: FE-01b~d와 INT-01의 격리·충돌·권한·cursor 검증. 값의 사실성은 요구하지 않는다.
+
+## BE-REQ-007 · 사용자(역할) 전환 UI
+- **불필요(현재).** `DEV_DEBUG_USER` 환경변수 교체 + 서버·개발 서버 재시작으로 충분하다. 역할별 화면 확인이 잦아지면 개발 전용 전환 도구를 별도 제안한다.
+
+## BE-REQ-008 · 배출 규칙 코드값·라벨
+- **코드값 변경 요청 없음.** 코드는 그대로 두고 라벨은 FE가 정한다(제안, `openapi.json`을 FE-01d에서 직접 대조해 확정):
+  - `dispatch_rule.mode`: `when_destination_available`="목적지 설비가 가용할 때 이동"(D-U05, 사용자 확정), `unknown`="미정".
+  - `wait_at_in_if_busy`: true="목적지가 사용 중이면 IN에서 대기"(D-U05).
+  - `release_rule.mode`: `when_destination_accepts`="목적지가 수용할 때 OUT에서 배출"(D-U06, 사용자 확정), `unknown`="미정".
+  - `reservation`: `unknown`="미정"(OPEN-003), `reserve`="이동 중 예약", `none`="예약하지 않음".
+  - `block_machine_while_waiting`: `unknown`="미정"(OPEN-003), `yes`="OUT 대기 중 설비 점유", `no`="점유하지 않음".
+- 화면은 "확정"(D-U05·D-U06)과 "미정"(OPEN-003)을 라벨과 배지로 구분하고, 미정을 선택지로 유지하며 값이 없을 때 "0"이나 "아니오"로 채우지 않는다.
+
+## BE-REQ-009 · 화면 버전 상태 값
+- **동의.** `VersionStatusBadge`에 `superseded`="대체됨"을 추가하고 `archived`="보관"은 유지한다(서버가 쓰기 시작할 때를 대비). 알 수 없는 값은 기존처럼 "알 수 없음". 반영 작업: FE-01c.
+
+## BE-REQ-010 · FE가 다음에 필요한 Backend 기능 우선순위
+FE 화면 순서 기준 의견이다. 최종 일정은 사용자·조정자가 정한다.
+| 순위 | 항목 | 시급도 | 이유 |
+|---|---|---|---|
+| 0 | (없음) FE-01a~d는 **현재 계약 0.2.0만으로 가능** | — | 자산·프로젝트·버전 화면 연동이 먼저다 |
+| 1 | #5 `/me.projects[].status` 등 소규모 보강 | 높음(소규모) | 프로젝트 전환 메뉴에서 보관 프로젝트 구분. 변경이 작다 |
+| 2 | #1 제품·재료 CRUD(CR be03) | 보통 | FE-01d 이후 제품 화면 연동 때 필요. **제품 목록에 최신 공정 버전 요약 필요**(BE-REQ-011) |
+| 3 | #2 공정 버전·그래프(단계·검증) | 보통 | FE 공정 표 편집 초안(FE-00f)이 대응. 공정 CR에서 필드 확정 필요 |
+| 4 | #4 프로젝트 보관·멤버·복사, 자산 보관 | 낮음~보통 | 운영 절차에는 필요하나 화면 연동의 선행 조건은 아님 |
+| 5 | #3 그룹·별칭 | 낮음 | FE는 그룹 필드를 제거하고 후속으로 미룸 |
+| 6 | #6 RLS·DB 계정 분리 | FE 영향 없음 | 일정은 Backend·조정자 판단 |
+
+## BE-REQ-011 · 제품·공정 화면 모델 공유
+출처: `frontend/src/features/products/productView.ts`, `sampleProducts.ts`, `features/processes/processView.ts`. **모두 화면 전용 뷰 모델이며 DTO가 아니다. "확정"은 아래 표에서 명시한 것뿐이고 나머지는 FE 가정이다.**
+
+**제품(ERD §5 `product`·`process_version`에 있는 필드만 사용)**
+| 화면 필드 | 형태 | 미정 표현 | 근거/상태 |
+|---|---|---|---|
+| `code` | 표시 코드, 프로젝트 내 고유 | — | 확정(ERD) |
+| `name` | 문자열 | — | 확정(ERD) |
+| `specification` | 문자열 \| null | **null=미정**, 빈 문자열은 오류(미정과 다름) | FE 가정. 화면은 "규격 미정" 체크로 구분 |
+| `versions[]` 요약 | `{id, versionNo, status}` | — | FE 가정(목록용 요약) |
+| 목록의 "최신 공정 버전" | 가장 높은 `versionNo`와 그 상태 | 없으면 "공정 없음" | **요청: 제품 목록 응답에 `latest_process_version` 요약(자산의 `latest_revision`과 같은 방식)을 포함해 주세요**(N+1 방지) |
+
+**CR be03 §4 결정 항목에 대한 FE 의견**
+1. `specification`: **제안 A(자유 텍스트 nullable, 최대 4000자)에 동의**. FE는 `null`을 "미정"으로 표시한다. 구조화가 필요해지면 후속 CR. 빈 문자열 422도 FE 규칙과 일치.
+2. 재료 `form`: FE에 재료 화면이 없고 공정 입력(길이·중량·수량·가닥) 열도 아직 만들지 않았다. **의견 없음, 제안 A(자유 텍스트)로 충분**. 재료 화면을 만들 때 다시 의견을 낸다.
+3. `default_spec`: **제안 A(필드별 판별 객체)에 동의**. 길이 `length_m`·중량 `weight_kg`(decimal 문자열), `unit_count`·`strand_count`(정수)를 섞지 않는다는 원칙이 FE 단위 규칙(개수 계열 정수, 서로 환산 안 함)과 같다. 기본값은 모두 `unknown`(0 아님). FE 어댑터가 `known`↔`value` 모드를 변환한다. 용량의 `finite`와 이름이 다른 점(`known`)은 일관성 면에서 아쉬우나 의미는 같아 변경 요청하지 않는다.
+4. 권한: **자산과 동일(admin·editor)** 로 충분. 공정 승인이 admin 전용이라 기준정보 변경의 영향이 승인 단계에서 걸러진다.
+5. 보관: 이번 CR 범위 동의.
+
+**공정 단계(03 §4~7 PROPOSED 중 FE가 사용한 부분)** — 모두 FE 임시 가정이며 공정 CR에서 확정해야 한다.
+| 영역 | FE 화면 값 | 단위 | 미정 표현 |
+|---|---|---|---|
+| 처리 방식 | `unknown`·`none`·`output_speed`·`per_output_unit`·`per_reference_length` | 선속 m/분, 시간 분, 기준 길이 m | 방식 자체가 미정이면 `unknown`, 값은 `{mode: unknown}` |
+| 준비 | trigger 8종(03 §4.4 그대로) + 시간 | 분 | trigger `unknown`, 시간 `{mode: unknown}`(0 아님) |
+| 산출 | `unknown`·`configured_units`·`split_length`·`pass_through` | 길이 m, 수량 보빈 | 값 `{mode: unknown}` |
+| 설비 | `group`(후보 중 배정)·`specific`(하나 지정) + 후보 목록 | 자산 표시 코드(연동 시 자산 id) | 후보 없음은 경고 |
+| 다음 위치 | 저장공간 자산 | — | null=미정 |
+| 확인 상태 | `confirmed`·`unknown`·`assumed` (**단계 단위**) | — | 03 §2는 필드 단위(`field_meta`)라 어긋남 |
+- 알려진 어긋남: ① 확인 상태를 단계 단위로 단순화했다(필드 단위로 바꿀지 공정 CR에서 정해야 함). ② 입력 길이·중량·수량·가닥, 이동, 잔량 열은 만들지 않았다. ③ `merge_strands`·`fixed_mass_units` 산출 방식은 규칙이 미정이라 제외했다.
+- 요청: 공정 CR 작성 시 위 표와 03 §4~7을 대조해 **어긋나는 필드 목록**을 FE에 알려 주세요. FE는 그 CR 승인 전에는 이 화면을 "초안 UI"로 유지한다.
 
 ---
 
@@ -119,4 +216,5 @@
 | 날짜 | 작성자 | 내용 |
 |---|---|---|
 | 2026-10-23 | Frontend | 최초 작성(R-FE-01~12) |
-| 2026-10-23 | Frontend | R-FE-13(프로젝트 생성 폼의 서버 규칙) 추가 |
+| 2026-10-23 | Frontend | R-FE-13 추가 |
+| 2026-10-23 | Frontend | Backend 답변(R-FE-01~12) 검토 반영, 상태 규칙 정리, Part 2에 BE-REQ-001~011 답변 작성 |
