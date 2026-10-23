@@ -8,16 +8,19 @@ from simulation_platform.models.identity import (
     Project,
     ProjectMember,
 )
+from simulation_platform.models.revision import AssetRevision, PortPolicy
 
 __all__ = [
     "AppUser",
     "Asset",
     "AssetPort",
+    "AssetRevision",
     "AuditLog",
     "Base",
     "EquipmentDetail",
     "Organization",
     "OrganizationMember",
+    "PortPolicy",
     "Project",
     "ProjectMember",
     "SpaceDetail",

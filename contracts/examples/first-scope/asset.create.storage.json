@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets",
+    "body": {
+      "kind": "storage",
+      "code": "ST-001",
+      "name": "원자재 보관 공간",
+      "sort_order": 20,
+      "space": {
+        "space_type": "storage"
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "ETag": "\"1\"",
+      "Location": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets/00000000-0000-4000-8000-000000000006"
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "kind": "storage",
+        "code": "ST-001",
+        "name": "원자재 보관 공간",
+        "sort_order": 20,
+        "external_ref": null,
+        "notes": null,
+        "archived_at": null,
+        "equipment": null,
+        "space": {
+          "space_type": "storage"
+        },
+        "ports": [
+          {
+            "id": "00000000-0000-4000-8000-000000000007",
+            "port_key": "ACCESS-01",
+            "role": "ACCESS",
+            "label": "ACCESS-01"
+          }
+        ],
+        "current_revision": null,
+        "latest_revision": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": null,
+        "row_version": 1
+      }
+    }
+  }
+}

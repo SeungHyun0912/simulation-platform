@@ -21,6 +21,7 @@ from simulation_platform.domain.pagination import (
 from simulation_platform.models import Asset, AssetPort, EquipmentDetail, SpaceDetail
 from simulation_platform.models.base import new_id
 from simulation_platform.repositories import assets as asset_repo
+from simulation_platform.repositories import revisions as revision_repo
 from simulation_platform.schemas.asset import (
     AssetCreate,
     AssetOut,
@@ -30,6 +31,7 @@ from simulation_platform.schemas.asset import (
     SpaceOut,
 )
 from simulation_platform.schemas.common import Page
+from simulation_platform.schemas.revision import RevisionSummary
 from simulation_platform.services.projects import require_project, require_write
 from simulation_platform.services.unit_of_work import audit, transaction
 
@@ -54,8 +56,13 @@ def _default_ports(kind: str) -> list[tuple[str, str]]:
     return [("ACCESS-01", "ACCESS")]
 
 
-def _to_out(asset: Asset, children: asset_repo.Children) -> AssetOut:
+def _summary(revision) -> RevisionSummary | None:
+    return None if revision is None else RevisionSummary.model_validate(revision)
+
+
+def _to_out(asset: Asset, children: asset_repo.Children, summaries: dict) -> AssetOut:
     eq, sp = children.equipment.get(asset.id), children.space.get(asset.id)
+    latest, current = summaries.get(asset.id, (None, None))
     return AssetOut(
         id=asset.id, project_id=asset.project_id, kind=asset.kind, code=asset.code,
         name=asset.name, sort_order=asset.sort_order, external_ref=asset.external_ref,
@@ -63,6 +70,7 @@ def _to_out(asset: Asset, children: asset_repo.Children) -> AssetOut:
         equipment=None if eq is None else EquipmentOut.model_validate(eq),
         space=None if sp is None else SpaceOut.model_validate(sp),
         ports=[PortOut.model_validate(p) for p in children.ports.get(asset.id, [])],
+        current_revision=_summary(current), latest_revision=_summary(latest),
         created_at=asset.created_at, updated_at=asset.updated_at, row_version=asset.row_version)
 
 
@@ -71,7 +79,8 @@ def _load_out(session: Session, project_id: uuid.UUID, asset_id: uuid.UUID) -> A
     asset = asset_repo.get_asset(session, project_id, asset_id)
     if asset is None:
         raise NotFoundError(NOT_FOUND_MESSAGE)
-    return _to_out(asset, asset_repo.Children(session, project_id, [asset.id]))
+    return _to_out(asset, asset_repo.Children(session, project_id, [asset.id]),
+                   revision_repo.summaries_for_assets(session, project_id, [asset.id]))
 
 
 def create_asset(session: Session, principal: Principal, project_id: uuid.UUID,
@@ -138,8 +147,11 @@ def list_assets(session: Session, principal: Principal, project_id: uuid.UUID, *
         next_cursor = encode_cursor(
             tag, [v if isinstance(v, int) else str(v)
                   for v in (getattr(last, c.key) for c in columns)])
-    children = asset_repo.Children(session, project_id, [a.id for a in page_rows])
-    return [_to_out(a, children) for a in page_rows], Page(limit=limit, next_cursor=next_cursor)
+    ids = [a.id for a in page_rows]
+    children = asset_repo.Children(session, project_id, ids)
+    summaries = revision_repo.summaries_for_assets(session, project_id, ids)
+    return ([_to_out(a, children, summaries) for a in page_rows],
+            Page(limit=limit, next_cursor=next_cursor))
 
 
 def patch_asset(session: Session, principal: Principal, project_id: uuid.UUID,

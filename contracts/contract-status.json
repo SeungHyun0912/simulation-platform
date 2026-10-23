@@ -1,12 +1,26 @@
 {
   "workspace_package": "1.1.0",
-  "status": "PENDING_REVIEW",
-  "contract_version": null,
+  "status": "PARTIALLY_APPROVED",
+  "contract_version": "0.2.0",
   "openapi_path": "contracts/openapi.json",
-  "openapi_sha256": null,
-  "approved_scopes": [],
-  "approved_by": null,
-  "approved_at": null,
+  "openapi_sha256": "da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a",
+  "approved_scopes": ["project-assets-ports", "asset-revisions"],
+  "approved_by": "SeungHyun0912",
+  "approved_at": "2026-10-23",
+  "baseline_commit": "e2f3bba",
+  "approval_record": "사용자가 대화에서 CR-backend-20261023-be01c(0.1.0)와 CR-backend-20261023-be02(0.2.0)를 각각 승인하고 계약 문서 반영을 위임(2026-10-23). BE-02는 '전체 승인'이며 CR §4의 결정 5건은 Backend 제안안대로 승인된 것으로 기록. 승인 시각의 시·분은 기록되지 않음.",
+  "approved_change_requests": [
+    "docs/change-requests/CR-backend-20261023-be01c-first-scope-api.md",
+    "docs/change-requests/CR-backend-20261023-be02-asset-revision-capacity.md"
+  ],
+  "scope_excludes": [
+    "group, alias, 장비 가동 달력·처리 능력(asset_revision의 나머지 속성)",
+    "project archive/clone/members, asset archive",
+    "운영 인증 adapter(TECH-002), 역할 정책 확정(TECH-006), RLS",
+    "공정·시나리오·실행·위키·CAD API 전체(PROPOSED 유지)"
+  ],
+  "examples_path": "contracts/examples/first-scope",
+  "changelog_path": "contracts/CHANGELOG.md",
   "first_scope_proposal": "project-assets-ports",
-  "note": "문서 초안만 있음. 실제 OpenAPI 및 endpoint는 미생성."
+  "note": "승인 scope는 openapi.json의 operation 전체(0.1.0: 11개, 0.2.0: +7개). 그 밖의 04 문서 항목은 PROPOSED. 프런트 영향은 contracts/CHANGELOG.md가 정본."
 }

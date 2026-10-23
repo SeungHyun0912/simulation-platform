@@ -1,0 +1,55 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/asset-revisions/00000000-0000-4000-8000-000000000011/reject",
+    "headers": {
+      "If-Match": "\"2\""
+    },
+    "body": {
+      "reason": "저장 용량의 근거가 필요합니다."
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"3\""
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "asset_id": "00000000-0000-4000-8000-000000000006",
+        "revision_no": 1,
+        "status": "draft",
+        "schema_version": "1.0",
+        "storage_capacity": {
+          "mode": "unknown",
+          "value": null,
+          "unit": null,
+          "status": "unknown"
+        },
+        "ports": [],
+        "notes": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "rule_id": "VAL-CAP-001",
+            "entity_id": "00000000-0000-4000-8000-000000000011",
+            "field_path": "/storage_capacity",
+            "message": "저장 용량 값이 미정입니다.",
+            "resolution": "확정값 입력(없으면 대기 불가 선택). 실행 전에 해소해야 합니다."
+          }
+        ],
+        "submitted_at": null,
+        "submitted_by": null,
+        "rejection_reason": "저장 용량의 근거가 필요합니다.",
+        "rejected_at": "2026-10-23T00:00:00Z",
+        "approved_at": null,
+        "approved_by": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": "2026-10-23T00:00:00Z",
+        "row_version": 3
+      }
+    }
+  }
+}

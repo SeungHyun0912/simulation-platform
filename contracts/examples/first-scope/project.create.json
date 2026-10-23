@@ -1,0 +1,34 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects",
+    "body": {
+      "organization_id": "00000000-0000-4000-8000-000000000001",
+      "code": "DEMO-WIRE",
+      "name": "전선 공장 예제",
+      "timezone": "Asia/Seoul",
+      "description": "예제 프로젝트"
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "ETag": "\"1\"",
+      "Location": "/api/v1/projects/00000000-0000-4000-8000-000000000002"
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "organization_id": "00000000-0000-4000-8000-000000000001",
+        "code": "DEMO-WIRE",
+        "name": "전선 공장 예제",
+        "timezone": "Asia/Seoul",
+        "description": "예제 프로젝트",
+        "status": "active",
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": null,
+        "row_version": 1
+      }
+    }
+  }
+}

@@ -101,6 +101,9 @@ class AssetPort(IdMixin, MutableMixin, Base):
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_asset_port_project_id"),
         UniqueConstraint("project_id", "asset_id", "id", name="uq_asset_port_project_asset_id"),
+        # port_policy가 IN/OUT 포트만 참조하도록 role까지 묶는 복합 FK의 대상(0002).
+        UniqueConstraint("project_id", "asset_id", "id", "role",
+                         name="uq_asset_port_project_asset_id_role"),
         UniqueConstraint("project_id", "asset_id", "port_key", name="uq_asset_port_key"),
         ForeignKeyConstraint(
             ["project_id", "asset_id", "asset_kind"],

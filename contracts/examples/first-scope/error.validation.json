@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets",
+    "body": {
+      "kind": "equipment",
+      "code": "EQ-002",
+      "name": "상세 누락"
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "요청 형식이 올바르지 않습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "severity": "error",
+            "field_path": "/",
+            "message": "kind=equipment는 equipment 객체만 필요합니다(space 금지)."
+          }
+        ]
+      }
+    }
+  }
+}

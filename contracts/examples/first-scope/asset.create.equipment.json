@@ -1,0 +1,59 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets",
+    "body": {
+      "kind": "equipment",
+      "code": "EQ-001",
+      "name": "실리콘 절연 압출기",
+      "sort_order": 10,
+      "equipment": {
+        "equipment_type": "extruder"
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "ETag": "\"1\"",
+      "Location": "/api/v1/projects/00000000-0000-4000-8000-000000000002/assets/00000000-0000-4000-8000-000000000003"
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "kind": "equipment",
+        "code": "EQ-001",
+        "name": "실리콘 절연 압출기",
+        "sort_order": 10,
+        "external_ref": null,
+        "notes": null,
+        "archived_at": null,
+        "equipment": {
+          "equipment_type": "extruder",
+          "model_name": null
+        },
+        "space": null,
+        "ports": [
+          {
+            "id": "00000000-0000-4000-8000-000000000004",
+            "port_key": "IN",
+            "role": "IN",
+            "label": "IN"
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000005",
+            "port_key": "OUT",
+            "role": "OUT",
+            "label": "OUT"
+          }
+        ],
+        "current_revision": null,
+        "latest_revision": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": null,
+        "row_version": 1
+      }
+    }
+  }
+}
