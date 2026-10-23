@@ -15,6 +15,7 @@ dependencies = [
     "sqlalchemy",
     "alembic",
     "psycopg[binary]",
+    "tzdata",  # Windows에서 zoneinfo(IANA 시간대) 검증에 필요
 ]
 
 [project.optional-dependencies]
@@ -34,3 +35,7 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI의 의존성·파라미터 선언 관용구는 기본값 호출 경고에서 제외한다.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]

@@ -42,3 +42,35 @@ class EditConflictError(DomainError):
 class InvalidUnitError(DomainError):
     code = "INVALID_UNIT"
     status_code = 422
+
+
+class UnauthenticatedError(DomainError):
+    code = "UNAUTHENTICATED"
+    status_code = 401
+
+
+class ForbiddenError(DomainError):
+    """프로젝트 존재를 이미 아는 멤버의 역할 부족. 비멤버는 NotFoundError를 쓴다."""
+
+    code = "FORBIDDEN"
+    status_code = 403
+
+
+class ValidationFailed(DomainError):
+    code = "VALIDATION_ERROR"
+    status_code = 422
+
+
+class InvalidCursorError(DomainError):
+    code = "INVALID_CURSOR"
+    status_code = 422
+
+
+class ProjectCodeConflict(DomainError):
+    code = "PROJECT_CODE_CONFLICT"
+    status_code = 409
+
+
+class AssetCodeConflict(DomainError):
+    code = "ASSET_CODE_CONFLICT"
+    status_code = 409

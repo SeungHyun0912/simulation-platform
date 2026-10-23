@@ -35,7 +35,7 @@ project/asset/port migration → 생성·조회·수정 API → OpenAPI 후보 �
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock
 .\.venv\Scripts\python.exe -m pip install -e . --no-deps
-.\.venv\Scripts\python.exe -m pytest -q        # 단위 5건 + 통합 18건(DB 없으면 통합은 skip)
+.\.venv\Scripts\python.exe -m pytest -q        # 단위·계약·통합 전체(DB 없으면 통합은 skip)
 .\.venv\Scripts\python.exe -m ruff check .
 ```
 - DB 통합 테스트(실제 PostgreSQL 필요, 기본 대상 `simulation_platform_test`):
@@ -48,4 +48,9 @@ python -m venv .venv
   (현재 head `0001`). 개발/공유 DB에는 자동 적용하지 않는다.
 - 의존성 정확한 버전은 `requirements.lock`(pip freeze 산출)이 기준이다. 패키지 매니저 확정은 ADR 대기.
 - 로컬 PostgreSQL: 루트 `docker-compose.yml`(WSL에서 `docker compose up -d postgres`).
-- 앱 import 경로: `simulation_platform.api.app:app`. uvicorn 실행은 아직 검증하지 않았다.
+- 앱 import 경로: `simulation_platform.api.app:app`.
+- 앱 실행(대상 DB 확인 필수): `$env:DATABASE_URL="postgresql+psycopg://..."; $env:AUTH_MODE="local"; python -m uvicorn simulation_platform.api.app:app --port 8000`
+  `AUTH_MODE=local`은 개발·테스트 전용이며 `APP_ENV=production`이면 기동을 거부한다. 요청은 `X-Debug-User: <app_user.id>` 헤더로 주체를 지정한다.
+- OpenAPI 후보 생성: `python -m simulation_platform.api.export_openapi` → `artifacts/openapi.candidate.json`(Git 제외, 정식 계약 아님).
+- 구현된 API(`/api/v1`): `GET /me`, 프로젝트 `GET·POST /projects`, `GET·PATCH /projects/{p}`,
+  자산 `GET·POST /projects/{p}/assets`, `GET·PATCH .../assets/{id}`, `GET .../assets/{id}/ports`. 사양은 CR `CR-backend-20261023-be01c-first-scope-api.md`.

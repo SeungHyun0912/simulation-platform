@@ -123,3 +123,53 @@ class Db:
 @pytest.fixture
 def db(engine) -> Db:
     return Db(engine)
+
+
+# --- API(TestClient) -----------------------------------------------------------
+
+def _app_with_engine(engine):
+    from sqlalchemy.orm import Session
+
+    from simulation_platform.api.app import create_app
+    from simulation_platform.db import get_session
+    from simulation_platform.settings import Settings, get_settings
+
+    app = create_app()
+
+    def _session():
+        with Session(engine) as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        app_env="test", auth_mode="local", _env_file=None)
+    return app
+
+
+@pytest.fixture
+def make_client(engine):
+    """독립된 TestClient 팩토리(동시 요청 테스트에서 여러 개 사용)."""
+    from fastapi.testclient import TestClient
+
+    return lambda: TestClient(_app_with_engine(engine))
+
+
+@pytest.fixture
+def client(make_client):
+    return make_client()
+
+
+@pytest.fixture
+def world(db):
+    """조직 하나와 역할별 사용자. admin만 조직 admin, 나머지는 조직 member, outsider는 다른 조직."""
+    org = db.org()
+    other_org = db.org()
+    users = {name: db.user() for name in ("admin", "editor", "viewer", "outsider")}
+    for name in ("admin", "editor", "viewer"):
+        db.run((("INSERT INTO organization_member (id,organization_id,user_id,role) "
+                "VALUES (:i,:o,:u,:r)"), {"i": uuid.uuid4(), "o": org, "u": users[name],
+                                         "r": "admin" if name == "admin" else "member"}))
+    db.run((("INSERT INTO organization_member (id,organization_id,user_id,role) "
+            "VALUES (:i,:o,:u,'admin')"), {"i": uuid.uuid4(), "o": other_org,
+                                          "u": users["outsider"]}))
+    return {"org": org, "other_org": other_org, "users": users}
