@@ -25,7 +25,8 @@ from simulation_platform.domain.pagination import (
 from simulation_platform.models import MaterialDefinition, Product
 from simulation_platform.models.base import new_id
 from simulation_platform.repositories import catalog as repo
-from simulation_platform.schemas.catalog import MaterialOut, ProductOut
+from simulation_platform.repositories import process as process_repo
+from simulation_platform.schemas.catalog import MaterialOut, ProcessVersionSummary, ProductOut
 from simulation_platform.schemas.common import Page
 from simulation_platform.services.projects import require_project, require_write
 from simulation_platform.services.unit_of_work import audit, transaction
@@ -51,6 +52,19 @@ MATERIAL = Entity("material", MaterialDefinition, MaterialOut, MaterialCodeConfl
                   "uq_material_project_code", "재료를 찾을 수 없습니다.", "재료")
 
 
+def _decorate(entity: Entity, session: Session, project_id: uuid.UUID, outs: list) -> list:
+    """제품 응답에 공정 버전 요약(현재 승인본·가장 최근 버전)을 붙인다. 재료에는 해당 없음."""
+    if entity is PRODUCT and outs:
+        summaries = process_repo.summaries_for_products(session, project_id, [o.id for o in outs])
+        for out in outs:
+            latest, current = summaries[out.id]
+            out.latest_process_version = None if latest is None else \
+                ProcessVersionSummary.model_validate(latest)
+            out.current_process_version = None if current is None else \
+                ProcessVersionSummary.model_validate(current)
+    return outs
+
+
 def _conflicts(entity: Entity) -> dict:
     return {entity.constraint: lambda: entity.conflict(
         f"같은 프로젝트에 동일한 {entity.label} 코드가 이미 있습니다.",
@@ -71,7 +85,7 @@ def create(entity: Entity, session: Session, principal: Principal, project_id: u
               entity_type=entity.kind, entity_id=row.id, before=None,
               after={"code": row.code, "name": row.name}, request_id=request_id)
     session.refresh(row)
-    return entity.out.model_validate(row)
+    return _decorate(entity, session, project_id, [entity.out.model_validate(row)])[0]
 
 
 def get(entity: Entity, session: Session, principal: Principal, project_id: uuid.UUID,
@@ -80,7 +94,7 @@ def get(entity: Entity, session: Session, principal: Principal, project_id: uuid
     row = repo.get_item(session, entity.model, project_id, item_id)
     if row is None:
         raise NotFoundError(entity.not_found)
-    return entity.out.model_validate(row)
+    return _decorate(entity, session, project_id, [entity.out.model_validate(row)])[0]
 
 
 def list_page(entity: Entity, session: Session, principal: Principal, project_id: uuid.UUID, *,
@@ -101,8 +115,8 @@ def list_page(entity: Entity, session: Session, principal: Principal, project_id
     if len(rows) > limit:
         last = page_rows[-1]
         next_cursor = encode_cursor(tag, [str(getattr(last, c.key)) for c in columns])
-    return ([entity.out.model_validate(r) for r in page_rows],
-            Page(limit=limit, next_cursor=next_cursor))
+    outs = _decorate(entity, session, project_id, [entity.out.model_validate(r) for r in page_rows])
+    return outs, Page(limit=limit, next_cursor=next_cursor)
 
 
 def patch(entity: Entity, session: Session, principal: Principal, project_id: uuid.UUID,
@@ -138,4 +152,4 @@ def patch(entity: Entity, session: Session, principal: Principal, project_id: uu
               entity_type=entity.kind, entity_id=row.id, before=before, after=after,
               request_id=request_id)
     session.refresh(row)
-    return entity.out.model_validate(row)
+    return _decorate(entity, session, project_id, [entity.out.model_validate(row)])[0]

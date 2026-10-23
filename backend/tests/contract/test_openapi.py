@@ -36,6 +36,18 @@ EXPECTED = {
     ("post", "/api/v1/projects/{project_id}/materials"),
     ("get", "/api/v1/projects/{project_id}/materials/{material_id}"),
     ("patch", "/api/v1/projects/{project_id}/materials/{material_id}"),
+    # scope process-versions (contract 0.4.0)
+    ("get", "/api/v1/projects/{project_id}/products/{product_id}/process-versions"),
+    ("post", "/api/v1/projects/{project_id}/products/{product_id}/process-versions"),
+    ("get", "/api/v1/projects/{project_id}/process-versions/{version_id}"),
+    ("patch", "/api/v1/projects/{project_id}/process-versions/{version_id}"),
+    ("get", "/api/v1/projects/{project_id}/process-versions/{version_id}/graph"),
+    ("put", "/api/v1/projects/{project_id}/process-versions/{version_id}/graph"),
+    ("patch", "/api/v1/projects/{project_id}/process-versions/{version_id}/steps/{step_id}"),
+    ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/validate"),
+    ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/submit"),
+    ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/reject"),
+    ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/approve"),
 }
 
 
@@ -54,6 +66,7 @@ def test_local_debug_auth_is_not_exposed():
 
 
 REVISION = "/api/v1/projects/{project_id}/asset-revisions/{revision_id}"
+PROCESS = "/api/v1/projects/{project_id}/process-versions/{version_id}"
 
 
 def test_mutating_operations_declare_if_match_and_precondition_errors():
@@ -67,6 +80,12 @@ def test_mutating_operations_declare_if_match_and_precondition_errors():
         ("post", f"{REVISION}/approve"),
         ("patch", "/api/v1/projects/{project_id}/products/{product_id}"),
         ("patch", "/api/v1/projects/{project_id}/materials/{material_id}"),
+        ("patch", f"{PROCESS}"),
+        ("put", f"{PROCESS}/graph"),
+        ("patch", f"{PROCESS}/steps/{{step_id}}"),
+        ("post", f"{PROCESS}/submit"),
+        ("post", f"{PROCESS}/reject"),
+        ("post", f"{PROCESS}/approve"),
     ]
     for method, path in targets:
         op = paths[path][method]
@@ -111,10 +130,35 @@ def test_default_spec_schema_is_closed_and_keeps_measures_separate():
     assert any(x.get("type") == "integer" for x in count.get("anyOf", [count]))
 
 
-def test_me_projects_include_status_and_products_have_no_process_summary_yet():
+def test_me_projects_include_status_and_timezone():
     schemas = _schema()["components"]["schemas"]
     assert {"status", "timezone"} <= set(schemas["MeProject"]["properties"])
-    assert "latest_process_version" not in schemas["ProductOut"]["properties"]  # 공정 CR에서 추가
+
+
+def test_product_gains_process_version_summaries_without_breaking_0_3_fields():
+    props = _schema()["components"]["schemas"]["ProductOut"]["properties"]
+    assert {"current_process_version", "latest_process_version"} <= set(props)
+    assert {"id", "project_id", "code", "name", "specification", "row_version"} <= set(props)
+
+
+def test_process_rule_schemas_are_closed_and_discriminated():
+    schemas = _schema()["components"]["schemas"]
+    for name in ("GraphIn", "GraphNode", "GraphEdge", "StepDto", "TimingRule", "RequirementDto",
+                 "OutputRule", "OutputSpeed", "Setup", "PreconditionDelay"):
+        assert schemas[name].get("additionalProperties") is False, name
+    processing = schemas["TimingRule"]["properties"]["processing"]
+    assert processing["discriminator"]["propertyName"] == "kind"
+    assert set(processing["discriminator"]["mapping"]) == {
+        "unknown", "none", "output_speed", "per_output_unit", "per_reference_length"}
+    # 준비·대기 시간은 0이 유효해야 해서 처리 시간 값과 다른 스키마를 쓴다.
+    assert "DurationMeasure" in schemas and "DecimalMeasure" in schemas
+
+
+def test_process_validate_scope_is_a_closed_enum_and_graph_put_documents_errors():
+    paths = _schema()["paths"]
+    scope = next(p for p in paths[f"{PROCESS}/validate"]["post"]["parameters"] if p["name"] == "scope")
+    assert scope["schema"]["enum"] == ["knowledge", "run_template"]
+    assert {"409", "412", "428", "422"} <= set(paths[f"{PROCESS}/graph"]["put"]["responses"])
 
 
 def test_asset_response_adds_revision_summaries_without_breaking_0_1_fields():
@@ -153,5 +197,5 @@ def test_contract_status_hash_matches_snapshot():
     assert status["openapi_sha256"] == digest
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
-                                         "products-materials"]
-    assert status["contract_version"] == "0.3.1"
+                                         "products-materials", "process-versions"]
+    assert status["contract_version"] == "0.4.0"

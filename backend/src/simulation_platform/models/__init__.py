@@ -9,6 +9,14 @@ from simulation_platform.models.identity import (
     Project,
     ProjectMember,
 )
+from simulation_platform.models.process import (
+    FlowEdge,
+    FlowNode,
+    ProcessStep,
+    ProcessVersion,
+    RequirementCandidate,
+    ResourceRequirement,
+)
 from simulation_platform.models.revision import AssetRevision, PortPolicy
 
 __all__ = [
@@ -19,12 +27,18 @@ __all__ = [
     "AuditLog",
     "Base",
     "EquipmentDetail",
+    "FlowEdge",
+    "FlowNode",
     "MaterialDefinition",
     "Organization",
     "OrganizationMember",
     "PortPolicy",
+    "ProcessStep",
+    "ProcessVersion",
     "Product",
     "Project",
     "ProjectMember",
+    "RequirementCandidate",
+    "ResourceRequirement",
     "SpaceDetail",
 ]

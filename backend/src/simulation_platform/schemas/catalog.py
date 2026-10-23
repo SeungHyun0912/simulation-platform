@@ -75,6 +75,15 @@ class DefaultSpecPatch(PatchIn):
     strand_count: CountMeasure | None = None
 
 
+class ProcessVersionSummary(Out):
+    """제품 응답에 붙는 공정 버전 요약(자산의 RevisionSummary와 같은 방식)."""
+
+    id: uuid.UUID
+    version_no: int
+    status: Literal["draft", "in_review", "approved", "superseded"]
+    approved_at: UtcDatetime | None
+
+
 class ProductOut(Out):
     id: uuid.UUID
     project_id: uuid.UUID
@@ -82,6 +91,9 @@ class ProductOut(Out):
     name: str
     specification: str | None
     notes: str | None
+    # 0.4.0 추가(비파괴): 현재 승인본과 가장 최근 버전의 요약. 공정 버전이 없으면 null.
+    current_process_version: ProcessVersionSummary | None = None
+    latest_process_version: ProcessVersionSummary | None = None
     archived_at: UtcDatetime | None
     created_at: UtcDatetime
     updated_at: UtcDatetime | None
