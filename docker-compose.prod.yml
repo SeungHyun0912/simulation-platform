@@ -1,0 +1,21 @@
+# 운영용 PostgreSQL. DB_PASSWORD는 반드시 환경에서 주입한다(기본값 없음).
+# 포트는 호스트에 공개하지 않는다. migration/app 계정 분리는 backend 구현 시 추가한다.
+services:
+  postgres:
+    image: postgres:16
+    container_name: simulation-platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: simulation_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d simulation_platform']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

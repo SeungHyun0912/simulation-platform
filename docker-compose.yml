@@ -1,0 +1,23 @@
+# 로컬 개발용 PostgreSQL. 운영에는 docker-compose.prod.yml을 사용한다.
+# 이미지 버전(16)은 G0 호환성 확인 전의 잠정값이다.
+services:
+  postgres:
+    image: postgres:16
+    container_name: simulation-platform-postgres
+    environment:
+      POSTGRES_DB: simulation_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d simulation_platform']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
