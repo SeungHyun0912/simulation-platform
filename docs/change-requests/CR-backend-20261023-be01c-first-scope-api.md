@@ -51,6 +51,22 @@
 - 운영 인증 adapter(TECH-002)는 미결. local 모드는 계약이 아니며 OpenAPI에 노출하지 않는다.
 - 역할 권한(잠정): 조직 admin=프로젝트 생성, project admin/editor=자산 생성·수정, viewer=조회만. TECH-006 결정 시 조정.
 
+## 4-1. 구현 중 확정한 세부 사항 (승인 범위 내 해석, 계약 반영 시 확인 요청)
+- 사용자: 2026-10-23 "CR 전부 승인". 아래는 승인된 CR을 구현하며 CR에 명시되지 않아 Backend가 정한 값이다.
+- 추가 오류 코드: `UNAUTHENTICATED`(401, 헤더 누락·미등록·비활성 사용자·local 모드 꺼짐), `INTERNAL_ERROR`(500, 상세 비노출).
+- `sort`는 단일 필드(`sort_order|code|name`, `-` 접두)만 지원. 동률은 `code`, `id`로 안정 정렬(기본 `sort_order` → `code` → `id`).
+  프로젝트 목록은 `code` 오름차순 고정(`sort` 파라미터 없음).
+- cursor는 정렬·필터·프로젝트가 바뀌면 재사용 불가(422 `INVALID_CURSOR`). 서명은 하지 않는다(값에 비밀 없음, 범위 검증은 매 요청 서버가 수행).
+- 프로젝트 PATCH는 project admin만 허용(CR은 자산 수정만 admin/editor로 명시). 자산 PATCH/POST는 admin·editor.
+- 선택 필드 `external_ref`, `notes`, `description`, `model_name`: 빈 문자열은 422(null과 구분), null은 "입력 없음"/지우기.
+- PATCH 본문에서 null 허용: `external_ref`, `notes`, `description`, `model_name`. 나머지 null은 422. 빈 본문·빈 중첩 객체도 422.
+- 자산 `sort_order`는 0 이상 정수(DB `integer` 상한).
+- If-Match 형식: `"17"`, `W/"17"`, `17` 허용. `*`·비숫자는 422, 누락은 428.
+- 감사 로그(`audit_log`)에 `project.create/update`, `asset.create/update`를 같은 트랜잭션으로 기록(변경된 업무 필드만).
+- 동기 SQLAlchemy Session + `def` 엔드포인트(스레드풀)로 구현. 기술서 05는 AsyncSession을 제안했으나 Windows에서
+  psycopg async와 기본 이벤트 루프가 맞지 않아 동기를 채택. ADR 후보이며 조정자 판단 요청.
+- 이 CR은 contracts/04에 아직 반영되지 않았다(Backend는 contracts/** 수정 권한 없음). 반영은 조정자.
+
 ## 5. 승인 요청 항목
 1. §2 응답 래퍼·cursor·오류 코드 추가·404 정책, 412=EDIT_CONFLICT
 2. §3 Project/Asset/Port DTO와 포트 자동 생성 규칙(포트 key `IN`/`OUT`/`ACCESS-01`, label 기본값)

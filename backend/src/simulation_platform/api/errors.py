@@ -1,5 +1,6 @@
 """도메인/프레임워크 오류를 계약의 error envelope로 변환한다."""
 
+import logging
 from dataclasses import asdict
 
 from fastapi import FastAPI, Request
@@ -47,6 +48,15 @@ def register_exception_handlers(app: FastAPI) -> None:
             _envelope(request, "VALIDATION_ERROR", "요청 형식이 올바르지 않습니다.", details),
             status_code=422,
         )
+
+    @app.exception_handler(Exception)
+    async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
+        # 내부 오류 상세는 응답에 싣지 않는다(request_id로 로그를 추적).
+        logging.getLogger("simulation_platform").exception(
+            "unhandled error request_id=%s", getattr(request.state, "request_id", None))
+        return JSONResponse(
+            _envelope(request, "INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.", []),
+            status_code=500)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:
