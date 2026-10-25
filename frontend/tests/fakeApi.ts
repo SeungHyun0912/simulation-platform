@@ -183,8 +183,31 @@ export type FakeRequest = {
 export type FakeResponse = { status: number; body?: unknown; headers?: Record<string, string> };
 
 /** 가짜 서버의 가변 상태. 서버마다 새로 복제하므로 테스트끼리 영향을 주지 않는다. */
+export function productOut(i: number): Schemas["ProductOut"] {
+  return {
+    id: uuid(i, "p"),
+    project_id: P1,
+    code: `P-${String(i).padStart(3, "0")}`,
+    name: `서버 제품 ${i}`,
+    // 홀수는 규격 입력, 짝수는 미정(null)
+    specification: i % 2 ? `규격 ${i}` : null,
+    notes: null,
+    archived_at: i === 9 ? "2026-10-23T00:00:00Z" : null,
+    created_at: "2026-10-23T00:00:00Z",
+    updated_at: null,
+    row_version: 1,
+    current_process_version: null,
+    latest_process_version:
+      i === 1 ? { id: uuid(1, "q"), version_no: 2, status: "draft", approved_at: null } : null,
+  };
+}
+
+export const PRODUCTS: Schemas["ProductOut"][] = Array.from({ length: 60 }, (_, i) => productOut(i + 1));
+
 export type FakeState = {
   assets: Schemas["AssetOut"][];
+  /** 제품. 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
+  products: Schemas["ProductOut"][];
   /** 모든 자산의 버전. 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
   revisions: Schemas["AssetRevisionOut"][];
   /** 현재 요청자의 프로젝트 역할. editor/viewer는 승인·반려(admin 전용)나 쓰기에서 403을 받는다. */
@@ -192,6 +215,7 @@ export type FakeState = {
 };
 export const freshState = (): FakeState => ({
   assets: structuredClone(ASSETS),
+  products: structuredClone(PRODUCTS),
   revisions: structuredClone(REVISIONS_OF_ASSET_1),
   role: "admin",
 });
@@ -470,6 +494,95 @@ function createRevision(state: FakeState, assetId: string): FakeResponse {
   return { status: 201, headers: etag(1), body: { data: rev } };
 }
 
+const productSignature = (q: URLSearchParams) =>
+  JSON.stringify([q.get("q") ?? "", q.get("include_archived") ?? "", q.get("sort") ?? ""]);
+
+/** 목록 규칙(계약 0.3.0): q 부분 일치, include_archived 기본 false, sort code|name(기본 code), cursor는 조건 서명을 가진다. */
+function listProducts(all: Schemas["ProductOut"][], q: URLSearchParams): FakeResponse {
+  const needle = (q.get("q") ?? "").toLowerCase();
+  const withArchived = q.get("include_archived") === "true";
+  let items = all.filter(
+    (p) => (withArchived || !p.archived_at) && (!needle || p.code.toLowerCase().includes(needle) || p.name.toLowerCase().includes(needle)),
+  );
+  const sort = q.get("sort") ?? "code";
+  const desc = sort.startsWith("-");
+  const key = sort.replace(/^-/, "") as "code" | "name";
+  items = [...items].sort((a, b) => (desc ? -1 : 1) * a[key].localeCompare(b[key]) || a.id.localeCompare(b.id));
+  const limit = Number(q.get("limit") ?? 50);
+  let offset = 0;
+  const cursor = q.get("cursor");
+  if (cursor) {
+    const [off, sig] = [cursor.split("|")[0]!, cursor.split("|").slice(1).join("|")];
+    if (sig !== productSignature(q)) return errorBody(422, "INVALID_CURSOR", "cursor가 이 조건과 맞지 않습니다.", [{ message: "잘못된 cursor", field_path: "/cursor" }]);
+    offset = Number(off);
+  }
+  const page = items.slice(offset, offset + limit);
+  const next = offset + limit < items.length ? `${offset + limit}|${productSignature(q)}` : null;
+  return { status: 200, body: { data: page, page: { limit, next_cursor: next } } };
+}
+
+/** 제품 입력 검사(생성·수정 공통): 빈 문자열 금지, 길이 제한, code·name은 null 불가 */
+function productInputError(b: any, creating: boolean): FakeResponse | null { // eslint-disable-line @typescript-eslint/no-explicit-any -- 요청 본문 검사
+  const allowed = ["code", "name", "specification", "notes"];
+  for (const k of Object.keys(b)) if (!allowed.includes(k)) return invalid(`/${k}`, "허용되지 않는 필드입니다.");
+  if (creating) {
+    if (typeof b.code !== "string" || b.code.trim() === "") return invalid("/code", "코드가 필요합니다.");
+    if (typeof b.name !== "string" || b.name.trim() === "") return invalid("/name", "이름이 필요합니다.");
+  } else {
+    if (Object.keys(b).length === 0) return invalid("/", "변경할 필드가 없습니다.");
+    for (const k of ["code", "name"]) if (k in b && b[k] === null) return invalid(`/${k}`, `${k}은(는) null로 지울 수 없습니다.`);
+  }
+  for (const k of ["code", "name", "specification", "notes"]) if (typeof b[k] === "string" && b[k].trim() === "") return invalid(`/${k}`, "비어 있을 수 없습니다.");
+  if (typeof b.specification === "string" && b.specification.length > 4000) return invalid("/specification", "4000자 이하여야 합니다.");
+  return null;
+}
+
+function patchProduct(state: FakeState, req: FakeRequest, productId: string): FakeResponse {
+  const p = state.products.find((x) => x.id === productId);
+  if (!p) return notFound();
+  if (state.role === "viewer") return forbidden();
+  const ifMatch = req.headers["If-Match"];
+  if (ifMatch === undefined) return missingIfMatch();
+  const b = req.body ?? {};
+  const bad = productInputError(b, false);
+  if (bad) return bad;
+  if (Number(ifMatch.replace(/"/g, "")) !== p.row_version) return staleVersion(p.row_version);
+  if (b.code && state.products.some((x) => x.id !== p.id && x.code === b.code.trim()))
+    return errorBody(409, "PRODUCT_CODE_CONFLICT", "같은 프로젝트에 동일한 제품 코드가 있습니다.", [{ message: "이미 사용 중인 코드입니다.", field_path: "/code" }]);
+  if (b.code) p.code = b.code.trim();
+  if (b.name) p.name = b.name.trim();
+  if ("specification" in b) p.specification = b.specification;
+  if ("notes" in b) p.notes = b.notes;
+  p.row_version += 1;
+  p.updated_at = "2026-10-23T01:00:00Z";
+  return { status: 200, headers: etag(p.row_version), body: { data: p } };
+}
+
+function createProduct(state: FakeState, req: FakeRequest): FakeResponse {
+  if (state.role === "viewer") return forbidden();
+  const b = req.body ?? {};
+  const bad = productInputError(b, true);
+  if (bad) return bad;
+  if (state.products.some((x) => x.code === b.code.trim()))
+    return errorBody(409, "PRODUCT_CODE_CONFLICT", "같은 프로젝트에 동일한 제품 코드가 있습니다.", [{ message: "이미 사용 중인 코드입니다.", field_path: "/code" }]);
+  const created: Schemas["ProductOut"] = {
+    id: uuid(1000 + state.products.length + 1, "e"),
+    project_id: P1,
+    code: b.code.trim(),
+    name: b.name.trim(),
+    specification: b.specification ?? null,
+    notes: b.notes ?? null,
+    archived_at: null,
+    created_at: "2026-10-23T02:00:00Z",
+    updated_at: null,
+    row_version: 1,
+    current_process_version: null,
+    latest_process_version: null,
+  };
+  state.products.push(created);
+  return { status: 201, headers: { ...etag(1), Location: `/api/v1/projects/${P1}/products/${created.id}` }, body: { data: created } };
+}
+
 /** 표준 가짜 서버: P1은 접근 가능(관리자), P2는 조회자, 그 밖의 프로젝트는 404(접근 불가와 없음을 구분하지 않음). */
 export function standardHandler(req: FakeRequest, state: FakeState = freshState()): FakeResponse {
   const { method, path, query } = req;
@@ -502,6 +615,18 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
     if (method === "PATCH" && assetId && !revisions) return patchAsset(state, req, assetId);
     if (method === "POST" && assetId && revisions) return createRevision(state, assetId);
     if (method === "POST" && !assetId) return createAsset(state, req);
+  }
+  const prm = /^\/projects\/([^/]+)\/products(?:\/([^/]+))?$/.exec(path);
+  if (prm) {
+    const [, project, productId] = prm;
+    if (project !== P1) return notFound();
+    if (method === "GET") {
+      if (!productId) return listProducts(state.products, query);
+      const p = state.products.find((x) => x.id === productId);
+      return p ? { status: 200, headers: etag(p.row_version), body: { data: p } } : notFound();
+    }
+    if (method === "PATCH" && productId) return patchProduct(state, req, productId);
+    if (method === "POST" && !productId) return createProduct(state, req);
   }
   const rm = /^\/projects\/([^/]+)\/asset-revisions\/([^/]+)(?:\/(submit|approve|reject))?$/.exec(path);
   if (rm && rm[1] === P1) {

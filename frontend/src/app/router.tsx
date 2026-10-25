@@ -4,6 +4,7 @@ import { AssetCreatePage } from "../features/assets/AssetCreatePage";
 import { AssetDetailPage } from "../features/assets/AssetDetailPage";
 import { AssetListPage } from "../features/assets/AssetListPage";
 import { ProcessEditorPage } from "../features/processes/ProcessEditorPage";
+import { ProductCreatePage } from "../features/products/ProductCreatePage";
 import { ProductDetailPage } from "../features/products/ProductDetailPage";
 import { ProductListPage } from "../features/products/ProductListPage";
 import { ProjectCreatePage } from "../features/projects/ProjectCreatePage";
@@ -19,6 +20,7 @@ export const routes = [
       { path: "/projects/:projectId/assets/new", element: <AssetCreatePage /> },
       { path: "/projects/:projectId/assets/:assetId", element: <AssetDetailPage /> },
       { path: "/projects/:projectId/products", element: <ProductListPage /> },
+      { path: "/projects/:projectId/products/new", element: <ProductCreatePage /> },
       { path: "/projects/:projectId/products/:productId", element: <ProductDetailPage /> },
       {
         path: "/projects/:projectId/products/:productId/processes/:versionId",
