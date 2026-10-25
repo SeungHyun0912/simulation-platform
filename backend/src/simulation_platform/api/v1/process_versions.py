@@ -16,14 +16,18 @@ from simulation_platform.auth.principal import Principal, get_principal
 from simulation_platform.db import get_session
 from simulation_platform.schemas.common import ListOut, Single
 from simulation_platform.schemas.process import (
+    EditorStateIn,
+    EditorStateOut,
     GraphIn,
     GraphOut,
+    ProcessVersionCreate,
     ProcessVersionListItem,
     ProcessVersionOut,
     ProcessVersionPatch,
     StepOut,
     StepPatch,
     ValidationOut,
+    VersionDiffOut,
 )
 from simulation_platform.schemas.revision import RejectBody
 from simulation_platform.services import process as service
@@ -56,14 +60,16 @@ def create_process_version(
     product_id: uuid.UUID,
     request: Request,
     response: Response,
+    body: ProcessVersionCreate | None = None,
     principal: Principal = Depends(get_principal),
     session: Session = Depends(get_session),
 ):
-    """새 초안. 승인본이 있으면 그래프까지 새 id로 복사하고, 없으면 빈 그래프·미정 단위로 시작한다.
+    """새 초안. 본문의 `base_version_id`(같은 제품의 모든 상태) 또는 승인본의 그래프를 새 id로 복사하고,
+    둘 다 없으면 빈 그래프·미정 단위로 시작한다. 본문은 선택이다(없으면 승인본 복사).
 
     제품당 열린 버전(draft/in_review)은 하나뿐이다(409 PROCESS_DRAFT_EXISTS).
     """
-    version = service.create_version(session, principal, project_id, product_id,
+    version = service.create_version(session, principal, project_id, product_id, body,
                                      request_id_of(request))
     set_etag(response, version.row_version)
     response.headers["Location"] = f"/api/v1/projects/{project_id}/process-versions/{version.id}"
@@ -157,6 +163,54 @@ def patch_step(
                               request_id_of(request))
     set_etag(response, step.row_version)
     return {"data": step}
+
+
+@router.get("/process-versions/{version_id}/diff", response_model=Single[VersionDiffOut],
+            responses=READ_ERRORS)
+def diff_process_version(
+    project_id: uuid.UUID,
+    version_id: uuid.UUID,
+    against: Annotated[uuid.UUID | None, Query(
+        description="비교 기준 버전. 생략하면 이 버전의 base_version_id, 없으면 현재 승인본")
+    ] = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """이 버전(after)을 기준 버전(before)과 비교한다. 노드·간선은 node_key·edge_key로 맞춘다(읽기 전용)."""
+    return {"data": service.diff_version(session, principal, project_id, version_id, against)}
+
+
+@router.get("/process-versions/{version_id}/editor-state", response_model=Single[EditorStateOut],
+            responses=READ_ERRORS)
+def get_editor_state(
+    project_id: uuid.UUID,
+    version_id: uuid.UUID,
+    response: Response,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """화면 좌표(버전 공용). 저장 전에는 빈 좌표와 row_version 0을 돌려준다. ETag는 이 상태의 row_version이다."""
+    state = service.get_editor_state(session, principal, project_id, version_id)
+    set_etag(response, state.row_version)
+    return {"data": state}
+
+
+@router.put("/process-versions/{version_id}/editor-state", response_model=Single[EditorStateOut],
+            responses=CONFLICT_ERRORS)
+def put_editor_state(
+    project_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: EditorStateIn,
+    response: Response,
+    expected: int = Depends(require_if_match),
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """화면 좌표를 통째로 교체한다. 버전 상태와 무관하게 저장되며(승인본 포함) 공정 버전의 ETag·승인에
+    영향이 없다. If-Match는 이 상태의 row_version(저장 전 0)이다."""
+    state = service.put_editor_state(session, principal, project_id, version_id, expected, body)
+    set_etag(response, state.row_version)
+    return {"data": state}
 
 
 @router.post("/process-versions/{version_id}/validate", response_model=Single[ValidationOut],

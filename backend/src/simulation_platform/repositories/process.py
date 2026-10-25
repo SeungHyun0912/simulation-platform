@@ -9,6 +9,7 @@ from simulation_platform.models import (
     Asset,
     FlowEdge,
     FlowNode,
+    ProcessEditorState,
     ProcessStep,
     ProcessVersion,
     RequirementCandidate,
@@ -156,3 +157,16 @@ def delete_step_resources(session: Session, version_id: uuid.UUID, node_id: uuid
     session.execute(delete(ResourceRequirement).where(
         ResourceRequirement.process_version_id == version_id,
         ResourceRequirement.step_node_id == node_id))
+
+
+def get_editor_state(session: Session, project_id: uuid.UUID, version_id: uuid.UUID):
+    """버전 공용 편집기 상태(user_id IS NULL). 사용자별 저장은 나중에 user_id 조건만 추가한다."""
+    return session.scalars(select(ProcessEditorState).where(
+        ProcessEditorState.project_id == project_id,
+        ProcessEditorState.process_version_id == version_id,
+        ProcessEditorState.user_id.is_(None))).one_or_none()
+
+
+def node_ids(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> set[uuid.UUID]:
+    return set(session.scalars(select(FlowNode.id).where(
+        FlowNode.project_id == project_id, FlowNode.process_version_id == version_id)))

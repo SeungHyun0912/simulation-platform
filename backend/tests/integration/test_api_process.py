@@ -602,3 +602,306 @@ def test_workflow_is_audited(client, db, ctx, ready):
     assert set(actions.split(",")) == {
         "process_version.create", "process_version.graph", "process_version.step",
         "process_version.submit", "process_version.approve"}
+
+
+# --- BE-04b: 복제 기준 선택·버전 비교·편집기 상태 (CR be05) ------------------------------
+
+PV = "process-versions"
+
+
+def approve_ready(client, ctx, ready):
+    version, _, _ = ready
+    return advance(client, ctx, version, [("submit", "editor"), ("approve", "admin")])
+
+
+def new_version(client, ctx, body=None, who="editor"):
+    return client.post(f"{base(ctx)}/products/{ctx['product']}/{PV}", json=body, headers=ctx[who])
+
+
+def patch_notes(client, ctx, version, notes):
+    r = client.patch(f"{base(ctx)}/{PV}/{version['id']}", json={"notes": notes},
+                     headers=with_version(ctx, "editor", version["row_version"]))
+    assert r.status_code == 200, r.text
+    return r.json()["data"]
+
+
+def diff(client, ctx, version_id, who="viewer", **params):
+    return client.get(f"{base(ctx)}/{PV}/{version_id}/diff", params=params, headers=ctx[who])
+
+
+def editor_url(ctx, version_id):
+    return f"{base(ctx)}/{PV}/{version_id}/editor-state"
+
+
+def put_editor(client, ctx, version_id, body, etag, who="editor"):
+    return client.put(editor_url(ctx, version_id), json=body, headers=with_version(ctx, who, etag))
+
+
+def supersede_v1_with_v2(client, ctx, ready):
+    """v1 승인 → v2(복사본, 메모 변경) 승인 → v1은 superseded. (v1, v2)를 돌려준다."""
+    v1 = approve_ready(client, ctx, ready)
+    v2 = create_version(client, ctx)
+    v2 = patch_notes(client, ctx, v2, "v2 메모")
+    v2 = advance(client, ctx, v2, [("submit", "editor"), ("approve", "admin")])
+    return get_version(client, ctx, v1["id"]), v2
+
+
+# --- 복제 기준 선택 -------------------------------------------------------------------------
+
+def test_clone_from_a_superseded_version_copies_its_content_not_the_approved_one(client, ctx, ready):
+    version, _, _ = ready
+    version = patch_notes(client, ctx, version, "v1 메모")
+    v1, v2 = supersede_v1_with_v2(client, ctx, (version, None, None))
+    assert v1["status"] == "superseded" and v2["notes"] == "v2 메모"
+    r = new_version(client, ctx, {"base_version_id": v1["id"]})
+    assert r.status_code == 201, r.text
+    v3 = r.json()["data"]
+    assert v3["status"] == "draft" and v3["version_no"] == 3
+    assert v3["base_version_id"] == v1["id"] and v3["notes"] == "v1 메모"  # 승인본(v2)이 아니라 v1
+    assert v3["approved_at"] is None and v3["approved_by"] is None and v3["submitted_at"] is None
+    old, new = graph_of(client, ctx, v1["id"]), graph_of(client, ctx, v3["id"])
+    assert [n["node_key"] for n in new["nodes"]] == [n["node_key"] for n in old["nodes"]]
+    assert not {n["id"] for n in new["nodes"]} & {n["id"] for n in old["nodes"]}
+    assert [n["step"] for n in new["nodes"]] == [n["step"] for n in old["nodes"]]
+
+
+def test_clone_base_can_be_the_current_approved_version_and_body_is_optional(client, ctx, ready):
+    v1 = approve_ready(client, ctx, ready)
+    r = new_version(client, ctx, {"base_version_id": None})
+    assert r.status_code == 201 and r.json()["data"]["base_version_id"] == v1["id"]
+    # 열린 버전이 있으면 기준을 지정해도 같은 409
+    again = new_version(client, ctx, {"base_version_id": v1["id"]})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "PROCESS_DRAFT_EXISTS"
+
+
+def test_clone_base_must_be_a_version_of_the_same_product_in_the_same_project(client, ctx, ready):
+    v1 = approve_ready(client, ctx, ready)
+    other = client.post(f"{base(ctx)}/products", json={"code": f"Q-{uid()[:6]}", "name": "다른 제품"},
+                        headers=ctx["admin"]).json()["data"]["id"]
+    foreign = client.post(f"{base(ctx)}/products/{other}/{PV}", headers=ctx["editor"]).json()["data"]
+    for bad in (foreign["id"], str(uuid.uuid4())):
+        r = new_version(client, ctx, {"base_version_id": bad})
+        assert r.status_code == 404, r.text
+    other_project, _ = create_project(client, ctx["world"])
+    elsewhere = f"{API}/projects/{other_project}"
+    product = client.post(f"{elsewhere}/products", json={"code": f"Z-{uid()[:6]}", "name": "x"},
+                          headers=ctx["admin"]).json()["data"]["id"]
+    cross = client.post(f"{elsewhere}/products/{product}/{PV}", json={"base_version_id": v1["id"]},
+                        headers=ctx["admin"])
+    assert cross.status_code == 404, cross.text  # 다른 프로젝트의 버전은 존재 여부도 숨긴다
+    assert new_version(client, ctx, {"base_version_id": v1["id"], "extra": 1}).status_code == 422
+    assert new_version(client, ctx, {"base_version_id": "not-a-uuid"}).status_code == 422
+    assert new_version(client, ctx, {"base_version_id": v1["id"]}, who="viewer").status_code == 403
+
+
+def test_clone_copies_the_shared_editor_state_with_new_node_ids(client, ctx, ready):
+    version = approve_ready(client, ctx, ready)
+    old = graph_of(client, ctx, version["id"])
+    positions = {n["id"]: {"x": float(i) * 10, "y": 5.5} for i, n in enumerate(old["nodes"])}
+    viewport = {"x": 1.5, "y": -2, "zoom": 0.75}
+    assert put_editor(client, ctx, version["id"], {"node_positions": positions, "viewport": viewport},
+                      0).status_code == 200
+    copy = create_version(client, ctx)
+    new = graph_of(client, ctx, copy["id"])
+    state = client.get(editor_url(ctx, copy["id"]), headers=ctx["viewer"]).json()["data"]
+    old_key = {n["id"]: n["node_key"] for n in old["nodes"]}
+    new_key = {n["id"]: n["node_key"] for n in new["nodes"]}
+    assert state["row_version"] == 1 and state["viewport"] == viewport
+    assert {new_key[i]: p for i, p in state["node_positions"].items()} == {
+        old_key[i]: p for i, p in positions.items()}  # 같은 key, 새 id
+    assert not set(state["node_positions"]) & set(positions)
+
+
+# --- 편집기 상태 ----------------------------------------------------------------------------
+
+def test_editor_state_starts_empty_and_roundtrips_with_its_own_etag(client, ctx, ready):
+    version, _, nodes = ready
+    r = client.get(editor_url(ctx, version["id"]), headers=ctx["viewer"])
+    assert r.status_code == 200 and r.headers["etag"] == '"0"'
+    empty = r.json()["data"]
+    assert empty["node_positions"] == {} and empty["viewport"] is None
+    assert empty["row_version"] == 0 and empty["updated_at"] is None
+    body = {"node_positions": {nodes[0]["id"]: {"x": 10.5, "y": -3}}, "viewport": None}
+    r = put_editor(client, ctx, version["id"], body, 0)
+    assert r.status_code == 200 and r.headers["etag"] == '"1"', r.text
+    saved = r.json()["data"]
+    assert saved["node_positions"] == {nodes[0]["id"]: {"x": 10.5, "y": -3.0}}
+    assert saved["row_version"] == 1 and saved["updated_at"].endswith("Z")
+    r = put_editor(client, ctx, version["id"], {"node_positions": {}}, 1)  # 통째 교체
+    assert r.status_code == 200 and r.json()["data"]["node_positions"] == {}
+    assert r.json()["data"]["row_version"] == 2
+
+
+def test_editor_state_etag_rules_and_validation(client, ctx, ready):
+    version, _, nodes = ready
+    url, body = editor_url(ctx, version["id"]), {"node_positions": {nodes[0]["id"]: {"x": 1, "y": 2}}}
+    assert client.put(url, json=body, headers=ctx["editor"]).status_code == 428  # If-Match 필수
+    assert put_editor(client, ctx, version["id"], body, 1).status_code == 412  # 저장 전에는 0
+    assert put_editor(client, ctx, version["id"], body, 0).status_code == 200
+    stale = put_editor(client, ctx, version["id"], body, 0)
+    assert stale.status_code == 412 and stale.json()["error"]["code"] == "EDIT_CONFLICT"
+    unknown = uid()
+    r = put_editor(client, ctx, version["id"], {"node_positions": {unknown: {"x": 1, "y": 1}}}, 1)
+    assert r.status_code == 422
+    detail = r.json()["error"]["details"][0]
+    assert detail["rule_id"] == "VAL-REF-005" and detail["field_path"] == f"/node_positions/{unknown}"
+    node = nodes[0]["id"]
+    for bad in ({"node_positions": {node: {"x": 1}}},
+                {"node_positions": {node: {"x": 1, "y": 2, "z": 3}}},
+                {"node_positions": {node: {"x": 2e9, "y": 0}}},
+                {"node_positions": {node: {"x": "1", "y": 2}}},
+                {"node_positions": {"not-a-uuid": {"x": 1, "y": 2}}},
+                {"node_positions": {}, "viewport": {"x": 0, "y": 0, "zoom": 0}},
+                {"node_positions": {}, "viewport": {"x": 0, "y": 0}},
+                {"node_positions": {}, "extra": 1}, {}):
+        assert put_editor(client, ctx, version["id"], bad, 1).status_code == 422, bad
+    assert client.get(url, headers=ctx["viewer"]).json()["data"]["row_version"] == 1  # 실패는 저장 안 됨
+
+
+def test_editor_state_can_be_saved_on_frozen_versions_without_touching_the_version(client, ctx, ready):
+    version, _, nodes = ready
+    in_review = advance(client, ctx, version, [("submit", "editor")])
+    r = put_editor(client, ctx, version["id"], {"node_positions": {nodes[1]["id"]: {"x": 1, "y": 1}}}, 0)
+    assert r.status_code == 200, r.text  # 검토 중에도 저장
+    approved = advance(client, ctx, in_review, [("approve", "admin")])
+    r = put_editor(client, ctx, version["id"], {"node_positions": {nodes[1]["id"]: {"x": 9, "y": 9}}}, 1)
+    assert r.status_code == 200 and r.json()["data"]["row_version"] == 2  # 승인본에도 저장
+    after = get_version(client, ctx, version["id"])
+    assert after["row_version"] == approved["row_version"]  # 공정 버전의 ETag는 그대로
+    assert after["status"] == "approved" and after["updated_at"] == approved["updated_at"]
+
+
+def test_editor_state_permissions_scope_and_no_audit(client, db, ctx, ready):
+    version, _, nodes = ready
+    body = {"node_positions": {nodes[0]["id"]: {"x": 1, "y": 2}}}
+    assert put_editor(client, ctx, version["id"], body, 0, who="viewer").status_code == 403
+    assert put_editor(client, ctx, version["id"], body, 0, who="outsider").status_code == 404
+    assert client.get(editor_url(ctx, version["id"]), headers=ctx["outsider"]).status_code == 404
+    assert put_editor(client, ctx, version["id"], body, 0, who="admin").status_code == 200
+    other, _ = create_project(client, ctx["world"])
+    cross = f"{API}/projects/{other}/{PV}/{version['id']}/editor-state"
+    assert client.get(cross, headers=ctx["admin"]).status_code == 404
+    assert client.put(cross, json=body, headers=with_version(ctx, "admin", 1)).status_code == 404
+    missing = f"{base(ctx)}/{PV}/{uuid.uuid4()}/editor-state"
+    assert client.get(missing, headers=ctx["viewer"]).status_code == 404
+    actions = db.scalar("select count(*) from audit_log where project_id = :p and "
+                        "action like '%editor%'", p=ctx["pid"])
+    assert actions == 0  # 화면 좌표는 감사 대상이 아니다
+
+
+def test_concurrent_first_saves_only_one_wins(make_client, client, ctx, ready):
+    version, _, nodes = ready
+    clients = [make_client() for _ in range(4)]
+
+    def attempt(i):
+        body = {"node_positions": {nodes[0]["id"]: {"x": float(i), "y": 0}}}
+        return clients[i].put(editor_url(ctx, version["id"]), json=body,
+                              headers=with_version(ctx, "editor", 0)).status_code
+
+    with ThreadPoolExecutor(4) as pool:
+        assert sorted(pool.map(attempt, range(4))) == [200, 412, 412, 412]
+    state = client.get(editor_url(ctx, version["id"]), headers=ctx["viewer"]).json()["data"]
+    assert state["row_version"] == 1 and len(state["node_positions"]) == 1
+
+
+# --- 비교 -----------------------------------------------------------------------------------
+
+def test_diff_defaults_to_the_base_version_and_starts_identical(client, ctx, ready):
+    v1 = approve_ready(client, ctx, ready)
+    v2 = create_version(client, ctx)
+    r = diff(client, ctx, v2["id"])
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["target_version_id"] == v2["id"] and data["against_version_id"] == v1["id"]
+    assert data["summary"] == {"added": 0, "removed": 0, "changed": 0, "identical": True}
+    assert data["header"] == [] and data["steps"]["changed"] == []
+
+
+def test_diff_reports_header_node_edge_and_step_changes(client, ctx, ready):
+    v1 = approve_ready(client, ctx, ready)
+    v2 = create_version(client, ctx)
+    old = graph_of(client, ctx, v1["id"])
+    keys = {n["node_key"]: n for n in old["nodes"]}
+    # 대기 공간(wait) 뒤에 도킹 공간(wait2)을 끼워 넣고, 2번째 단계의 속도와 설비 후보를 바꾼다.
+    nodes = [{**n, "id": uid()} for n in old["nodes"]]
+    by_key = {n["node_key"]: n for n in nodes}
+    wait2 = {"id": uid(), "node_key": "wait2", "kind": "buffer", "label": "[시험] 도킹 대기",
+             "asset_id": ctx["dock"], "display_order": 3}
+    nodes.append(wait2)
+    chain = ["src", "insulate", "wait", "wait2", "sheath", "sink"]
+    edges = [{"id": uid(), "edge_key": f"{a}-{b}", "from_node_id": ((by_key | {"wait2": wait2})[a])["id"],
+              "to_node_id": ((by_key | {"wait2": wait2})[b])["id"]}
+             for a, b in itertools.pairwise(chain)]
+    changed_step = full_step(ctx["equipment"])
+    changed_step["timing_rule"]["processing"]["speed_m_per_min"] = {"mode": "known", "value": "45"}
+    by_key["sheath"]["step"] = changed_step
+    assert keys["sheath"]["step"]["resources"][0]["candidates"][0]["asset_id"] == ctx["equipment2"]
+    r = put_graph(client, ctx, v2, {"nodes": nodes, "edges": edges})
+    assert r.status_code == 200, r.text
+    v2 = patch_notes(client, ctx, get_version(client, ctx, v2["id"]), "변경 메모")
+
+    data = diff(client, ctx, v2["id"]).json()["data"]
+    assert [n["node_key"] for n in data["nodes"]["added"]] == ["wait2"]
+    assert data["nodes"]["removed"] == [] and data["nodes"]["changed"] == []
+    assert [e["edge_key"] for e in data["edges"]["added"]] == ["wait-wait2", "wait2-sheath"]
+    assert [e["edge_key"] for e in data["edges"]["removed"]] == ["wait-sheath"]
+    assert data["edges"]["changed"] == []  # 같은 key의 간선은 끝점 id가 달라도 같다
+    assert [f["field_path"] for f in data["header"]] == ["/notes"]
+    assert (data["header"][0]["before"], data["header"][0]["after"]) == (None, "변경 메모")
+    (step,) = data["steps"]["changed"]
+    assert step["node_key"] == "sheath"
+    fields = {f["field_path"]: f for f in step["fields"]}
+    speed = fields["/timing_rule/processing/speed_m_per_min/value"]
+    assert (speed["before"], speed["after"]) == ("30", "45")
+    assert fields[f"/resources/main/candidates/{ctx['equipment2']}"]["change"] == "removed"
+    assert fields[f"/resources/main/candidates/{ctx['equipment']}"]["change"] == "added"
+    assert data["summary"] == {"added": 3, "removed": 1, "changed": 2, "identical": False}
+
+
+def test_diff_with_explicit_against_and_reversed_direction(client, ctx, ready):
+    v1, v2 = supersede_v1_with_v2(client, ctx, ready)
+    forward = diff(client, ctx, v2["id"], against=v1["id"]).json()["data"]
+    assert [(f["field_path"], f["before"], f["after"]) for f in forward["header"]] == [
+        ("/notes", None, "v2 메모")]
+    backward = diff(client, ctx, v1["id"], against=v2["id"]).json()["data"]
+    assert [(f["field_path"], f["before"], f["after"]) for f in backward["header"]] == [
+        ("/notes", "v2 메모", None)]  # before는 항상 against
+    # 승인본·superseded 같은 동결된 버전끼리도 비교된다. against 생략 + base 없음 → 현재 승인본과 비교.
+    same = diff(client, ctx, v1["id"]).json()["data"]  # v1은 base가 없고 현재 승인본은 v2
+    assert same["against_version_id"] == v2["id"]
+
+
+def test_diff_rejections_and_visibility(client, ctx, ready):
+    version, _, _ = ready
+    r = diff(client, ctx, version["id"])  # base도 승인본도 없다
+    assert r.status_code == 422 and r.json()["error"]["details"][0]["rule_id"] == "VAL-REF-004"
+    assert r.json()["error"]["details"][0]["field_path"] == "/against"
+    v1 = approve_ready(client, ctx, ready)
+    other = client.post(f"{base(ctx)}/products", json={"code": f"Q-{uid()[:6]}", "name": "다른 제품"},
+                        headers=ctx["admin"]).json()["data"]["id"]
+    foreign = client.post(f"{base(ctx)}/products/{other}/{PV}", headers=ctx["editor"]).json()["data"]
+    r = diff(client, ctx, v1["id"], against=foreign["id"])
+    assert r.status_code == 422 and r.json()["error"]["details"][0]["rule_id"] == "VAL-REF-004"
+    assert diff(client, ctx, v1["id"], against=str(uuid.uuid4())).status_code == 404
+    assert diff(client, ctx, str(uuid.uuid4()), against=v1["id"]).status_code == 404
+    assert diff(client, ctx, v1["id"], against="not-a-uuid").status_code == 422
+    assert diff(client, ctx, v1["id"], who="outsider", against=v1["id"]).status_code == 404
+    other_project, _ = create_project(client, ctx["world"])
+    cross = f"{API}/projects/{other_project}/{PV}/{v1['id']}/diff"
+    assert client.get(cross, params={"against": v1["id"]}, headers=ctx["admin"]).status_code == 404
+    same = diff(client, ctx, v1["id"], against=v1["id"])  # 자기 자신과는 비교할 수 있고 동일하다
+    assert same.status_code == 200 and same.json()["data"]["summary"]["identical"] is True
+
+
+def test_step_url_helper_is_still_valid_for_cloned_versions(client, ctx, ready):
+    """복제본의 단계 PATCH가 원본과 독립적이라는 것을 diff로 확인한다."""
+    v1 = approve_ready(client, ctx, ready)
+    v2 = create_version(client, ctx)
+    step_id = graph_of(client, ctx, v2["id"])["nodes"][1]["id"]
+    r = client.patch(step_url(ctx, v2["id"], step_id), json={"label": "복사본 수정"},
+                     headers=with_version(ctx, "editor", v2["row_version"]))
+    assert r.status_code == 200
+    data = diff(client, ctx, v2["id"], against=v1["id"]).json()["data"]
+    assert [c["node_key"] for c in data["nodes"]["changed"]] == [
+        graph_of(client, ctx, v2["id"])["nodes"][1]["node_key"]]
+    assert data["nodes"]["changed"][0]["fields"][0]["field_path"] == "/label"
