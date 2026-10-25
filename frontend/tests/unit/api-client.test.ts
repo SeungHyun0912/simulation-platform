@@ -154,6 +154,8 @@ describe("오류 변환", () => {
     [409, "INVALID_STATE_TRANSITION", "state"],
     [409, "ASSET_CODE_CONFLICT", "duplicate"],
     [409, "PROJECT_CODE_CONFLICT", "duplicate"],
+    [409, "PRODUCT_CODE_CONFLICT", "duplicate"],
+    [409, "MATERIAL_CODE_CONFLICT", "duplicate"],
     [412, "EDIT_CONFLICT", "conflict"],
     [422, "VALIDATION_ERROR", "validation"],
     [422, "INVALID_CURSOR", "validation"],
