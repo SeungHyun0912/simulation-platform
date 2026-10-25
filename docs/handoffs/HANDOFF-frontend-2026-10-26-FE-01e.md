@@ -2,7 +2,7 @@
 - 상태: 검토 요청
 - 역할 / 작업 ID / 관련 로드맵 ID: Frontend / FE-01e(제품 목록·상세·생성·수정 연결) + 계약 0.4.0 반영 / A-01
 - workspace 버전: 1.1.0
-- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 460c364(origin/main, PR #19 병합 후) / (커밋 후 기록)
+- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 460c364(origin/main, PR #19 병합 후) / d5e5575
 - 계약 버전 / OpenAPI hash / 승인 scope: **반영한 계약 0.4.0 / `1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45` / `project-assets-ports`, `asset-revisions`, `products-materials`, `process-versions`** (`frontend/src/shared/api/generated/CONTRACT.json`)
 - 수정 파일: `frontend/**`, `docs/communication/request-from-frontend.md`, 이 문서. 계약·backend·`request-from-backend.md`는 수정하지 않았다.
 
