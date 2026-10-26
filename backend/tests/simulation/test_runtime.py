@@ -20,7 +20,7 @@ from fixtures import (
 )
 
 from simulation_platform.simulation.compiler import ScenarioAssumptions, compile_snapshot
-from simulation_platform.simulation.runtime import Arrival, _Run, run_model
+from simulation_platform.simulation.runtime import Arrival, Lane, _Run, run_model
 
 OK = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True)
 F = Fraction
@@ -245,7 +245,7 @@ def test_leftover_length_is_never_silently_dropped(residual, reason):
 
 
 def test_work_in_progress_with_no_future_events_is_stalled_not_completed():
-    run = _Run(model_of(single_insulation()), [Arrival("2000")], None, 0, None)
+    run = _Run([Lane(model_of(single_insulation()), (Arrival("2000"),))], None, 0, None)
     run.allocator._busy.add(EQUIPMENT_1)  # 설비가 영원히 반환되지 않는 상황
     result = run.execute()
     assert result.state == "stalled" and result.reason == "WIP_REMAINING" and not result.censored

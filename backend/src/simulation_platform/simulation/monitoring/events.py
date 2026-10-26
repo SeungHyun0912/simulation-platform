@@ -38,6 +38,7 @@ class Event:
     destination: str | None = None
     quantities: dict[str, Any] = field(default_factory=dict)
     reason: str | None = None
+    process_version_id: str | None = None  # 여러 공정이 한 실행을 공유할 때 이벤트가 속한 공정 버전
 
     def to_dict(self, places: int = 6) -> dict:
         """JSON 직렬화용. 시각·길이는 decimal 문자열(표시용 반올림)과 정확한 분수 문자열을 함께 낸다."""
@@ -48,7 +49,8 @@ class Event:
             "sim_time_exact": str(self.sim_time), "event_type": self.event_type,
             "step_key": self.step_key, "operation_id": self.operation_id, "asset_key": self.asset_key,
             "item_key": self.item_key, "source": self.source, "destination": self.destination,
-            "quantities": {k: convert(v) for k, v in self.quantities.items()}, "reason": self.reason}
+            "quantities": {k: convert(v) for k, v in self.quantities.items()}, "reason": self.reason,
+            "process_version_id": self.process_version_id}
 
 
 class EventLimitReached(Exception):
