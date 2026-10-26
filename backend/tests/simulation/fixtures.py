@@ -96,10 +96,10 @@ class Graph:
                 "source_output_spec_key": None, "target_input_spec_key": None})
         return self
 
-    def snapshot(self, *, status="approved", completion="complete", schema="1.0"):
+    def snapshot(self, *, status="approved", completion="complete", schema="1.0", project_id=None):
         completion_id = next((n["id"] for n in self.nodes if n["node_key"] == completion), None)
         return ProcessSnapshot(
-            version_id=uid(), project_id=uid(), status=status, schema_version=schema,
+            version_id=uid(), project_id=project_id or uid(), status=status, schema_version=schema,
             raw_unit_spec={"length_m": known("2000"), "weight_kg": UNKNOWN, "unit_count": UNKNOWN,
                            "strand_count": UNKNOWN},
             finished_unit_spec={"length_m": known("1000"), "weight_kg": UNKNOWN, "unit_count": UNKNOWN,
