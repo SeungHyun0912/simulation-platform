@@ -205,3 +205,12 @@ def test_step_and_graph_consistency_validators():
                       [op, {**node("buffer"), "id": op["id"]}]):                  # id 중복
         with pytest.raises(ValidationError):
             GraphIn.model_validate({"nodes": bad_nodes, "edges": []})
+
+
+def test_a_process_without_steps_is_not_runnable_dec005():
+    """DEC-005(계약 0.6.1): 단계가 없는 공정은 knowledge에서는 경고, run_template에서는 오류다."""
+    knowledge = issues([], [])
+    assert next(i for i in knowledge if i.rule_id == "VAL-GRAPH-010").severity == "warning"
+    run = rules.for_run_template(knowledge, [])
+    assert next(i for i in run if i.rule_id == "VAL-GRAPH-010").severity == "error"
+    assert "VAL-GRAPH-010" in rules.RUN_BLOCKING

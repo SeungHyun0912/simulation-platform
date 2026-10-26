@@ -5,6 +5,11 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.6.1 — 2026-10-26 · scope `process-versions`(패치) · sha256 `509a71f1…38ef`(0.6.0과 같음) · 기준 commit `d5b1ce9`
+- **호환성: 0.6.0과 같은 OpenAPI(해시 동일).** 요청·응답 필드·operation 변경 없음. **동작만 바뀐다:** 단계(operation)가 하나도 없는 공정은 `validate?scope=run_template`에서 `VAL-GRAPH-010`이 **오류**다(knowledge에서는 지금처럼 경고라 승인을 막지 않는다).
+- 근거: 통합 검증 관찰 INT-O-001 → 보드 결정 **DEC-005**(사용자 권장안 승인). "실행 판정 오류 0"이 빈 공정을 실행 가능으로 읽히게 하던 빈틈을 닫는다. 엔진 컴파일도 빈 공정을 거부한다.
+- **프런트가 해야 할 일:** 타입 재생성 불필요. 빈 공정의 실행 판정 결과에 오류 1건(`VAL-GRAPH-010`, `field_path=/nodes`)이 보인다. 검증 결과의 오류 수를 고정 비교하는 시험이 있으면 갱신.
+
 ## 0.6.0 — 2026-10-26 · scope `process-versions`(BE-04c) · sha256 `509a71f1…38ef` · 기준 commit `03f21ba`
 - **호환성: 0.5.0 클라이언트와 호환(추가 필드만, operation 변경 없음).** 요청 쪽 새 필드는 모두 선택·기본값이 있고, 응답은 필드가 늘어난다(그래프 응답의 `completion_node_id`·버전 응답의 `completion_node_id`는 항상 있으며 null 가능). **단, 그래프 PUT은 전체 교체이므로 아래 주의를 따라야 한다.**
 - **단계 재료 spec** `StepDto.material_specs[]`: `{spec_key, direction: input|output, material_definition_id, state_code, form, length_m, weight_kg, unit_count, strand_count, quantity_basis}`. 길이·중량·단위 수·가닥 수는 서로 섞지 않는 별개 값 객체(`{mode, value}`, 기본 unknown). "3.3t×11개 동시 투입"은 `weight_kg=3300`+`unit_count=11`, "12가닥 공급"은 `strand_count=12`. 단계 PATCH로도 통째 교체할 수 있다.

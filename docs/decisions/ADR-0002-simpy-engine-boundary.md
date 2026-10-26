@@ -18,8 +18,13 @@
 
 10. **잔량은 범위별 길이 풀로 다룬다(C0-06).** `carry_same_product`는 `abstract_length_pool` 표시와 범위(scope: machine·product·operation·lot)가 있어야 컴파일되며, scope가 미정이면 시나리오 가정 `residual_scope`로만 정한다. 제품 전환·실행 종료 정책(`on_product_change`·`on_run_end`)이 미정이면 그 상황이 실제로 생겼을 때만 실패하거나 미정으로 보고한다. 실행 종료 정책은 정상 완료된 실행에만 적용한다. 계보는 이월받은 길이까지 포함해 물량 보존을 검증한다.
 
+11. **저장공간 자리와 OUT 막힘(C0-05, 보드 DEC-006).** 실행 snapshot은 쓰는 자산들의 승인된 자산 버전(`ProcessSnapshot.assets`, 계약 0.2.0 `asset-revisions` 응답의 data)을 함께 받는다.
+    - **공간 자리 수**: buffer 노드 자산의 `storage_capacity`가 `finite`+`item`이면 그 수, `unlimited`면 제한 없음. `unknown`·자산 버전 없음은 무제한으로 보지 않고 시나리오 `unbounded_buffers`가 있어야 컴파일된다. `not_allowed`는 `SPACE_NOT_ALLOWED`, item 외 단위(`bobbin_slot`·`pallet_slot`·`kg`·`m2`)는 환산 규칙이 없어 `SPACE_CAPACITY_UNIT_UNSUPPORTED`. 같은 asset은 노드·공정이 달라도 한 실행에서 하나의 용량이다(ADR-015). 단계에서 단계로 바로 넘기는 대기는 다음 설비 IN 용량을 아직 모형에 넣지 않아 계속 `unbounded_buffers`가 필요하다.
+    - **OUT 배출 정책(DEC-006 대응표, 0.2.0 `release_rule`이 정본)**: 하류 공간이 유한해 막힐 수 있을 때만 후보 설비마다 정한다. `when_destination_accepts.block_machine_while_waiting = yes` → **hold**(자리가 날 때까지 설비 점유, 상태 `BLOCKED`), `no` → **release_after_out**(OUT 포트 `buffer_capacity`가 `unlimited` 또는 `finite`+`item`일 때만; OUT에 놓고 설비 계속 사용, OUT이 차면 막힘), OUT 용량 `not_allowed` → hold(직접 인계), 그 밖(`unknown`, OUT 용량 미정·다른 단위, 자산 버전 없음) → `OUT_RELEASE_POLICY_UNKNOWN`으로 실행 차단. 07 §7의 다른 어휘는 조정자 소유 문서라 이 대응표로만 연결한다.
+    - **실행**: 작업물은 공간에 들어갈 때 자리를 차지하고, 다음 단계가 실제로 가져갈 때(설비 확보 후) 자리를 돌려준다. 도착·milestone에서 다음 공간이 차 있으면 그 자리에서 기다린다(`ENTRY_WAITING`). 산출은 막히면 `OUT_BLOCKED`/`OUT_UNBLOCKED`, OUT에 놓으면 `OUT_STORED`. 일괄 인계(`total_batch`)는 설비를 놓기 전에 내보낸다. 자리 배정은 들어온 순서(FIFO)이며 기다리는 요청이 있으면 끼어들지 않는다. 막힘으로 진행할 사건이 없으면 기존 규칙대로 `stalled`(즉시 교착 단정 없음).
+
 ## 이번에 하지 않는 것
-합류·분기·공급 간선(C0-07), 잔량 이월·폐기(C0-06), IN/OUT 용량·blocking(C0-05), 여러 설비 동시 확보·예약 allocator, 병렬 스트림 산출, 네트워크 운반, 지표 엔진, 시나리오·job queue·worker. 값 구조가 도메인 문서에 없는 `input_match_policy`·`condition_rule`·`execution_rule`·`parameter_override`도 구현하지 않는다.
+합류·분기·공급 간선(C0-07), 설비 IN 포트 용량과 `dispatch_rule`(단계 간 직접 인계 대기), item 외 단위의 공간 용량 환산, 여러 설비 동시 확보·예약 allocator, 병렬 스트림 산출, 네트워크 운반, 지표 엔진, 시나리오·job queue·worker. 값 구조가 도메인 문서에 없는 `input_match_policy`·`condition_rule`·`execution_rule`·`parameter_override`도 구현하지 않는다.
 
 ## 결과
 - 엔진 입력 모양이 계약 응답과 같아 실행 snapshot 생성(C-07)은 이 모양을 불변 저장하는 일이 된다.

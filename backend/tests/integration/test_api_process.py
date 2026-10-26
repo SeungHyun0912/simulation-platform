@@ -1236,3 +1236,14 @@ def test_api_process_graph_compiles_and_runs_in_the_engine(client, ctx):
     assert [e.reason for e in run.of_type("MILESTONE_REACHED")] == ["completion", "completion"]
     # 승인되지 않은 버전은 기본적으로 실행할 수 없다
     assert [i.rule_id for i in compile_snapshot(snapshot, assumptions).issues] == ["VERSION_NOT_APPROVED"]
+
+
+def test_empty_process_is_not_runnable_but_still_approvable_dec005(client, ctx):
+    """DEC-005(계약 0.6.1): 노드가 없는 초안은 run_template에서 오류 1(VAL-GRAPH-010), knowledge는 오류 0."""
+    version = create_version(client, ctx)
+    url = f"{base(ctx)}/process-versions/{version['id']}/validate"
+    knowledge = client.post(url, headers=ctx["viewer"]).json()["data"]
+    assert knowledge["error_count"] == 0  # 승인(지식 등록)을 막지 않는다
+    run = client.post(f"{url}?scope=run_template", headers=ctx["viewer"]).json()["data"]
+    assert [i["rule_id"] for i in run["issues"] if i["severity"] == "error"] == ["VAL-GRAPH-010"]
+    assert run["issues"][0]["field_path"] == "/nodes"
