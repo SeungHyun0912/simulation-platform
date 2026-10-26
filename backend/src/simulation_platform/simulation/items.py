@@ -15,6 +15,7 @@ class WorkItem:
     parent_key: str | None = None
     lot: str | None = None
     created_at: Fraction = Fraction(0)
+    process_version_id: str | None = None  # 이 작업물이 흐르는 공정 버전
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class LineageRecord:
     parent_length_m: Fraction
     child_lengths_m: tuple[Fraction, ...]
     residual_length_m: Fraction = Fraction(0)
+    process_version_id: str | None = None
 
     @property
     def balanced(self) -> bool:

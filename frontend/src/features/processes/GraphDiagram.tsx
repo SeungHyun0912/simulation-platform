@@ -9,6 +9,8 @@ type Props = {
   doc: GraphDoc;
   selectedNodeId?: string | null;
   selectedEdgeId?: string | null;
+  /** 완제품 판정 노드(종류 글자 옆에 표시) */
+  completionId?: string | null;
   /** 오류가 있는 노드·간선 id(테두리를 굵게 표시) */
   errorIds?: ReadonlySet<string>;
   onSelectNode?: (id: string) => void;
@@ -22,7 +24,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
  * 같은 내용이 아래 노드·간선 표에 모두 있으므로 도식은 구조를 한눈에 보는 보조 수단이다.
  * 종류는 색뿐 아니라 글자와 테두리 모양(대기 공간은 점선)으로 구분하고, 간선 종류는 선 모양으로 구분한다.
  */
-export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, errorIds, onSelectNode, onSelectEdge }: Props) {
+export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId, errorIds, onSelectNode, onSelectEdge }: Props) {
   const layout = useMemo(() => layoutGraph(doc), [doc]);
   const markerId = useId();
   if (doc.nodes.length === 0) return null;
@@ -98,6 +100,7 @@ export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, errorIds, on
                 <rect width={BOX.w} height={BOX.h} rx={n.kind === "source" || n.kind === "sink" ? BOX.h / 2 : 6} />
                 <text className={styles.kind} x={10} y={16}>
                   {NODE_KIND_LABELS[n.kind]}
+                  {completionId === n.id ? " · 완제품" : ""}
                 </text>
                 <text className={styles.label} x={10} y={33}>
                   {clip(n.label || "(이름 없음)", 17)}

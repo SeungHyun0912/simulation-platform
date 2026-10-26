@@ -5,6 +5,7 @@ import { SelectField, TextField } from "../../shared/components/Fields";
 import { FieldGrid, Note, Section } from "../../shared/components/Layout";
 import type { ValidationIssue } from "../../shared/components/ValidationPanel";
 import { CountField, MeasureField } from "./MeasureField";
+import { MaterialSpecEditor } from "./MaterialSpecEditor";
 import { ResourceEditor } from "./ResourceEditor";
 import {
   stepOf,
@@ -40,6 +41,7 @@ import {
   type ProcessingKind,
 } from "./processView";
 import type { AssetOption } from "./queries";
+import type { MaterialOptions } from "../materials/queries";
 import styles from "./StepEditPanel.module.css";
 
 type Props = {
@@ -51,6 +53,10 @@ type Props = {
   spaceOptions: AssetOption[];
   assetById: Map<string, AssetOption>;
   optionsComplete: boolean;
+  /** 재료 spec에서 고를 재료 선택지 */
+  materials: MaterialOptions;
+  /** 이 단계의 spec 중 간선이 연결해 둔 key(지울 수 없다) */
+  linkedSpecKeys: ReadonlySet<string>;
   /** 직선 구조일 때만 값이 있다. 없으면 "다음 위치" 구역을 편집하지 않는다. */
   nextLocation: NextLocation | null;
   onLabel: (label: string) => void;
@@ -174,6 +180,8 @@ export const StepEditPanel = forwardRef<HTMLHeadingElement, Props>(function Step
     spaceOptions,
     assetById,
     optionsComplete,
+    materials,
+    linkedSpecKeys,
     nextLocation,
     onLabel,
     onStep,
@@ -475,6 +483,15 @@ export const StepEditPanel = forwardRef<HTMLHeadingElement, Props>(function Step
           <EnumSelect label="산출 일정" labels={SCHEDULE_LABELS} value={out.schedule} onChange={(schedule) => setOut({ schedule })} />
           <EnumSelect label="수량 계산 방식" labels={ACCOUNTING_LABELS} value={out.accounting_mode} onChange={(accounting_mode) => setOut({ accounting_mode })} />
           <Note>산출 수량은 한 작업의 설정이며 전체 생산 목표가 아닙니다. 작업당·총 계획 수량은 수량 기준으로 구분합니다.</Note>
+        </Section>
+
+        <Section id="step-materials" title="투입·산출 재료">
+          <MaterialSpecEditor
+            specs={step.material_specs ?? []}
+            onChange={(material_specs) => onStep((s) => ({ ...s, material_specs }))}
+            materials={materials}
+            linkedKeys={linkedSpecKeys}
+          />
         </Section>
 
         <Section id="step-flow" title="투입·인계·잔여">
