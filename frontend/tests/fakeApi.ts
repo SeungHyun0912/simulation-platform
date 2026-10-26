@@ -1,4 +1,5 @@
 import type { Schemas } from "../src/shared/api/types";
+import { processProductId, processRoute, processSummaries, processVersionId, seedProcesses, type ProcessState } from "./fakeProcess";
 
 /**
  * 테스트용 가짜 API 서버. 실제 서버가 아니며 계약 0.2.0의 규칙 일부(응답 래퍼, cursor, 404 정책, 오류 envelope)를
@@ -185,7 +186,7 @@ export type FakeResponse = { status: number; body?: unknown; headers?: Record<st
 /** 가짜 서버의 가변 상태. 서버마다 새로 복제하므로 테스트끼리 영향을 주지 않는다. */
 export function productOut(i: number): Schemas["ProductOut"] {
   return {
-    id: uuid(i, "p"),
+    id: processProductId(i),
     project_id: P1,
     code: `P-${String(i).padStart(3, "0")}`,
     name: `서버 제품 ${i}`,
@@ -196,9 +197,11 @@ export function productOut(i: number): Schemas["ProductOut"] {
     created_at: "2026-10-23T00:00:00Z",
     updated_at: null,
     row_version: 1,
-    current_process_version: null,
+    // 공정 시드(fakeProcess)와 같은 값. 서버처럼 응답마다 상태에서 다시 계산한다.
+    current_process_version:
+      i === 1 ? { id: processVersionId(1), version_no: 1, status: "approved", approved_at: "2026-10-20T00:00:00Z" } : null,
     latest_process_version:
-      i === 1 ? { id: uuid(1, "q"), version_no: 2, status: "draft", approved_at: null } : null,
+      i === 1 ? { id: processVersionId(2), version_no: 2, status: "draft", approved_at: null } : null,
   };
 }
 
@@ -210,12 +213,15 @@ export type FakeState = {
   products: Schemas["ProductOut"][];
   /** 모든 자산의 버전. 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
   revisions: Schemas["AssetRevisionOut"][];
+  /** 공정 버전·그래프(fakeProcess). 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
+  processes: ProcessState;
   /** 현재 요청자의 프로젝트 역할. editor/viewer는 승인·반려(admin 전용)나 쓰기에서 403을 받는다. */
   role: "admin" | "editor" | "viewer";
 };
 export const freshState = (): FakeState => ({
   assets: structuredClone(ASSETS),
   products: structuredClone(PRODUCTS),
+  processes: seedProcesses(),
   revisions: structuredClone(REVISIONS_OF_ASSET_1),
   role: "admin",
 });
@@ -497,6 +503,9 @@ function createRevision(state: FakeState, assetId: string): FakeResponse {
 const productSignature = (q: URLSearchParams) =>
   JSON.stringify([q.get("q") ?? "", q.get("include_archived") ?? "", q.get("sort") ?? ""]);
 
+/** 제품 응답의 공정 요약은 서버처럼 공정 버전 상태에서 다시 계산한다. */
+const withSummaries = (state: FakeState, p: Schemas["ProductOut"]): Schemas["ProductOut"] => ({ ...p, ...processSummaries(state, p.id) });
+
 /** 목록 규칙(계약 0.3.0): q 부분 일치, include_archived 기본 false, sort code|name(기본 code), cursor는 조건 서명을 가진다. */
 function listProducts(all: Schemas["ProductOut"][], q: URLSearchParams): FakeResponse {
   const needle = (q.get("q") ?? "").toLowerCase();
@@ -555,7 +564,7 @@ function patchProduct(state: FakeState, req: FakeRequest, productId: string): Fa
   if ("notes" in b) p.notes = b.notes;
   p.row_version += 1;
   p.updated_at = "2026-10-23T01:00:00Z";
-  return { status: 200, headers: etag(p.row_version), body: { data: p } };
+  return { status: 200, headers: etag(p.row_version), body: { data: withSummaries(state, p) } };
 }
 
 function createProduct(state: FakeState, req: FakeRequest): FakeResponse {
@@ -580,7 +589,7 @@ function createProduct(state: FakeState, req: FakeRequest): FakeResponse {
     latest_process_version: null,
   };
   state.products.push(created);
-  return { status: 201, headers: { ...etag(1), Location: `/api/v1/projects/${P1}/products/${created.id}` }, body: { data: created } };
+  return { status: 201, headers: { ...etag(1), Location: `/api/v1/projects/${P1}/products/${created.id}` }, body: { data: withSummaries(state, created) } };
 }
 
 /** 표준 가짜 서버: P1은 접근 가능(관리자), P2는 조회자, 그 밖의 프로젝트는 404(접근 불가와 없음을 구분하지 않음). */
@@ -621,9 +630,9 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
     const [, project, productId] = prm;
     if (project !== P1) return notFound();
     if (method === "GET") {
-      if (!productId) return listProducts(state.products, query);
+      if (!productId) return listProducts(state.products.map((x) => withSummaries(state, x)), query);
       const p = state.products.find((x) => x.id === productId);
-      return p ? { status: 200, headers: etag(p.row_version), body: { data: p } } : notFound();
+      return p ? { status: 200, headers: etag(p.row_version), body: { data: withSummaries(state, p) } } : notFound();
     }
     if (method === "PATCH" && productId) return patchProduct(state, req, productId);
     if (method === "POST" && !productId) return createProduct(state, req);
@@ -635,6 +644,8 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
     if (method === "PATCH" && !rm[3]) return patchRevision(state, req, rm[2]!);
     if (method === "POST" && rm[3]) return transitionRevision(state, req, rm[2]!, rm[3]);
   }
+  const pr = processRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
+  if (pr) return pr;
   return notFound();
 }
 

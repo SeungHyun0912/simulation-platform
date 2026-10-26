@@ -1,15 +1,7 @@
-import type { VersionStatus } from "../../shared/components/VersionStatusBadge";
-
 /**
  * 화면 전용 뷰 모델. 계약 0.4.0의 Product 응답을 화면에 맞게 옮긴 것이다(API DTO 그대로가 아니다).
- * 공정 버전은 아직 화면이 정적 예시라서, 목록·상세에는 서버가 주는 요약(현재 승인본·최신 버전)만 쓴다.
+ * 목록에는 서버가 주는 공정 버전 요약(현재 승인본·최신 버전)을 쓰고, 버전 자체는 공정 화면이 다룬다.
  */
-export type ProcessVersionView = {
-  id: string;
-  /** 제품 안에서 증가하는 버전 번호 */
-  versionNo: number;
-  status: VersionStatus;
-};
 
 /** 제품 응답의 `current_process_version`/`latest_process_version` 요약 */
 export type ProcessVersionSummaryView = {
@@ -37,23 +29,10 @@ export type ProductView = {
   /** 가장 최근 버전 요약(열린 버전 포함). 없으면 null */
   latestProcessVersion: ProcessVersionSummaryView | null;
   rowVersion: number;
-  /**
-   * 정적 예시 전용: 정적 공정 편집 화면으로 연결되는 버전 목록. API 모드에서는 항상 빈 배열이며
-   * 정적 공정 화면과 서버 데이터를 섞어 보여 주지 않는다.
-   */
-  versions: ProcessVersionView[];
 };
 
 export function specificationText(spec: string | null): string {
   return spec === null ? "미정" : spec === "" ? "(비어 있음)" : spec;
-}
-
-/** 가장 높은 버전 번호의 버전(정적 예시용). 없으면 null. */
-export function latestVersion(p: ProductView): ProcessVersionView | null {
-  return p.versions.reduce<ProcessVersionView | null>(
-    (best, v) => (best === null || v.versionNo > best.versionNo ? v : best),
-    null,
-  );
 }
 
 /* ---------------- 기본 정보 입력 ---------------- */

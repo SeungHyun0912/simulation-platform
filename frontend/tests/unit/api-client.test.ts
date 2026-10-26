@@ -86,6 +86,15 @@ describe("요청", () => {
     expect((f.calls[1]!.init.headers as Record<string, string>)["If-Match"]).toBeUndefined();
   });
 
+  it("PUT(그래프 전체 교체)도 If-Match를 붙이고 본문을 JSON으로 보낸다", async () => {
+    const f = fakeFetch(() => json(200, { data: {} }, { ETag: '"5"' }));
+    const r = await createApiClient({ fetchImpl: f.impl }).put("/g", { body: { nodes: [], edges: [] }, ifMatch: 4 });
+    expect(f.calls[0]!.init.method).toBe("PUT");
+    expect((f.calls[0]!.init.headers as Record<string, string>)["If-Match"]).toBe('"4"');
+    expect(f.calls[0]!.init.body).toBe('{"nodes":[],"edges":[]}');
+    expect(r.version).toBe(5);
+  });
+
   it("row_version 0도 If-Match로 보낸다(0을 없는 값으로 취급하지 않음)", async () => {
     const f = fakeFetch(() => json(200, { data: {} }));
     await createApiClient({ fetchImpl: f.impl }).patch("/x", { body: {}, ifMatch: 0 });
@@ -151,6 +160,7 @@ describe("오류 변환", () => {
     [404, "NOT_FOUND", "not-found"],
     [409, "VERSION_IMMUTABLE", "state"],
     [409, "REVISION_DRAFT_EXISTS", "state"],
+    [409, "PROCESS_DRAFT_EXISTS", "state"],
     [409, "INVALID_STATE_TRANSITION", "state"],
     [409, "ASSET_CODE_CONFLICT", "duplicate"],
     [409, "PROJECT_CODE_CONFLICT", "duplicate"],

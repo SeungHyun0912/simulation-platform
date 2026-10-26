@@ -17,6 +17,5 @@ export function toProductView(p: Schemas["ProductOut"]): ProductView {
     currentProcessVersion: toSummary(p.current_process_version),
     latestProcessVersion: toSummary(p.latest_process_version),
     rowVersion: p.row_version,
-    versions: [], // 정적 공정 화면 전용. 서버 데이터에는 쓰지 않는다.
   };
 }

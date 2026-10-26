@@ -163,7 +163,6 @@ describe.skipIf(!LIVE)("실제 API: 제품 (읽기 전용, 시험 데이터 P-00
     expect(items.find((p) => p.code === "P-001")!.specification).not.toBeNull();
     expect(items.find((p) => p.code === "P-002")!.specification).toBeNull();
     for (const p of items) {
-      expect(p.versions).toEqual([]);
       expect(typeof p.rowVersion).toBe("number");
     }
   });
