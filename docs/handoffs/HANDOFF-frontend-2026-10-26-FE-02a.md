@@ -2,7 +2,7 @@
 - 상태: 검토 요청
 - 역할 / 작업 ID / 관련 로드맵 ID: Frontend / FE-02a(공정 버전·그래프·단계 연동 화면, 실서버 쓰기 검증) / A-01
 - workspace 버전: 1.1.0
-- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 03aefd8(FE-01e 종료, main에는 d5e5575까지 병합 전) / (커밋 후 기록)
+- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 03aefd8(FE-01e 종료) / 2e9afd5
 - 계약 버전 / OpenAPI hash / 승인 scope: **0.4.0 / `1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45` / `project-assets-ports`, `asset-revisions`, `products-materials`, `process-versions`**
 - 수정 파일: `frontend/**`, `docs/communication/request-from-frontend.md`, 이 문서. 계약·backend·`request-from-backend.md`는 수정하지 않았다.
 
