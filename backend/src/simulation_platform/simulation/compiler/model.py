@@ -23,6 +23,18 @@ class OutputModel:
 
 
 @dataclass(frozen=True)
+class OutPolicy:
+    """설비 OUT 배출 정책(DEC-006: 자산 버전 0.2.0의 release_rule이 정본).
+
+    hold: 하류가 받을 때까지 설비 점유 유지(block_machine_while_waiting=yes, 또는 OUT 용량 not_allowed=직접 인계)
+    release_after_out: OUT에 놓고 설비 해제, OUT이 차면 설비가 막힘(block_machine_while_waiting=no)
+    """
+
+    kind: str
+    out_capacity: int | None = None  # release_after_out의 OUT 자리 수(None=무제한)
+
+
+@dataclass(frozen=True)
 class ResidualModel:
     """잔량 규칙(03 §6). mode가 carry_same_product일 때만 scope·join_mode가 확정되어 있다."""
 
@@ -50,6 +62,7 @@ class StepModel:
     residual_mode: str
     transport_minutes: Fraction | None = None
     residual: ResidualModel | None = None
+    out_policies: dict[str, OutPolicy] = field(default_factory=dict)  # 하류가 막힐 수 있을 때만 채운다
 
 
 @dataclass(frozen=True)
@@ -90,6 +103,8 @@ class RuntimeModel:
     nodes: dict[str, NodeModel]
     steps: dict[str, StepModel]
     assumptions: tuple[AssumptionUse, ...] = ()
+    # 저장공간 asset id → 자리 수(작업물 개수). None은 무제한(자산 버전이 unlimited이거나 시나리오 가정).
+    spaces: dict[str, int | None] = field(default_factory=dict)
 
 
 class CompileError(Exception):

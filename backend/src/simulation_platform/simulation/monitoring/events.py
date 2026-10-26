@@ -20,12 +20,17 @@ MILESTONE_REACHED = "MILESTONE_REACHED"
 SINK_REACHED = "SINK_REACHED"  # 07 §9의 최소 목록 밖: 경로 끝(출고)에 도달한 작업물
 ASSET_STATE_CHANGED = "ASSET_STATE_CHANGED"  # 가동률 계산용 설비 상태 전이(IDLE/RESERVED/SETUP/PROCESSING)
 RUN_TERMINATED = "RUN_TERMINATED"
+OUT_BLOCKED = "OUT_BLOCKED"  # 산출을 내보낼 자리가 없어 설비(또는 단계)가 막힘
+OUT_UNBLOCKED = "OUT_UNBLOCKED"
+OUT_STORED = "OUT_STORED"  # release_after_out: 산출을 설비 OUT에 놓고 설비를 놓아줌
+ENTRY_WAITING = "ENTRY_WAITING"  # 설비가 아닌 위치(도착·공간·milestone)의 작업물이 다음 공간 자리를 기다림
 RESIDUAL_CREATED = "RESIDUAL_CREATED"
 RESIDUAL_CARRIED = "RESIDUAL_CARRIED"
 RESIDUAL_DISCARDED = "RESIDUAL_DISCARDED"
 
 # 설비의 배타적 상태(07 §9). IN 대기는 작업물 상태이며 설비 상태와 별도다.
 IDLE, RESERVED, SETUP, PROCESSING = "IDLE", "RESERVED", "SETUP", "PROCESSING"
+BLOCKED = "BLOCKED"  # 배출 불가로 설비가 막힌 상태(07 §9)
 
 
 @dataclass(frozen=True)

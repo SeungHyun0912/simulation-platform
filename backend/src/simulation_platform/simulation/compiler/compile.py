@@ -20,6 +20,7 @@ from simulation_platform.simulation.compiler.model import (
     CompileIssue,
     CompileResult,
     NodeModel,
+    OutPolicy,
     OutputModel,
     ResidualModel,
     RuntimeModel,
@@ -62,14 +63,13 @@ class _Compiler:
         nodes: dict[str, NodeModel] = {}
         steps: dict[str, StepModel] = {}
         by_key = {n["node_key"]: n for n in self.nodes}
-        buffers = [k for k in route if by_key[k]["kind"] == "buffer"]
-        self._check_buffers(buffers)
+        self.spaces = self._check_spaces(route, by_key, next_of)
         for key in route:
             node = by_key[key]
             nodes[key] = NodeModel(key, node["id"], node["kind"], node["label"], node["asset_id"],
                                    next_of.get(key))
             if node["kind"] == "operation":
-                step = self._build_step(node)
+                step = self._build_step(node, next_of.get(key), by_key)
                 if step is not None:
                     steps[key] = step
         if self.issues:
@@ -79,7 +79,8 @@ class _Compiler:
             schema_version=self.snapshot.schema_version, version_id=self.snapshot.version_id,
             project_id=self.snapshot.project_id, source_key=route[0],
             completion_key=None if completion is None else self.key_of.get(completion),
-            route=tuple(route), nodes=nodes, steps=steps, assumptions=tuple(self.used))
+            route=tuple(route), nodes=nodes, steps=steps, assumptions=tuple(self.used),
+            spaces=dict(self.spaces))
         return CompileResult(model, (), tuple(self.used), tuple(self.waived))
 
     # --- 1. 버전·schema ---------------------------------------------------------------------
@@ -155,19 +156,97 @@ class _Compiler:
                            node["node_key"])
         return route, next_of
 
-    def _check_buffers(self, buffers: list[str]) -> None:
-        if not buffers:
-            return
-        if not self.assumptions.unbounded_buffers:
-            self.issue("BUFFER_POLICY_UNKNOWN",
-                       f"저장·대기 공간 {len(buffers)}곳의 용량이 snapshot에 없습니다. 용량을 모르는 값을 무제한으로 "
-                       "가정하지 않으므로 시나리오가 `unbounded_buffers`를 명시해야 합니다.", buffers[0])
-        else:
-            self.used.append(AssumptionUse(
-                "UNBOUNDED_BUFFERS", f"저장·대기 공간 {len(buffers)}곳을 용량 제한 없이 대기하는 것으로 가정"))
+    def _space_capacity(self, asset: str | None) -> tuple[str, object]:
+        """저장공간의 자리 수(작업물 개수). 자산 버전이 없거나 미정이면 unknown이다(무제한으로 가정하지 않는다)."""
+        revision = self.snapshot.assets.get(asset) if asset else None
+        capacity = None if revision is None else revision.get("storage_capacity")
+        if capacity is None or capacity["mode"] == "unknown":
+            return "unknown", None
+        if capacity["mode"] == "unlimited":
+            return "unbounded", None
+        if capacity["mode"] == "not_allowed":
+            return "not_allowed", None
+        if capacity["unit"] != "item":
+            return "unsupported", capacity["unit"]
+        return "finite", int(capacity["value"])
+
+    def _check_spaces(self, route: list[str], by_key: dict, next_of: dict) -> dict[str, int | None]:
+        """경로가 지나는 저장공간의 용량과, 용량을 모르는 대기 장소를 확인한다.
+
+        - 자산 버전의 저장 용량이 유한(item)이면 자리 수, 무제한이면 None. 같은 공간은 노드가 달라도 하나의 용량이다.
+        - 용량이 미정인 공간과, 단계에서 다음 단계로 바로 넘기는 대기(다음 설비 IN 용량은 아직 모형에 없음)는
+          시나리오가 `unbounded_buffers`로 명시해야 한다.
+        """
+        spaces: dict[str, int | None] = {}
+        unknown: list[str] = []
+        for key in route:
+            node = by_key[key]
+            following = by_key.get(next_of.get(key)) if next_of.get(key) else None
+            if node["kind"] == "operation" and following is not None and following["kind"] == "operation":
+                unknown.append(key)
+            if node["kind"] != "buffer":
+                continue
+            asset = node["asset_id"]
+            kind, value = self._space_capacity(asset)
+            if kind == "finite":
+                spaces[asset] = value
+            elif kind == "unbounded":
+                spaces[asset] = None
+            elif kind == "not_allowed":
+                self.issue("SPACE_NOT_ALLOWED", f"{key}: 저장공간의 저장 용량이 '허용 안 함'인데 대기 공간으로 쓰였습니다.", key)
+            elif kind == "unsupported":
+                self.issue("SPACE_CAPACITY_UNIT_UNSUPPORTED",
+                           f"{key}: 저장 용량 단위 {value}은(는) 작업물 개수로 환산할 규칙이 없어 아직 실행하지 않습니다(item만 지원).", key)
+            else:
+                unknown.append(key)
+        if unknown:
+            if not self.assumptions.unbounded_buffers:
+                self.issue("BUFFER_POLICY_UNKNOWN",
+                           f"용량을 모르는 대기 장소 {len(unknown)}곳(저장공간 용량 미정 또는 단계 간 직접 인계)이 있습니다. "
+                           "용량을 모르는 값을 무제한으로 가정하지 않으므로 시나리오가 `unbounded_buffers`를 명시해야 합니다.", unknown[0])
+            else:
+                self.used.append(AssumptionUse(
+                    "UNBOUNDED_BUFFERS", f"용량을 모르는 대기 장소 {len(unknown)}곳을 용량 제한 없이 대기하는 것으로 가정"))
+        return spaces
+
+    def _out_policies(self, key: str, candidates: tuple[str, ...], following: dict | None) -> dict[str, OutPolicy]:
+        """하류 공간이 유한해서 막힐 수 있을 때만 설비별 OUT 배출 정책을 정한다(DEC-006 대응표).
+
+        block_machine_while_waiting: yes → hold(설비 점유 유지), no → release_after_out(OUT에 놓고 해제, OUT 용량 필요),
+        unknown → 실행 차단. OUT 용량이 not_allowed이면 직접 인계라 hold다.
+        """
+        if following is None or following["kind"] != "buffer" or self.spaces.get(following["asset_id"]) is None:
+            return {}
+        policies: dict[str, OutPolicy] = {}
+        unknown: list[str] = []
+        for asset in candidates:
+            revision = self.snapshot.assets.get(asset)
+            port = next((p for p in revision["ports"] if p["role"] == "OUT"), None) if revision else None
+            if port is None:
+                unknown.append(asset)
+                continue
+            capacity, rule = port["buffer_capacity"], port["release_rule"]
+            if capacity["mode"] == "not_allowed":
+                policies[asset] = OutPolicy("hold")
+                continue
+            block = rule.get("block_machine_while_waiting", "unknown") \
+                if rule["mode"] == "when_destination_accepts" else "unknown"
+            if block == "yes":
+                policies[asset] = OutPolicy("hold")
+            elif block == "no" and capacity["mode"] == "unlimited":
+                policies[asset] = OutPolicy("release_after_out", None)
+            elif block == "no" and capacity["mode"] == "finite" and capacity["unit"] == "item":
+                policies[asset] = OutPolicy("release_after_out", int(capacity["value"]))
+            else:
+                unknown.append(asset)
+        if unknown:
+            self.issue("OUT_RELEASE_POLICY_UNKNOWN",
+                       f"{key}: 다음 공간({following['node_key']})의 용량이 유한해 막힐 수 있는데 설비 {len(unknown)}대의 OUT 배출 정책"
+                       "(block_machine_while_waiting) 또는 OUT 용량이 미정입니다. 승인된 자산 버전에서 정해야 합니다(DEC-006).", key)
+        return policies
 
     # --- 4. 단계 모델 -----------------------------------------------------------------------
-    def _build_step(self, node: dict) -> StepModel | None:
+    def _build_step(self, node: dict, next_key: str | None = None, by_key: dict | None = None) -> StepModel | None:
         key, step = node["node_key"], node["step"]
         name, version = step["operation_type"], step["handler_version"] or "1"
         handler = get_handler(name, version)
@@ -185,6 +264,7 @@ class _Compiler:
         candidates, allocation, worker_unlimited = self._resources(key, step, handler)
         self._check_hold_policy(key, handler, output, candidates)
         residual = self._residual(key, step, handler, candidates)
+        out_policies = self._out_policies(key, candidates, (by_key or {}).get(next_key) if next_key else None)
         handoff = step["handoff_rule"]["mode"]
         if handoff not in ("per_output_unit", "total_batch"):
             handoff = "per_output_unit"  # 미정이면 도메인 검증이 이미 막았다(수동 운반은 한 개 산출)
@@ -195,7 +275,7 @@ class _Compiler:
             handler_version=handler.version, candidates=candidates, allocation=allocation,
             worker_unlimited=worker_unlimited, setup_minutes=setup, timing=timing, output=output,
             handoff=handoff, residual_mode=step["residual_rule"]["mode"],
-            transport_minutes=transport_minutes, residual=residual)
+            transport_minutes=transport_minutes, residual=residual, out_policies=out_policies)
 
     def _transport_minutes(self, key: str, handler: HandlerDef) -> Fraction | None:
         if handler.name != TRANSPORT:
