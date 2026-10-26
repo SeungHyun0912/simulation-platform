@@ -18,6 +18,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-C0-06 | 엔진: 잔량 이월·폐기(범위별 길이 풀, 제품 전환·실행 종료 정책) | Backend | **구현완료·검증대기** | BE-C0-04 | 93d63b9 이후 / contract 0.6.0(변경 없음) | HANDOFF-backend-20261026-C0-06 |
 | BE-DEC-005 | 단계 없는 공정을 실행 판정 오류로(`VAL-GRAPH-010`, 보드 DEC-005) | Backend | **구현완료·검증대기** | INT-O-001 | 1b79d76 이후 / contract 0.6.1 | HANDOFF-backend-20261026-DEC005-C0-05 |
 | BE-C0-05 | 엔진: 저장공간 자리·OUT 막힘(DEC-006 대응표: hold·release_after_out) | Backend | **구현완료·검증대기** | BE-C0-06, DEC-006 | 1b79d76 이후 / contract 0.6.1(엔진 내부) | HANDOFF-backend-20261026-DEC005-C0-05 |
+| BE-C0-07 | 엔진: 저장공간 분기·단계 합류·공급 간선, configured_yield·supply_delay·준비 대기 | Backend | **구현완료·검증대기** | BE-C0-05 | bf93a63 이후 / contract 0.6.1(엔진 내부) | HANDOFF-backend-20261026-C0-07 |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |

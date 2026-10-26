@@ -24,7 +24,7 @@ class LineageRecord:
 
     operation_id: str
     step_key: str
-    relation: str  # split | transform
+    relation: str  # split | transform | supply(같은 작업물이 공급 상태로) | yield(지정 산출, abstract_yield)
     parent_key: str
     child_keys: tuple[str, ...]
     parent_length_m: Fraction
@@ -32,10 +32,14 @@ class LineageRecord:
     residual_length_m: Fraction = Fraction(0)
     process_version_id: str | None = None
     carried_in_m: Fraction = Fraction(0)  # 잔량 풀에서 이어 받은 길이
+    parent_keys: tuple[str, ...] = ()  # yield: 투입 작업물 전부(parent_key는 첫 번째)
+    accounting_mode: str = "physical"  # physical | abstract_yield(물량 보존 검증 예외, 03 §5)
 
     @property
-    def balanced(self) -> bool:
-        """자식 길이 합 + 잔량 = 부모 길이(물량 보존). abstract_yield 같은 예외는 별도 handler 책임이다."""
+    def balanced(self) -> bool | None:
+        """자식 길이 합 + 잔량 = 부모 길이(물량 보존). abstract_yield는 보존을 주장하지 않으므로 None(검증 대상 아님)."""
+        if self.accounting_mode == "abstract_yield":
+            return None
         return (sum(self.child_lengths_m, Fraction(0)) + self.residual_length_m
                 == self.parent_length_m + self.carried_in_m)
 

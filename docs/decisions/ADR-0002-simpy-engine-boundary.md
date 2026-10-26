@@ -8,7 +8,7 @@
 2. **엔진 패키지 경계:** `backend/src/simulation_platform/simulation/`는 FastAPI·starlette·SQLAlchemy·psycopg를 import하지 않는다(테스트가 새 인터프리터로 검사). 입력은 계약 0.6.0의 버전·그래프 응답과 같은 모양의 JSON dict(`ProcessSnapshot`)뿐이며 실행 중 DB의 현재 상태를 읽지 않는다. 실행 snapshot 저장·job queue·worker(C-07~C-10)는 이 경계 밖의 별도 단계다. 재사용하는 `domain/process.py`는 HTTP·ORM 비의존인 순수 규칙이다.
 3. **시간은 Fraction(분), 숫자 입력은 decimal 문자열/정수만.** 1,000m ÷ 30m/min = 100/3분처럼 정확한 값으로 동순위 이벤트 순서가 float 오차로 흔들리지 않게 한다. float·bool 입력은 거부한다. 표시용 decimal 문자열은 이벤트 직렬화 경계에서만 만든다.
 3-1. **고정 지평선은 `[0,H)`이며 SimPy `run(until=숫자)`를 쓰지 않는다.** SimPy는 숫자 `until`을 float로 바꿔 정확히 H 시각의 이벤트가 처리되고 종료 후 `now`도 float가 된다(실측: H=200/3에서 200/3 이벤트가 처리됨). 정확한 분수 시각의 URGENT 종료 이벤트를 직접 예약하고, 경계 테스트로 고정한다. 이 구현은 SimPy 4.1.2의 `Event._ok/_value` 내부 속성에 의존하므로 버전 잠금이 전제다.
-4. **handler는 순수 계획 함수 + 명시 registry(ADR-011).** `plan(step, item)`이 준비 시간·산출 단위별 준비 시각·잔량을 계산하고, SimPy 실행(자원 확보·시간 경과·이벤트)은 runtime이 맡는다. 이름·버전으로만 선택하며 `eval`·코드 문자열·LLM 생성 코드는 실행하지 않는다. 이번 구현: `pass_through_length`·`split_length`·`inspection`·`transport_manual`. 나머지 등록 handler(`output_units_by_time`·`configured_yield`·`supply_delay`)는 컴파일이 `ENGINE_HANDLER_NOT_AVAILABLE`로 막는다.
+4. **handler는 순수 계획 함수 + 명시 registry(ADR-011).** `plan(step, item)`이 준비 시간·산출 단위별 준비 시각·잔량을 계산하고, SimPy 실행(자원 확보·시간 경과·이벤트)은 runtime이 맡는다. 이름·버전으로만 선택하며 `eval`·코드 문자열·LLM 생성 코드는 실행하지 않는다. 이번 구현: `pass_through_length`·`split_length`·`inspection`·`transport_manual`, C0-07에서 `configured_yield`·`supply_delay`. 나머지 등록 handler(`output_units_by_time`)는 컴파일이 `ENGINE_HANDLER_NOT_AVAILABLE`로 막는다.
 5. **미정은 스스로 채우지 않는다(ADR-017).** 컴파일은 도메인 실행 검증(`run_template`) 오류를 그대로 막고, 엔진이 지원하지 않는 구조·값(병렬 스트림, 합류·분기·공급 간선, 준비 시점, 공급 대기, 설비 동시 확보 등)은 이유와 함께 컴파일 오류로 막는다. 오류는 첫 번째에서 멈추지 않고 모아 보고한다.
 6. **시나리오 가정은 명시 객체로만 해소하고 결과에 보고한다.** `ScenarioAssumptions`: 설비 점유 정책(`hold_for_operation`만 지원), 저장·대기 공간 용량 제한 없음 선언, 수동 운반 이동 시간(0분도 명시해야 허용). 사용한 가정은 `RuntimeModel.assumptions`와 `RunResult.assumptions`에 남고, 가정으로 면제한 실행 검증 항목은 `CompileResult.waived`로 숨기지 않는다. master 공정은 바뀌지 않는다.
 7. **종료 상태를 구분한다:** `completed`, `stalled`(이벤트가 없는데 WIP 잔존, 즉시 교착 단정 없음), `horizon_reached`(관측 중단, censored), `failed`(입력이 단계에 맞지 않음·잔량 정책 미구현 등, 이유 코드 보존), `limit_reached`(이벤트 한도). 진행 중인 작업도 WIP로 센다(지평선에서 끊긴 작업을 완료로 오인하지 않기 위해).
@@ -23,8 +23,15 @@
     - **OUT 배출 정책(DEC-006 대응표, 0.2.0 `release_rule`이 정본)**: 하류 공간이 유한해 막힐 수 있을 때만 후보 설비마다 정한다. `when_destination_accepts.block_machine_while_waiting = yes` → **hold**(자리가 날 때까지 설비 점유, 상태 `BLOCKED`), `no` → **release_after_out**(OUT 포트 `buffer_capacity`가 `unlimited` 또는 `finite`+`item`일 때만; OUT에 놓고 설비 계속 사용, OUT이 차면 막힘), OUT 용량 `not_allowed` → hold(직접 인계), 그 밖(`unknown`, OUT 용량 미정·다른 단위, 자산 버전 없음) → `OUT_RELEASE_POLICY_UNKNOWN`으로 실행 차단. 07 §7의 다른 어휘는 조정자 소유 문서라 이 대응표로만 연결한다.
     - **실행**: 작업물은 공간에 들어갈 때 자리를 차지하고, 다음 단계가 실제로 가져갈 때(설비 확보 후) 자리를 돌려준다. 도착·milestone에서 다음 공간이 차 있으면 그 자리에서 기다린다(`ENTRY_WAITING`). 산출은 막히면 `OUT_BLOCKED`/`OUT_UNBLOCKED`, OUT에 놓으면 `OUT_STORED`. 일괄 인계(`total_batch`)는 설비를 놓기 전에 내보낸다. 자리 배정은 들어온 순서(FIFO)이며 기다리는 요청이 있으면 끼어들지 않는다. 막힘으로 진행할 사건이 없으면 기존 규칙대로 `stalled`(즉시 교착 단정 없음).
 
+12. **저장공간 분기·단계 합류·공급(C0-07).** 흐름은 source에서 이어지는 위상 순서로 컴파일한다.
+    - **지원 구조**: `material`·`supply` 간선(공급도 작업물이 실제로 옮겨 간다, 공급 간선은 단계→단계만), 저장공간에서 여러 단계로 갈라지는 분기(그 단계들이 한 공간의 입력 pool에서 요청 순서대로 가져간다), 단계로 여러 입력이 모이는 합류. 그 밖의 분기(단계에서 갈라짐 등)·단계가 아닌 노드로의 합류·`join` 노드·`precedence` 간선·순환은 의미가 정해지지 않아 막는다(`BRANCH_UNSUPPORTED`·`JOIN_UNSUPPORTED`·`NONLINEAR_EDGE_UNSUPPORTED`·`ROUTE_CYCLE`).
+    - **작업 한 번의 확보 수(07 §5)**: 들어오는 간선에 연결된 입력 spec(`target_input_spec_key`)의 `unit_count`(여러 개면 `per_operation`). 필요한 수가 모일 때까지 일부만 가져가지 않는다. 단위 수가 미정이면 가닥 수·길이·중량으로 추정하지 않고 `INPUT_COUNT_UNKNOWN`. 작업물 하나를 처리하는 handler는 입력 하나·1개만(`INPUT_BATCH_UNSUPPORTED`), spec이 없으면 handler 정의대로 1개.
+    - **`configured_yield`**: 투입을 한 번 확보하고 단계 설정의 단위 길이 × 개수를 순차 산출한다. 투입 길이와 맞추는 물리 규칙이 없어 `accounting_mode=abstract_yield`·`quantity_basis=per_operation`만 실행하고, 계보는 `relation=yield`, 투입 전부(`parent_keys`), `balanced=None`(물량 보존을 주장하지 않음)으로 남긴다. 소비 시점 `consume`은 시작 때, `transfer`는 작업이 끝날 때 소비한다.
+    - **`supply_delay`**: 투입 작업물을 복제하지 않고 같은 작업물을 공급 상태(출력 spec의 상태·형태)로 바꾼다(03 §12, 계보 `relation=supply`). 소비 시점은 `transfer`만.
+    - **준비 대기(`precondition_delay`)**: 어느 handler든 발생 시점 `per_operation`이면 실행한다. `occupies_machine`은 설비를 쥔 채, `releases_machine`은 설비를 쥐기 전에 기다린다. 그 밖의 발생 시점은 `PRECONDITION_DELAY_UNSUPPORTED`, 미정은 도메인 검증(VAL-TIME-005)이 막는다. 이벤트 `PRECONDITION_DELAY_STARTED/FINISHED`.
+
 ## 이번에 하지 않는 것
-합류·분기·공급 간선(C0-07), 설비 IN 포트 용량과 `dispatch_rule`(단계 간 직접 인계 대기), item 외 단위의 공간 용량 환산, 여러 설비 동시 확보·예약 allocator, 병렬 스트림 산출, 네트워크 운반, 지표 엔진, 시나리오·job queue·worker. 값 구조가 도메인 문서에 없는 `input_match_policy`·`condition_rule`·`execution_rule`·`parameter_override`도 구현하지 않는다.
+단계에서 갈라지는 분기·precedence 간선·join 노드·순환, `output_units_by_time`(병렬 스트림 산출), 메인 작업 동안 공급 설비 점유(feeder 점유), 설비 IN 포트 용량과 `dispatch_rule`(단계 간 직접 인계 대기), item 외 단위의 공간 용량 환산, 여러 설비 동시 확보·예약 allocator, 병렬 스트림 산출, 네트워크 운반, 지표 엔진, 시나리오·job queue·worker. 값 구조가 도메인 문서에 없는 `input_match_policy`·`condition_rule`·`execution_rule`·`parameter_override`도 구현하지 않는다.
 
 ## 결과
 - 엔진 입력 모양이 계약 응답과 같아 실행 snapshot 생성(C-07)은 이 모양을 불변 저장하는 일이 된다.

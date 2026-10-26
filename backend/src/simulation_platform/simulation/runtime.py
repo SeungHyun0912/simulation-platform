@@ -23,7 +23,7 @@ from simulation_platform.simulation.items import ItemFactory, LineageRecord, Wor
 from simulation_platform.simulation.monitoring import events as ev
 from simulation_platform.simulation.monitoring.events import Event, EventLimitReached, EventLog
 from simulation_platform.simulation.numbers import to_fraction
-from simulation_platform.simulation.resources import EquipmentAllocator, SpaceAllocator
+from simulation_platform.simulation.resources import BatchPool, EquipmentAllocator, SpaceAllocator
 
 COMPLETED, STALLED, HORIZON_REACHED = "completed", "stalled", "horizon_reached"
 FAILED, LIMIT_REACHED = "failed", "limit_reached"
@@ -125,7 +125,8 @@ class _Lane:
     def __init__(self, env: simpy.Environment, lane: Lane) -> None:
         self.model, self.arrivals = lane.model, lane.arrivals
         self.version = lane.model.version_id
-        self.stores = {key: simpy.Store(env) for key in lane.model.steps}
+        # 단계 입력 pool(앞 노드 key). 저장공간이 여러 단계로 갈라지면 그 단계들이 같은 pool을 쓴다.
+        self.pools = {i.pool: BatchPool(env) for step in lane.model.steps.values() for i in step.inputs}
         self.op_count = {key: 0 for key in lane.model.steps}
         self.pending = sum(a.count for a in lane.arrivals)
 
@@ -243,21 +244,19 @@ class _Run:
                           quantities={"length_m": item.length_m})
             self._enter(lane, item, lane.model.source_key)
 
-    def _enter(self, lane: _Lane, item: WorkItem, key: str) -> None:
+    def _enter(self, lane: _Lane, item: WorkItem, key: str, origin: str | None = None) -> None:
         node = lane.model.nodes[key]
         item.location = key
         if node.kind == "buffer":
             self.emit_for(lane, ev.BUFFER_ENTERED, item_key=item.key, destination=key,
                           asset_key=node.asset_id, quantities={"length_m": item.length_m})
             self.in_space[item.key] = (key, node.asset_id)
-            following = lane.model.nodes.get(node.next_key) if node.next_key else None
-            if following is not None and following.kind == "operation":
+            if node.next_keys and all(lane.model.nodes[f].kind == "operation" for f in node.next_keys):
                 self.came_from[item.key] = key  # 다음 단계가 가져갈 때 공간을 떠난다(BUFFER_LEFT)
-                self._enter(lane, item, following.key)
-                item.location = key
+                lane.pools[key].put(item)  # 갈라지면 여러 단계가 이 공간에서 들어온 순서대로 가져간다
                 return
         elif node.kind == "operation":
-            lane.stores[key].put(item)
+            lane.pools[origin].put(item)
             return
         elif node.kind == "milestone":
             self.emit_for(lane, ev.MILESTONE_REACHED, item_key=item.key, destination=key,
@@ -294,16 +293,16 @@ class _Run:
         space = self._limited_space(lane, following)
         if space is None or self.spaces.try_take(space):
             self._leave_space(lane, item)
-            self._enter(lane, item, following)
+            self._enter(lane, item, following, key)
             return
         self.emit_for(lane, ev.ENTRY_WAITING, item_key=item.key, source=key, destination=following,
                       asset_key=space)
-        self.env.process(self._wait_and_enter(lane, item, space, following))
+        self.env.process(self._wait_and_enter(lane, item, space, following, key))
 
-    def _wait_and_enter(self, lane: _Lane, item: WorkItem, space: str, following: str):
+    def _wait_and_enter(self, lane: _Lane, item: WorkItem, space: str, following: str, origin: str):
         yield self.spaces.wait(space)
         self._leave_space(lane, item)
-        self._enter(lane, item, following)
+        self._enter(lane, item, following, origin)
 
     def _deliver(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, child: WorkItem,
                  resume: str | None):
@@ -317,7 +316,7 @@ class _Run:
             return
         space = self._limited_space(lane, following)
         if space is None or self.spaces.try_take(space):
-            self._enter(lane, child, following)
+            self._enter(lane, child, following, step.key)
             return
         policy = step.out_policies.get(asset) if asset is not None else None
         if policy is not None and policy.kind == "release_after_out":
@@ -328,10 +327,10 @@ class _Run:
                                          resume)
             self.emit_for(lane, ev.OUT_STORED, step_key=step.key, operation_id=op_id, asset_key=asset,
                           item_key=child.key, destination=out_key)
-            self.env.process(self._out_mover(lane, child, out_key, space, following))
+            self.env.process(self._out_mover(lane, child, out_key, space, following, step.key))
             return
         yield from self._blocked(lane, step, op_id, asset, child, following, self.spaces.wait(space), resume)
-        self._enter(lane, child, following)
+        self._enter(lane, child, following, step.key)
 
     def _blocked(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, child: WorkItem,
                  destination: str, granted: simpy.Event, resume: str | None):
@@ -344,45 +343,56 @@ class _Run:
         if resume is not None:
             self._asset_state(lane, step, op_id, asset, resume)
 
-    def _out_mover(self, lane: _Lane, child: WorkItem, out_key: str, space: str, following: str):
+    def _out_mover(self, lane: _Lane, child: WorkItem, out_key: str, space: str, following: str, origin: str):
         if not self.spaces.try_take(space):
             yield self.spaces.wait(space)
         self.out_spaces.release(out_key)
         self.emit_for(lane, ev.BUFFER_LEFT, item_key=child.key, source=out_key)
-        self._enter(lane, child, following)
+        self._enter(lane, child, following, origin)
 
     # --- 단계 ------------------------------------------------------------------------------
     def _dispatcher(self, lane: _Lane, step: StepModel):
+        """입력마다 필요한 수를 한꺼번에 확보하면 작업을 시작한다(07 §5). 설비는 작업이 따로 기다린다."""
         while True:
-            item = yield lane.stores[step.key].get()
-            self.env.process(self._operate(lane, step, item))
+            batch: list[WorkItem] = []
+            for need in step.inputs:
+                batch.extend((yield lane.pools[need.pool].get(need.count)))
+            self.env.process(self._operate(lane, step, tuple(batch)))
 
-    def _operate(self, lane: _Lane, step: StepModel, item: WorkItem):
+    def _operate(self, lane: _Lane, step: StepModel, items: tuple[WorkItem, ...]):
         lane.op_count[step.key] += 1
         op_id = f"{step.key}#{lane.op_count[step.key]}"
         self.in_progress += 1
-        source = self.came_from.pop(item.key, step.key)
-        self.emit_for(lane, ev.INPUT_RESERVED, step_key=step.key, operation_id=op_id, item_key=item.key,
-                      source=source, quantities={"length_m": item.length_m})
+        for reserved in items:
+            source = self.came_from.pop(reserved.key, step.key)
+            self.emit_for(lane, ev.INPUT_RESERVED, step_key=step.key, operation_id=op_id, item_key=reserved.key,
+                          source=source, quantities={"length_m": reserved.length_m})
+        item = items[0]
         carry = _carries(step)
         plan = None
         if not carry:  # 이월이 없으면 설비를 쥐기 전에 계획해 맞지 않는 입력을 일찍 실패시킨다
-            plan = self._plan(lane, step, item, Fraction(0))
+            plan = self._plan(lane, step, items, Fraction(0))
             self._reject_unhandled_residual(lane, step, plan)
+        delay = step.delay
+        if delay is not None and delay.occupancy == "releases_machine":
+            yield from self._precondition_delay(lane, step, op_id, None, delay)  # 설비를 쥐지 않고 기다린다
         asset = None
         if step.candidates:
             asset = yield self.allocator.acquire(step.candidates)
             self._asset_state(lane, step, op_id, asset, ev.RESERVED)
+        if delay is not None and delay.occupancy == "occupies_machine":
+            yield from self._precondition_delay(lane, step, op_id, asset, delay)  # 설비를 쥔 채 기다린다
         pool_key = None
         if carry:  # 이월은 실제 시작 시점의 잔량 풀로 계획한다(기다리는 동안 풀이 바뀔 수 있다)
             pool_key = self._pool_key(lane, step, item, asset)
             carried = self._take_pool(lane, step, op_id, pool_key)
-            plan = self._plan(lane, step, item, carried)
-        self._leave_space(lane, item)  # 기다리던 공간을 떠나며 자리를 돌려준다
-        self.emit_for(lane, ev.INPUT_CONSUMED, step_key=step.key, operation_id=op_id, item_key=item.key,
-                      asset_key=asset, quantities={"length_m": item.length_m})
-        if plan.relation == "split":
-            item.status = "consumed"
+            plan = self._plan(lane, step, items, carried)
+        for taken in items:
+            self._leave_space(lane, taken)  # 기다리던 공간을 떠나며 자리를 돌려준다
+        # 공급은 투입을 그대로 넘기고(소비 아님), 지정 산출의 transfer는 작업이 끝날 때 소비한다.
+        consume_at_end = plan.relation == "yield" and step.consume_policy == "transfer"
+        if plan.relation != "supply" and not consume_at_end:
+            self._consume(lane, step, op_id, asset, items, plan.relation)
         if step.setup_minutes > 0:
             self._asset_state(lane, step, op_id, asset, ev.SETUP)
             self.emit_for(lane, ev.SETUP_STARTED, step_key=step.key, operation_id=op_id, asset_key=asset)
@@ -395,10 +405,11 @@ class _Run:
         for index, planned in enumerate(plan.outputs):
             yield self.env.timeout(planned.ready_offset - elapsed)
             elapsed = planned.ready_offset
-            child = self._make_output(lane, step, item, plan.relation, planned.length_m)
+            parent = items[planned.ordinal - 1] if plan.relation == "supply" else item
+            child = self._make_output(lane, step, parent, plan.relation, planned.length_m)
             children.append(child)
             self.emit_for(lane, ev.OUTPUT_UNIT_READY, step_key=step.key, operation_id=op_id,
-                          asset_key=asset, item_key=child.key, source=item.key,
+                          asset_key=asset, item_key=child.key, source=parent.key,
                           quantities={"length_m": child.length_m, "ordinal": planned.ordinal})
             if step.handoff == "per_output_unit":  # 보빈별 인계: 이 산출은 지금 다음 단계가 쓸 수 있다
                 more = index + 1 < len(plan.outputs)
@@ -407,11 +418,9 @@ class _Run:
                 held.append(child)  # total_batch: 모든 산출이 끝난 뒤 한 번에 인계
         self.emit_for(lane, ev.PROCESS_FINISHED, step_key=step.key, operation_id=op_id, asset_key=asset,
                       quantities={"output_units": len(children)})
-        self.lineage.append(LineageRecord(
-            operation_id=op_id, step_key=step.key, relation=plan.relation, parent_key=item.key,
-            child_keys=tuple(c.key for c in children), parent_length_m=item.length_m,
-            child_lengths_m=tuple(c.length_m for c in children), residual_length_m=plan.residual_m,
-            process_version_id=lane.version, carried_in_m=plan.carried_in_m))
+        if consume_at_end:
+            self._consume(lane, step, op_id, asset, items, plan.relation)
+        self._record_lineage(lane, step, op_id, items, children, plan)
         if carry and plan.residual_m > 0:
             self.pools.setdefault(pool_key, []).append(
                 _PoolEntry(plan.residual_m, lane.version, step.residual.on_run_end))
@@ -426,10 +435,43 @@ class _Run:
             self.allocator.release(asset)
         self.in_progress -= 1
 
+    def _precondition_delay(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, delay):
+        self.emit_for(lane, ev.PRECONDITION_DELAY_STARTED, step_key=step.key, operation_id=op_id, asset_key=asset,
+                      quantities={"minutes": delay.minutes, "occupancy": delay.occupancy})
+        yield self.env.timeout(delay.minutes)
+        self.emit_for(lane, ev.PRECONDITION_DELAY_FINISHED, step_key=step.key, operation_id=op_id, asset_key=asset)
+
+    def _consume(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None,
+                 items: tuple[WorkItem, ...], relation: str) -> None:
+        for consumed in items:
+            self.emit_for(lane, ev.INPUT_CONSUMED, step_key=step.key, operation_id=op_id, item_key=consumed.key,
+                          asset_key=asset, quantities={"length_m": consumed.length_m})
+            if relation in ("split", "yield"):
+                consumed.status = "consumed"
+
+    def _record_lineage(self, lane: _Lane, step: StepModel, op_id: str, items: tuple[WorkItem, ...],
+                        children: list[WorkItem], plan) -> None:
+        if plan.relation == "supply":  # 같은 작업물이 공급 상태로 바뀐 것: 작업물마다 하나씩
+            for moved in items:
+                self.lineage.append(LineageRecord(
+                    operation_id=op_id, step_key=step.key, relation="supply", parent_key=moved.key,
+                    child_keys=(moved.key,), parent_length_m=moved.length_m, child_lengths_m=(moved.length_m,),
+                    process_version_id=lane.version))
+            return
+        yielded = plan.relation == "yield"
+        self.lineage.append(LineageRecord(
+            operation_id=op_id, step_key=step.key, relation=plan.relation, parent_key=items[0].key,
+            child_keys=tuple(c.key for c in children),
+            parent_length_m=sum((i.length_m for i in items), Fraction(0)),
+            child_lengths_m=tuple(c.length_m for c in children), residual_length_m=plan.residual_m,
+            process_version_id=lane.version, carried_in_m=plan.carried_in_m,
+            parent_keys=tuple(i.key for i in items) if yielded else (),
+            accounting_mode="abstract_yield" if yielded else "physical"))
+
     # --- 잔량(03 §6, 07 §3 ResidualPool) ----------------------------------------------------------
-    def _plan(self, lane: _Lane, step: StepModel, item: WorkItem, carried: Fraction):
+    def _plan(self, lane: _Lane, step: StepModel, items: tuple[WorkItem, ...], carried: Fraction):
         try:
-            return get_handler(step.handler, step.handler_version).plan(step, item, carried)
+            return get_handler(step.handler, step.handler_version).plan(step, items, carried)
         except PlanError as error:
             raise RunFailure(error.reason, str(error), step.key, lane.version) from error
 
@@ -492,9 +534,10 @@ class _Run:
                      length_m: Fraction) -> WorkItem:
         form = step.output.form or parent.form
         state = step.output.state_code or parent.state
-        if relation == "transform":
+        if relation in ("transform", "supply"):
             parent.form, parent.state = form, state  # 같은 작업물의 상태 전환(새 작업물을 만들지 않는다)
             return parent
+        # 지정 산출(yield)은 부모가 여럿이라 작업물에는 첫 번째 부모를 두고 전체는 계보(parent_keys)에 남긴다.
         child = self.factory.new(length_m=length_m, form=form, state=state, parent_key=parent.key,
                                  lot=parent.lot, created_at=self.env.now,
                                  process_version_id=lane.version)

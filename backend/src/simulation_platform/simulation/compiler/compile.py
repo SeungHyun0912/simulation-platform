@@ -19,6 +19,8 @@ from simulation_platform.simulation.compiler.model import (
     AssumptionUse,
     CompileIssue,
     CompileResult,
+    DelayModel,
+    InputModel,
     NodeModel,
     OutPolicy,
     OutputModel,
@@ -59,17 +61,19 @@ class _Compiler:
     def run(self) -> CompileResult:
         self._check_header()
         self._check_run_validation()
-        route, next_of = self._route()
+        route, succ, in_edges = self._route()
         nodes: dict[str, NodeModel] = {}
         steps: dict[str, StepModel] = {}
         by_key = {n["node_key"]: n for n in self.nodes}
-        self.spaces = self._check_spaces(route, by_key, next_of)
+        self.spaces = self._check_spaces(route, by_key, succ)
         for key in route:
             node = by_key[key]
+            following = tuple(succ.get(key, ()))
             nodes[key] = NodeModel(key, node["id"], node["kind"], node["label"], node["asset_id"],
-                                   next_of.get(key))
+                                   following[0] if len(following) == 1 else None, following)
             if node["kind"] == "operation":
-                step = self._build_step(node, next_of.get(key), by_key)
+                step = self._build_step(node, following[0] if len(following) == 1 else None, by_key,
+                                        in_edges.get(key, []))
                 if step is not None:
                     steps[key] = step
         if self.issues:
@@ -111,50 +115,79 @@ class _Compiler:
             else:
                 self.issues.append(item)
 
-    # --- 3. 경로(이번 범위: 단일 선형 흐름) ----------------------------------------------------
-    def _route(self) -> tuple[list[str], dict[str, str]]:
+    # --- 3. 경로(선형 + 저장공간 분기 + 단계 합류, C0-07) --------------------------------------------
+    def _route(self) -> tuple[list[str], dict[str, list[str]], dict[str, list[tuple[str, dict]]]]:
+        """source에서 이어지는 노드의 위상 순서, 다음 노드 목록, 단계별 들어오는 간선(앞 노드 key, 간선).
+
+        지원: material·supply 간선(공급도 작업물이 실제로 옮겨 간다), 저장공간에서 여러 단계로 갈라지는 분기
+        (그 단계들이 한 공간에서 함께 가져간다), 단계로 여러 입력이 모이는 합류. 그 밖의 분기·합류, precedence(완료 의존)
+        간선, join 노드, 순환은 의미가 정해지지 않아 막는다.
+        """
         by_id = {n["id"]: n for n in self.nodes}
+        kind_of = {n["node_key"]: n["kind"] for n in self.nodes}
         sources = [n for n in self.nodes if n["kind"] == "source"]
         if len(sources) != 1:
             self.issue("ROUTE_SOURCE", f"source 노드는 정확히 하나여야 합니다(현재 {len(sources)}개).")
-            return [], {}
-        next_of: dict[str, str] = {}
-        indegree: dict[str, int] = {}
-        outdegree: dict[str, int] = {}
+            return [], {}, {}
+        succ: dict[str, list[str]] = {}
+        in_edges: dict[str, list[tuple[str, dict]]] = {}
         for edge in self.edges:
-            if edge["edge_kind"] != "material":
+            a, b = by_id[edge["from_node_id"]]["node_key"], by_id[edge["to_node_id"]]["node_key"]
+            if edge["edge_kind"] == "precedence":
                 self.issue("NONLINEAR_EDGE_UNSUPPORTED",
-                           f"{edge['edge_key']}: {edge['edge_kind']} 간선(합류·공급·완료 의존)은 아직 실행하지 않습니다.",
+                           f"{edge['edge_key']}: precedence(완료 의존) 간선은 아직 실행하지 않습니다.",
                            field_path=f"/edges/{edge['edge_key']}")
                 continue
-            a, b = by_id[edge["from_node_id"]]["node_key"], by_id[edge["to_node_id"]]["node_key"]
-            next_of[a] = b
-            outdegree[a] = outdegree.get(a, 0) + 1
-            indegree[b] = indegree.get(b, 0) + 1
-        for key, degree in outdegree.items():
-            if degree > 1:
-                self.issue("BRANCH_UNSUPPORTED", f"{key}: 물류 간선이 여러 개로 갈라지는 흐름은 아직 실행하지 않습니다.", key)
-        for key, degree in indegree.items():
-            if degree > 1:
-                self.issue("JOIN_UNSUPPORTED", f"{key}: 입력이 여러 개 합류하는 흐름은 아직 실행하지 않습니다.", key)
+            if edge["edge_kind"] == "supply" and not (kind_of[a] == kind_of[b] == "operation"):
+                self.issue("NONLINEAR_EDGE_UNSUPPORTED",
+                           f"{edge['edge_key']}: 공급 간선은 단계에서 단계로만 실행합니다.",
+                           field_path=f"/edges/{edge['edge_key']}")
+                continue
+            succ.setdefault(a, []).append(b)
+            in_edges.setdefault(b, []).append((a, edge))
+        for key, following in succ.items():
+            if len(following) > 1 and not (kind_of[key] == "buffer"
+                                           and all(kind_of[f] == "operation" for f in following)):
+                self.issue("BRANCH_UNSUPPORTED",
+                           f"{key}: 저장공간에서 단계들로 갈라지는 분기만 실행합니다(그 밖의 분기는 나눠 보낼 규칙이 없음).", key)
+        for key, edges in in_edges.items():
+            if len(edges) > 1 and kind_of[key] != "operation":
+                self.issue("JOIN_UNSUPPORTED", f"{key}: 단계가 아닌 노드로 여러 입력이 모이는 흐름은 아직 실행하지 않습니다.", key)
         for node in self.nodes:
             if node["kind"] == "join":
-                self.issue("JOIN_UNSUPPORTED", f"{node['node_key']}: join 노드는 아직 실행하지 않습니다.",
+                self.issue("JOIN_UNSUPPORTED", f"{node['node_key']}: join 노드는 아직 실행하지 않습니다(단계의 입력 spec으로 합류).",
                            node["node_key"])
-        route, seen = [], set()
-        key = sources[0]["node_key"]
-        while key is not None and key not in seen:
+        start = sources[0]["node_key"]
+        reachable, stack = {start}, [start]
+        while stack:
+            for following in succ.get(stack.pop(), []):
+                if following not in reachable:
+                    reachable.add(following)
+                    stack.append(following)
+        indegree = {k: sum(1 for a, _ in in_edges.get(k, []) if a in reachable) for k in reachable}
+        order_of = {n["node_key"]: i for i, n in enumerate(self.nodes)}
+        ready, route = [start], []
+        while ready:  # 위상 순서(동순위는 snapshot 노드 순서)
+            ready.sort(key=order_of.get)
+            key = ready.pop(0)
             route.append(key)
-            seen.add(key)
-            key = next_of.get(key)
-        kind_of = {n["node_key"]: n["kind"] for n in self.nodes}
-        if kind_of[route[-1]] != "sink":
-            self.issue("ROUTE_NO_SINK", f"경로가 sink 노드로 끝나지 않습니다(마지막 노드 {route[-1]}).", route[-1])
+            for following in succ.get(key, []):
+                indegree[following] -= 1
+                if indegree[following] == 0:
+                    ready.append(following)
+        if len(route) < len(reachable):
+            self.issue("ROUTE_CYCLE", "순환하는 흐름은 반복 종료 규칙이 없어 실행하지 않습니다.")
+        for key in route:
+            if kind_of[key] != "sink" and not succ.get(key):
+                self.issue("ROUTE_NO_SINK", f"경로가 sink 노드로 끝나지 않습니다(막다른 노드 {key}).", key)
+        sinks = [k for k in route if kind_of[k] == "sink"]
+        if len(sinks) > 1:
+            self.issue("ROUTE_SINK", f"sink 노드는 하나여야 합니다(현재 {len(sinks)}개).")
         for node in self.nodes:
-            if node["node_key"] not in seen:
+            if node["node_key"] not in reachable:
                 self.issue("UNREACHABLE_NODE", f"{node['node_key']}: source에서 이어지지 않은 노드입니다.",
                            node["node_key"])
-        return route, next_of
+        return route, succ, in_edges
 
     def _space_capacity(self, asset: str | None) -> tuple[str, object]:
         """저장공간의 자리 수(작업물 개수). 자산 버전이 없거나 미정이면 unknown이다(무제한으로 가정하지 않는다)."""
@@ -170,7 +203,7 @@ class _Compiler:
             return "unsupported", capacity["unit"]
         return "finite", int(capacity["value"])
 
-    def _check_spaces(self, route: list[str], by_key: dict, next_of: dict) -> dict[str, int | None]:
+    def _check_spaces(self, route: list[str], by_key: dict, succ: dict) -> dict[str, int | None]:
         """경로가 지나는 저장공간의 용량과, 용량을 모르는 대기 장소를 확인한다.
 
         - 자산 버전의 저장 용량이 유한(item)이면 자리 수, 무제한이면 None. 같은 공간은 노드가 달라도 하나의 용량이다.
@@ -181,8 +214,7 @@ class _Compiler:
         unknown: list[str] = []
         for key in route:
             node = by_key[key]
-            following = by_key.get(next_of.get(key)) if next_of.get(key) else None
-            if node["kind"] == "operation" and following is not None and following["kind"] == "operation":
+            if node["kind"] == "operation" and any(by_key[f]["kind"] == "operation" for f in succ.get(key, ())):
                 unknown.append(key)
             if node["kind"] != "buffer":
                 continue
@@ -246,7 +278,8 @@ class _Compiler:
         return policies
 
     # --- 4. 단계 모델 -----------------------------------------------------------------------
-    def _build_step(self, node: dict, next_key: str | None = None, by_key: dict | None = None) -> StepModel | None:
+    def _build_step(self, node: dict, next_key: str | None = None, by_key: dict | None = None,
+                    in_edges: list | None = None) -> StepModel | None:
         key, step = node["node_key"], node["step"]
         name, version = step["operation_type"], step["handler_version"] or "1"
         handler = get_handler(name, version)
@@ -258,9 +291,9 @@ class _Compiler:
         transport_minutes = self._transport_minutes(key, handler)
         timing = TimingModel("none") if handler.name == TRANSPORT else self._timing(key, step, handler)
         setup = Fraction(0) if handler.name == TRANSPORT else self._setup(key, step)
-        if handler.name != TRANSPORT:
-            self._check_delay(key, step)
+        delay = None if handler.name == TRANSPORT else self._delay(key, step)
         output = self._output(key, step, handler)
+        inputs, consume_policy = self._inputs(key, step, handler, in_edges or [])
         candidates, allocation, worker_unlimited = self._resources(key, step, handler)
         self._check_hold_policy(key, handler, output, candidates)
         residual = self._residual(key, step, handler, candidates)
@@ -275,7 +308,8 @@ class _Compiler:
             handler_version=handler.version, candidates=candidates, allocation=allocation,
             worker_unlimited=worker_unlimited, setup_minutes=setup, timing=timing, output=output,
             handoff=handoff, residual_mode=step["residual_rule"]["mode"],
-            transport_minutes=transport_minutes, residual=residual, out_policies=out_policies)
+            transport_minutes=transport_minutes, residual=residual, out_policies=out_policies,
+            inputs=inputs, consume_policy=consume_policy, delay=delay)
 
     def _transport_minutes(self, key: str, handler: HandlerDef) -> Fraction | None:
         if handler.name != TRANSPORT:
@@ -335,10 +369,58 @@ class _Compiler:
                    f"{key}: 준비 시점 {setup['trigger']}은(는) 아직 실행하지 않습니다(per_operation과 0분만 지원).", key)
         return None
 
-    def _check_delay(self, key: str, step: dict) -> None:
-        if step["timing_rule"]["precondition_delay"]["trigger"] != "not_applicable":
+    def _delay(self, key: str, step: dict) -> DelayModel | None:
+        """준비 대기(03 §4.4). 미정(발생 시점·시간·설비 점유)은 도메인 검증(VAL-TIME-005)이 이미 막는다."""
+        delay = step["timing_rule"]["precondition_delay"]
+        duration, trigger, occupancy = delay["duration_min"], delay["trigger"], delay["occupancy"]
+        if trigger == "not_applicable":
+            return None
+        if trigger == "unknown" or duration["mode"] != "known" or occupancy == "unknown":
+            return None
+        if trigger != "per_operation":
             self.issue("PRECONDITION_DELAY_UNSUPPORTED",
-                       f"{key}: 공급 대기(precondition_delay)는 supply_delay handler가 필요하며 아직 실행하지 않습니다.", key)
+                       f"{key}: 준비 대기 발생 시점 {trigger}은(는) 아직 실행하지 않습니다(작업마다 per_operation만).", key)
+            return None
+        return DelayModel(to_fraction(duration["value"]), occupancy)
+
+    def _inputs(self, key: str, step: dict, handler: HandlerDef,
+                in_edges: list[tuple[str, dict]]) -> tuple[tuple[InputModel, ...], str]:
+        """들어오는 간선마다 작업 한 번에 확보할 작업물 수(07 §5). 간선에 연결된 입력 spec의 단위 수(unit_count)를 쓰고
+        가닥 수·길이·중량을 개수로 바꾸지 않는다. 작업물 하나를 처리하는 handler는 입력 하나·1개만 받는다."""
+        specs = {m["spec_key"]: m for m in step.get("material_specs", []) if m["direction"] == "input"}
+        inputs: list[InputModel] = []
+        for origin, edge in in_edges:
+            spec_key = edge.get("target_input_spec_key")
+            spec = specs.get(spec_key) if spec_key else None
+            count = None
+            if spec is not None and spec["unit_count"]["mode"] == "known":
+                count = int(spec["unit_count"]["value"])
+                if count > 1 and spec["quantity_basis"] != "per_operation":
+                    self.issue("INPUT_BASIS_UNSUPPORTED",
+                               f"{key}: 입력 {spec_key}의 수량 기준이 {spec['quantity_basis']}입니다. 작업 한 번에 여러 개를 "
+                               "확보하려면 per_operation이어야 합니다.", key)
+            elif len(in_edges) == 1 and not handler.batch:
+                count = 1  # 작업물 하나를 처리하는 handler의 정의(spec이 없어도 한 번에 하나)
+            if count is None:
+                self.issue("INPUT_COUNT_UNKNOWN",
+                           f"{key}: {origin}에서 작업 한 번에 가져올 작업물 수(입력 spec의 unit_count)가 미정입니다. "
+                           "가닥 수·길이로 개수를 추정하지 않습니다.", key)
+                continue
+            inputs.append(InputModel(origin, count, spec_key))
+        policy = step["input_rule"]["consume_policy"]
+        if not handler.batch:
+            if len(in_edges) > 1 or any(i.count != 1 for i in inputs):
+                self.issue("INPUT_BATCH_UNSUPPORTED",
+                           f"{key}: handler {handler.name}은(는) 작업 한 번에 작업물 하나만 처리합니다(합류·여러 개 확보 불가).", key)
+            return tuple(inputs), "consume"
+        if step["input_rule"]["acquire_scope"] not in ("per_operation", "unknown"):
+            self.issue("INPUT_SCOPE_UNSUPPORTED",
+                       f"{key}: 투입 확보 범위 {step['input_rule']['acquire_scope']}은(는) 아직 실행하지 않습니다(작업마다만).", key)
+        if policy != "unknown" and policy not in handler.consume_policies:
+            self.issue("INPUT_POLICY_UNSUPPORTED",
+                       f"{key}: handler {handler.name}의 투입 소비 시점은 {sorted(handler.consume_policies)}만 실행합니다"
+                       f"(현재 {policy}).", key)
+        return tuple(inputs), policy
 
     def _output(self, key: str, step: dict, handler: HandlerDef) -> OutputModel | None:
         out = step["output_rule"]
@@ -353,6 +435,16 @@ class _Compiler:
         if handler.needs_output_length and length["mode"] != "known":
             return None  # VAL-OUT-002가 이미 막았다
         count = out["unit_count"]
+        if handler.batch and out["mode"] == "configured_units":
+            if out["quantity_basis"] != "per_operation":
+                self.issue("OUTPUT_BASIS_UNSUPPORTED",
+                           f"{key}: 지정 산출은 작업 한 번의 산출(per_operation)만 실행합니다(현재 {out['quantity_basis']}).", key)
+            if out["accounting_mode"] != "abstract_yield":
+                self.issue("OUTPUT_ACCOUNTING_UNSUPPORTED",
+                           f"{key}: 지정 산출은 투입 길이와 맞추는 물리 규칙이 없어 abstract_yield로만 실행합니다"
+                           f"(현재 {out['accounting_mode']}, 03 §5).", key)
+            if count["mode"] != "known":
+                return None  # VAL-OUT-002가 이미 막았다
         spec = next((m for m in step.get("material_specs", []) if m["direction"] == "output"), None)
         return OutputModel(
             mode=out["mode"],

@@ -29,7 +29,9 @@ class PlannedOutput:
 
 @dataclass(frozen=True)
 class OperationPlan:
-    relation: str  # split(부모를 소비하고 자식을 만든다) | transform(같은 작업물의 상태·위치만 바뀐다)
+    # split(부모를 소비하고 자식을 만든다) | transform(같은 작업물의 상태·위치만 바뀐다)
+    # supply(투입 작업물들이 그대로 공급 상태가 된다, 03 §12) | yield(투입을 소비하고 지정 산출을 만든다, abstract_yield)
+    relation: str
     outputs: tuple[PlannedOutput, ...]
     residual_m: Fraction = Fraction(0)
     carried_in_m: Fraction = Fraction(0)  # 잔량 풀에서 이어 받은 길이(길이 풀, 물리 접속 아님)
@@ -43,9 +45,11 @@ class OperationPlan:
 class HandlerDef:
     name: str
     version: str
-    plan: Callable[[StepModel, WorkItem, Fraction], OperationPlan]  # (단계, 투입, 이월받은 길이)
+    plan: Callable[[StepModel, tuple[WorkItem, ...], Fraction], OperationPlan]  # (단계, 투입들, 이월받은 길이)
     output_modes: frozenset[str]  # 허용하는 output_rule.mode
     timing_kinds: frozenset[str]  # 허용하는 처리 시간 종류
     needs_output_length: bool = False
     needs_equipment: bool = True
     multiple_outputs: bool = False  # 한 작업이 여러 산출을 낼 수 있어 설비 점유 정책이 필요하다
+    batch: bool = False  # 작업 한 번에 여러 작업물·여러 입력을 받는다(아니면 작업물 하나)
+    consume_policies: frozenset[str] = frozenset()  # batch handler가 실행하는 input_rule.consume_policy

@@ -58,11 +58,13 @@ def test_silicon_products_are_blocked_by_missing_completion_and_inspection_resou
     assert {"VAL-GRAPH-014", "VAL-RES-002", "VAL-HANDOFF-001"} <= rules(result)  # 완제품 시점·검사 자원·인계 방식 미정
 
 
-def test_p04_is_not_a_single_linear_flow_for_this_engine_slice(client, wire):
+def test_p04_al_join_is_structurally_runnable_but_its_unknowns_remain(client, wire):
     result = compile_snapshot(snapshot(client, wire, "P04"), FULL_ASSUMPTIONS, allow_unapproved=True)
-    # 싱글-1 직결 + 싱글-12 공급 합류는 다음 단계(C0-07)에서 구현한다
-    assert {"NONLINEAR_EDGE_UNSUPPORTED", "BRANCH_UNSUPPORTED", "JOIN_UNSUPPORTED"} & rules(result)
-    assert {"ENGINE_HANDLER_NOT_AVAILABLE"} & rules(result)  # output_units_by_time·configured_yield·supply_delay
+    # C0-07: ST-019 분기(싱글-1·싱글-12) + 싱글 메인 합류(직결·공급 간선)는 경로로 받아들인다
+    assert not {"NONLINEAR_EDGE_UNSUPPORTED", "BRANCH_UNSUPPORTED", "JOIN_UNSUPPORTED"} & rules(result)
+    assert "ENGINE_HANDLER_NOT_AVAILABLE" in rules(result)  # 멀티신선 output_units_by_time(병렬 스트림)은 미구현
+    # 싱글 메인의 공급 입력은 가닥 수(12)만 있고 단위 수가 없다: 가닥을 보빈 수로 바꾸지 않는다
+    assert "INPUT_COUNT_UNKNOWN" in rules(result)
 
 
 def test_p05_and_p06_are_linear_but_need_transport_assumptions_and_input_policies(client, wire):
