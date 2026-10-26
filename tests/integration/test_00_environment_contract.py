@@ -4,8 +4,6 @@ import hashlib
 import json
 from pathlib import Path
 
-import pytest
-
 from conftest import API, PROJECT_A, RUN, data
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,11 +37,7 @@ def test_t0_server_schemas_cover_contract_schemas(admin):
     assert set(contract["components"]["schemas"]) <= set(live["components"]["schemas"])
 
 
-@pytest.mark.xfail(
-    reason="알려진 제한(사용자 결정 2026-10-26): 프런트엔드 생성 클라이언트가 계약 0.4.0 기준이다. "
-    "0.6.0으로 올리기 전까지의 상태를 기록하며, 올리면 이 xfail은 XPASS가 된다.",
-    strict=False,
-)
+# KL-001(0043d1b: 프런트엔드 0.4.0)은 e382749에서 해소되어 일반 회귀 테스트로 승격했다.
 def test_t0_frontend_client_uses_current_contract():
     fe = json.loads((ROOT / "frontend/src/shared/api/generated/CONTRACT.json").read_text(encoding="utf-8"))
     status = json.loads((ROOT / "contracts/contract-status.json").read_text(encoding="utf-8"))

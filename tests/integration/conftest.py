@@ -100,7 +100,7 @@ def admin(clients) -> Client:
 def server_reachable(admin):
     try:
         admin.get("/me")
-    except httpx.HTTPError as exc:  # noqa: BLE001
+    except httpx.HTTPError as exc:
         pytest.exit(f"전용 API({API})에 연결할 수 없습니다: {exc}", 2)
 
 

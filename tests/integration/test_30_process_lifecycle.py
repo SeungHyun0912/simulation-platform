@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-
 from conftest import PROJECT_A, RUN, data, error_code
 
 

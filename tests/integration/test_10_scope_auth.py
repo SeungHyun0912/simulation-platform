@@ -1,6 +1,6 @@
 """T2·T3: 프로젝트 간 격리와 역할 권한. 서버 판정이 정본이며 화면의 선택은 권한 검증이 아니다."""
 
-from conftest import PROJECT_A, PROJECT_B, PROJECT_C, RUN, data, error_code
+from conftest import PROJECT_A, PROJECT_B, RUN, data, error_code
 
 
 def _asset_id(admin, project, code):
@@ -9,7 +9,7 @@ def _asset_id(admin, project, code):
 
 
 def test_t2_me_lists_only_member_projects(clients):
-    codes = lambda u: {p["code"] for p in data(clients[u].get("/me"))["projects"]}  # noqa: E731
+    codes = lambda u: {p["code"] for p in data(clients[u].get("/me"))["projects"]}
     assert {"DEMO-A", "DEMO-B"} <= codes("admin")
     # 시드는 같은 개발 사용자를 DEMO-WIRE·DEV-PROJECT에도 넣는다. 소속이 아닌 프로젝트만 보이지 않으면 된다.
     assert "DEMO-A" in codes("editor") and not codes("editor") & {"DEMO-B", "DEMO-C"}

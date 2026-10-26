@@ -1,4 +1,4 @@
-// T8: 프런트엔드(계약 0.4.0 클라이언트)의 공정 그래프 저장이 0.6.0 필드를 보존하는가. 실제 서버·실제 DB 대상.
+// T8: 프런트엔드 공정 그래프 저장이 0.6.0 필드를 보존하는가. 실제 서버·실제 DB 대상.
 // 기준 공정: DEMO-WIRE P05(단계 재료 spec·간선 spec 연결·완제품 지정 포함)를 새 제품·새 초안에 새 id로 복사해 사용한다.
 // 시드 공정은 수정하지 않는다. 판정 기준과 알려진 제한은 docs/collaboration/INTEGRATION_BOARD.md 참고.
 import { toGraphIn } from "../../../frontend/src/features/processes/processDraft";
@@ -54,7 +54,7 @@ describe("T8 전제: 기준 그래프가 0.6.0 필드를 실제로 가지고 있
   });
 });
 
-describe("T8 프런트엔드 저장 후 재조회(편집 없음, 0.4.0 클라이언트 경로)", () => {
+describe("T8 프런트엔드 저장 후 재조회(편집 없음, 프런트엔드 저장 경로 그대로)", () => {
   it("노드·간선 구조와 단계 규칙(노드 단위)이 보존된다", () => {
     expect(afterFe.nodes.length).toBe(original.nodes.length);
     expect(afterFe.edges.length).toBe(original.edges.length);
@@ -74,9 +74,8 @@ describe("T8 프런트엔드 저장 후 재조회(편집 없음, 0.4.0 클라이
     expect(pick(afterFe)).toEqual(pick(original));
   });
 
-  // 알려진 제한(사용자 결정 2026-10-26): 프런트엔드가 계약 0.4.0 클라이언트라 `toGraphIn`이 최상위 completion_node_id를 보내지 않는다.
-  // PUT graph는 전체 교체이므로 편집 없이 저장만 해도 완제품 지정이 해제된다. 프런트엔드가 0.6.0으로 올라가면 이 테스트가 "실패"로 바뀌므로 it.fails를 제거한다.
-  it.fails("[알려진 제한 KL-001] 완제품 지정(completion_node_id)이 보존된다", () => {
+  // KL-001(알려진 제한, 0043d1b)은 e382749(FE-04a, 클라이언트 0.6.0)에서 해소되어 일반 회귀 테스트로 승격했다.
+  it("완제품 지정(completion_node_id)이 보존된다", () => {
     expect(nodeKeyOf(afterFe, afterFe.completion_node_id)).toBe(nodeKeyOf(original, original.completion_node_id));
   });
 });
