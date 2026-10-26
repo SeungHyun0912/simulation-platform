@@ -1,0 +1,51 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/scenario-versions/00000000-0000-4000-8000-000000000042/approve",
+    "headers": {
+      "If-Match": "\"2\""
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "SCENARIO_NOT_RUNNABLE",
+        "message": "실행 사전검증 오류가 있어 승인할 수 없습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "완제품 판정 시점(완제품 milestone)이 미정입니다.",
+            "severity": "error",
+            "rule_id": "VAL-GRAPH-014",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "[시험] 절연(수정): 준비 시점 또는 시간이 미정입니다(0이 아님).",
+            "severity": "error",
+            "rule_id": "VAL-TIME-004",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "[시험] 절연(수정): 공급 대기의 발생 시점·시간·설비 점유 여부가 미정입니다.",
+            "severity": "error",
+            "rule_id": "VAL-TIME-005",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "insulate: handler output_units_by_time v1은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.",
+            "severity": "error",
+            "rule_id": "ENGINE_HANDLER_NOT_AVAILABLE",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "sheath: handler output_units_by_time v1은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.",
+            "severity": "error",
+            "rule_id": "ENGINE_HANDLER_NOT_AVAILABLE",
+            "field_path": "/products/0"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/scenario-versions/00000000-0000-4000-8000-000000000042",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "products": [
+        {
+          "product_id": "00000000-0000-4000-8000-000000000013",
+          "process_version_id": "00000000-0000-4000-8000-000000000015",
+          "priority": 1,
+          "arrivals": [
+            {
+              "at_min": "0",
+              "count": 2,
+              "length_m": "2000",
+              "lot": "LOT-1"
+            }
+          ],
+          "assumptions": {
+            "unbounded_buffers": true
+          }
+        }
+      ],
+      "stopping_rule": {
+        "mode": "fixed_horizon",
+        "horizon_min": "960"
+      },
+      "assumption_reason": "[시험] 대기 공간 용량 확인 전 임시 가정"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"2\""
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000042",
+        "project_id": "00000000-0000-4000-8000-000000000002",
+        "scenario_id": "00000000-0000-4000-8000-000000000041",
+        "version_no": 1,
+        "status": "draft",
+        "base_version_id": null,
+        "approved_at": null,
+        "created_at": "2026-10-23T00:00:00Z",
+        "updated_at": "2026-10-23T00:00:00Z",
+        "row_version": 2,
+        "products": [
+          {
+            "product_id": "00000000-0000-4000-8000-000000000013",
+            "process_version_id": "00000000-0000-4000-8000-000000000015",
+            "priority": 1,
+            "arrivals": [
+              {
+                "at_min": "0",
+                "count": 2,
+                "length_m": "2000",
+                "lot": "LOT-1"
+              }
+            ],
+            "assumptions": {
+              "equipment_hold": null,
+              "unbounded_buffers": true,
+              "manual_transport_minutes": {},
+              "residual_scope": {}
+            }
+          }
+        ],
+        "assets": [
+          {
+            "asset_id": "00000000-0000-4000-8000-000000000003",
+            "asset_revision_id": "00000000-0000-4000-8000-000000000009"
+          }
+        ],
+        "stopping_rule": {
+          "mode": "fixed_horizon",
+          "horizon_min": "960"
+        },
+        "assumption_reason": "[시험] 대기 공간 용량 확인 전 임시 가정",
+        "notes": null,
+        "approved_by": null
+      }
+    }
+  }
+}

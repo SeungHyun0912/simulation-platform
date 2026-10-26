@@ -5,6 +5,12 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.7.0 — 2026-10-27 · scope `scenario-versions`(신규) · sha256 `d687fdfd…5b09` · 기준 commit `f776dc3`
+- **호환성: 0.6.1과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 10개(시나리오 목록·생성·조회·수정, 버전 목록·생성·조회·수정, 사전검증, 승인)와 새 오류 코드 `SCENARIO_CODE_CONFLICT`·`SCENARIO_DRAFT_EXISTS`(409)·`SCENARIO_NOT_RUNNABLE`(422).
+- 근거: CR be07 / 보드 DEC-007(사용자 권장안 승인, PR #40). 상세는 04 §5.1.
+- 핵심 규칙: 초안 저장과 실행 가능 판정을 분리한다(미정이 있어도 저장, `validate`가 판정). 승인은 사전검증 오류 0일 때만이며 승인 후 불변. 사전검증은 엔진 컴파일 결과 코드를 번역하지 않고 그대로 준다. 숫자는 decimal 문자열(`at_min`·`length_m`·`horizon_min`), 개수는 정수.
+- **프런트가 해야 할 일:** 시나리오 화면을 만들 때 타입 재생성(`contracts/openapi.json`). 기존 화면은 변경 불필요. 사전검증의 `compile_issues[].rule_id`는 열린 문자열 목록(엔진이 늘 수 있음)이므로 enum으로 고정하지 말고 `message`를 그대로 표시한다.
+
 ## 0.6.1 — 2026-10-26 · scope `process-versions`(패치) · sha256 `509a71f1…38ef`(0.6.0과 같음) · 기준 commit `d5b1ce9`
 - **호환성: 0.6.0과 같은 OpenAPI(해시 동일).** 요청·응답 필드·operation 변경 없음. **동작만 바뀐다:** 단계(operation)가 하나도 없는 공정은 `validate?scope=run_template`에서 `VAL-GRAPH-010`이 **오류**다(knowledge에서는 지금처럼 경고라 승인을 막지 않는다).
 - 근거: 통합 검증 관찰 INT-O-001 → 보드 결정 **DEC-005**(사용자 권장안 승인). "실행 판정 오류 0"이 빈 공정을 실행 가능으로 읽히게 하던 빈틈을 닫는다. 엔진 컴파일도 빈 공정을 거부한다.
