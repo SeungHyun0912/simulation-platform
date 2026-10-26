@@ -38,6 +38,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q        # 단위·계약·통합 전체(DB 없으면 통합은 skip)
 .\.venv\Scripts\python.exe -m ruff check .
 ```
+- 엔진(`src/simulation_platform/simulation`, SimPy 4.1.2 고정, ADR-0002)은 HTTP·ORM에 의존하지 않아 DB 없이 시험한다: `.\.venv\Scripts\python.exe -m pytest tests/simulation -q`. 구성: `compiler`(snapshot → RuntimeModel, 시나리오 가정 보고), `handlers`(명시 registry·순수 계획 함수), `resources`(설비 allocator), `runtime`(SimPy 실행, 지평선 `[0,H)`), `monitoring`(이벤트).
 - DB 통합 테스트(실제 PostgreSQL 필요, 기본 대상 `simulation_platform_test`):
   ```powershell
   $env:REQUIRE_DB="1"; .\.venv\Scripts\python.exe -m pytest tests/integration -q
