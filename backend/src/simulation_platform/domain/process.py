@@ -27,7 +27,8 @@ SUPPORTED_HANDLER_VERSIONS = frozenset({"1"})
 RUN_BLOCKING = frozenset({
     "VAL-TIME-001", "VAL-TIME-002", "VAL-TIME-003", "VAL-TIME-004", "VAL-TIME-005",
     "VAL-OUT-001", "VAL-OUT-002", "VAL-OUT-003", "VAL-RES-002", "VAL-RES-003", "VAL-RES-004",
-    "VAL-GRAPH-011", "VAL-GRAPH-014", "VAL-INPUT-001", "VAL-HANDOFF-001", "VAL-HANDLER-001"})
+    "VAL-GRAPH-010", "VAL-GRAPH-011", "VAL-GRAPH-014", "VAL-INPUT-001", "VAL-HANDOFF-001",
+    "VAL-HANDLER-001"})  # VAL-GRAPH-010(단계 없음)은 DEC-005로 추가(계약 0.6.1)
 
 
 def _issue(entity_id, path, rule, severity, message, resolution=None) -> ErrorDetail:
