@@ -59,6 +59,7 @@ python -m venv .venv
   공정 버전 `GET·POST /projects/{p}/products/{id}/process-versions`, `GET·PATCH /projects/{p}/process-versions/{v}`, `GET·PUT .../graph`, `PATCH .../steps/{step}`, `POST .../validate`, `POST .../submit|reject|approve`(0.4.0), 복제 기준 선택(`POST .../process-versions` 선택 본문 `base_version_id`)·`GET .../process-versions/{v}/diff`·`GET·PUT .../process-versions/{v}/editor-state`(0.5.0).
   사양: `contracts/04_api_contract.md` §3.1·§3.2, 변경 기록: `contracts/CHANGELOG.md`.
 - 개발용 시드(조직·사용자 3·프로젝트 1, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_dev_data.py --yes`. 개발 DB에는 migration을 먼저 적용해야 한다.
+- **실제 기준정보 시드**(프로젝트 `DEMO-WIRE`: 설비 96·공간 22·제품 6·공정 버전 6 draft, `docs/domain/08_catalog_processes.md` 기준, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_wire_factory.py --yes`. 자산·제품·공정은 실제 API(서비스 계층)로 만들며 시험 데이터와 분리된 프로젝트다.
 - **시험 데이터 시드**(프로젝트 3·사용자 추가·자산 60+·버전 상태/용량/규칙 케이스, "[시험]" 표시, 멱등, 로컬 전용): `DATABASE_URL=... python scripts/seed_demo_data.py --yes`.
   자산·버전은 실제 API(서비스 계층)로 생성하므로 검증 규칙·감사 로그가 운영 경로와 같다. 구성은 `docs/communication/request-from-backend.md`의 "현재 Backend 상태".
 - 개발 API 서버 한 줄 실행(개발 DB + `AUTH_MODE=local`): `.\scripts\run_dev_api.ps1 [-Port 8000]`.
