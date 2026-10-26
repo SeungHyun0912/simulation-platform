@@ -111,6 +111,7 @@ ID는 중복 없이 조정자가 발급한다. 승인 전 작업을 자동 착�
 |---|---|---|---|---|---|---|---|---|
 | DEC-001 | INT-F-001 | 프런트엔드 0.4.0 클라이언트가 그래프 저장 시 완제품 지정을 해제하는 상태를 "알려진 제한"으로 둘지, 합격 기준으로 둘지 | 없음 | 클라이언트 재생성 | 없음 | 사용자 | **결정: 알려진 제한**(2026-10-26 사용자). e382749에서 해소 확인 | 0.6.0 |
 | DEC-002 | INT-F-003 | STATUS·TASK_BOARD·README 낡은 서술 갱신 | 없음 | 없음 | 없음 | 조정자 | 변경 요청 제출(`docs/change-requests/CR-integration-20261026-doc-status-drift.md`), 조정자 검토 대기 | 해당 없음 |
+| DEC-003 | INT-F-002 | 시험 데이터(DEMO-A P-001·P-003·P-004)에 완제품 milestone을 두는 현재 시드를 유지할지(권장: 유지, FE가 직선 끝의 milestone을 처리하거나 live 테스트가 두 시드 세대 허용), 5노드 직선으로 되돌리고 milestone 표본을 별도 제품으로 분리할지 | 없음(시드 스크립트·시드 테스트만) | `parseLinear`·live 테스트 | 이미 시드된 개발 DB는 승인본 동결로 불변, 새 DB만 해당 | 조정자·사용자 | **결정 대기**(API 답변은 §13.3) | 해당 없음(0.6.0 변경 없음) |
 
 결정 내용과 계약 파일이 불일치하면 작업을 차단하고 승인된 계약부터 갱신한다.
 통합 세션은 테스트 편의를 위해 요구사항·기대값을 바꾸지 않는다.
@@ -136,6 +137,8 @@ ID는 중복 없이 조정자가 발급한다. 승인 전 작업을 자동 착�
 |---|---|---|---|---|---|
 | API | 미정(INT는 e382749까지 확인) | 해당 없음(INT 기록 아님) | 해당 없음 | 없음 | INT-F-002 공동 진단 참여(§13.3) |
 | UI | `7bbb6e2`(FE-04b, origin/main `f8ad51c` 병합) | FE-04a(0.6.0 재료 spec·완제품 지정, 구현완료/검증대기), INT-F-002 UI 답변 및 live 테스트 가정 수정(구현완료/검증대기) | 없음 | 없음 | 8100 전용 DB에서 FE live 재검증(§13.3 INT-F-002), milestone 공정의 표 편집 UX 개선 여부는 사용자 결정 필요 |
+| API | `f8ad51c`(보드 병합 후 `origin/main`) | BE-C0-04(임시 ID, 엔진 다중 공정 설비 공유) 구현완료·검증대기(PR #30 병합, 정식 TASK ID는 조정자 발급 필요), INT-F-002 API 답변 | 없음 | 없음 | DEC-003 결정, INT 재검증 요청(BE-C0-04: `docs/handoffs/HANDOFF-backend-20261026-C0-04.md` 재검증 방법 1~7) |
+| UI | 미정(INT는 e382749까지 확인) | 해당 없음(INT 기록 아님) | 해당 없음 | 없음 | INT-F-002 공동 진단 참여, `parseLinear`가 milestone을 거부하는 의도 확인 |
 | 통합 | `ad5934a`(2회차 기준 병합) | TASK-001, TASK-002 검증 1·2회차 | INT-F-002 공동 진단 대기, API·UI 수정 인계 시 재검증 | 없음(조정자의 PR 병합 필요: 보드·테스트) | 보드·테스트 PR 병합, CR 검토 |
 
 ## 10. 통합 검증 세션 시작 지시문
@@ -242,6 +245,17 @@ Mock 통과를 실제 연동 통과로 합산하지 않는다. FE 자체 live �
   - **조치:** live 테스트 두 건의 가정을 현실에 맞췄다 — `live-process.test.ts`는 milestone 유무와 `parseLinear` null 여부가 일치하는지, milestone이 있으면 `completion_node_id`가 지정돼 있는지를 확인하고 `operationsInOrder`로 단계 DTO·ETag를 계속 검사한다. `live-process-ui.test.tsx`는 직선이면 "단계 추가", milestone이 있으면 "노드 추가" 버튼이 있는지를 확인한다. 기대값을 약화한 것이 아니라 두 구조를 모두 허용하도록 바꾼 것이다(요구 변경 아님).
   - **자체 검사(실제 결과):** `pnpm typecheck`·`pnpm lint` 종료 0. 공유 개발 서버(8000, milestone 없는 시드)에서 `LIVE_API=… pnpm test:live` 29 통과·26 건너뜀(쓰기 구역). **새로 시드한 전용 DB(8100)에서는 서버가 내려가 있어 재실행하지 못했다 — milestone이 있는 경로는 미검증.** 통합 검증 담당이 8100에서 `LIVE_WRITE=1 LIVE_APPROVE=1 pnpm test:live`로 재검증해 주세요(기대: 실패 0).
   - **계약·API 영향:** 없음. API 담당에게 요청 없음(시드가 milestone을 넣는 것은 0.6.0 CR be06 의도와 일치).
+
+**API 담당(Backend) 답변 — 2026-10-26, 확인 기준 `origin/main`@`f8ad51c`** (UI 담당의 `parseLinear` 의도 답변은 별도, 아래는 시드·API 쪽만)
+- **원인 판정: 가능한 원인 (b)가 맞다(시드가 0.6.0 이후 milestone을 넣고 FE live 테스트는 반영하지 않음). (a)도 일부 해당(FE live 테스트가 5노드 직선을 가정).** 데이터·계약 결함은 아니다.
+- **시드가 이 구조를 만든 시점:** 커밋 `0d91d55`(2026-10-26 10:19 KST, PR #27 BE-04c 계약 0.6.0 승격)에서 `backend/scripts/seed_demo_data.py`의 `_linear_graph()`가 바뀌었다.
+  - 이전(`ae0188d`, 2026-10-23 BE-04a 승격에서 도입하고 BE-04b까지 그대로): 5노드 `src·step-1·wait·step-2·sink`, 완제품 미지정.
+  - 이후: 6노드 `src·step-1·wait·step-2·complete(milestone)·sink` + 그래프 PUT의 `completion_node_id`=`complete`. 이 함수를 쓰는 DEMO-A의 **P-001(승인본)·P-003(검토 중)·P-004(승인본+복사 초안)** 이 모두 해당한다. P-004 초안은 승인본에서 복제되므로 milestone·완제품 지정이 새 id로 따라온다. P-002(빈 초안)는 무관.
+- **이유:** 0.6.0에서 "완제품 판정 시점 미정(`VAL-GRAPH-014`)"을 knowledge 경고·`run_template` 오류로 정했다(CR be06 §3-3, 04 §4.1.2). 시험 데이터의 "확정된 직선 그래프"(P-001·P-004)는 **실행 가능 판정에서 오류 0인 표본**이라는 의도가 있고(`backend/tests/integration/test_seed_demo_data.py::test_process_version_samples_cover_states_and_validation_levels`가 `run_template error_count == 0`을 단언), 계약 변경 직후 전체 pytest에서 이 시드 테스트가 실패해 milestone을 추가해 맞췄다. 즉 **계약(0.6.0)과 일치시키려는 의도된 변경이며, 실제 기준정보 DEMO-WIRE의 P04~P06도 같은 구조(완제품 milestone 지정)다.**
+- **API 담당의 알림 누락(인정):** 이 변경을 `docs/handoffs/HANDOFF-backend-20261026-BE-04c.md`의 "시험 데이터 메모"에만 적고 FE에는 소통 파일·보드로 알리지 않았다. 보드·FE는 이 파일을 볼 수 없는 시점이었다.
+- **FE-04a의 live 29 통과와 모순되지 않는 이유(읽기 전용 확인):** 시드는 멱등이고 승인본은 동결이라 이미 시드된 공유 개발 DB는 바뀌지 않았다. 공유 개발 DB `simulation_platform`의 DEMO-A는 P-001(승인본)·P-003·P-004(승인본·초안) 모두 **5노드·milestone 0·완제품 미지정**이다(2026-10-26 확인). 즉 **구 시드 세대(5노드)와 새 시드 세대(6노드)가 공존**하고, 새 DB를 채우면 처음으로 차이가 드러난다.
+- **의견(결정은 DEC-003):** 현재 시드 구조는 의도된 것이라 되돌릴 이유가 약하다. 해소는 (1) **권장** 시드 유지 + FE가 직선 경로 끝의 완제품 milestone을 정상 구성요소로 처리(또는 live 테스트가 두 시드 세대를 모두 허용) — UI 담당이 판단, (2) 대안: 표 편집기가 milestone을 다루지 않는 것이 의도라면 P-001·P-004를 5노드로 되돌리고 milestone 표본은 별도 제품으로 분리(시드 소폭 수정, 단 "run_template 오류 0" 표본이 사라지거나 별도 제품으로 옮겨야 함).
+- **재현·재검증 방법:** 새 DB에 시드 3종 적용 → `GET /projects/{DEMO-A}/process-versions/{P-001 승인본}/graph`: `nodes` 6개(`source·operation·buffer·operation·milestone·sink`, node_key `src·step-1·wait·step-2·complete·sink`), `completion_node_id`=`complete` 노드 id, `POST …/validate?scope=run_template`의 `error_count`=0.
 
 #### INT-F-003 — 문서 불일치(조정자 소유)
 - STATUS·TASK_BOARD·README의 낡은 서술, `openapi.json` `info.version`=`0.0.0`. 변경 요청 `docs/change-requests/CR-integration-20261026-doc-status-drift.md`. 우선순위 제안 P3.
