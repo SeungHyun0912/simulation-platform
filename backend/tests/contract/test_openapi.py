@@ -48,6 +48,10 @@ EXPECTED = {
     ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/submit"),
     ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/reject"),
     ("post", "/api/v1/projects/{project_id}/process-versions/{version_id}/approve"),
+    # scope process-versions 확장 (contract 0.5.0)
+    ("get", "/api/v1/projects/{project_id}/process-versions/{version_id}/diff"),
+    ("get", "/api/v1/projects/{project_id}/process-versions/{version_id}/editor-state"),
+    ("put", "/api/v1/projects/{project_id}/process-versions/{version_id}/editor-state"),
 }
 
 
@@ -198,4 +202,24 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials", "process-versions"]
-    assert status["contract_version"] == "0.4.0"
+    assert status["contract_version"] == "0.5.0"
+
+
+def test_process_0_5_0_additions_are_compatible_and_closed():
+    """0.4.0 클라이언트와 호환: 복제 본문은 선택, 새 스키마는 닫힌 객체, 비교 기준은 against 쿼리."""
+    doc = _schema()
+    paths, schemas = doc["paths"], doc["components"]["schemas"]
+    create = paths["/api/v1/projects/{project_id}/products/{product_id}/process-versions"]["post"]
+    assert create["requestBody"].get("required", False) is False  # 본문 없이 0.4.0처럼 호출 가능
+    assert schemas["ProcessVersionCreate"]["additionalProperties"] is False
+    assert set(schemas["ProcessVersionCreate"]["properties"]) == {"base_version_id"}
+    diff = paths[f"{PROCESS}/diff"]["get"]
+    assert [p["name"] for p in diff["parameters"] if p["in"] == "query"] == ["against"]
+    assert next(p for p in diff["parameters"] if p["name"] == "against")["required"] is False
+    put = paths[f"{PROCESS}/editor-state"]["put"]
+    assert {"404", "412", "422", "428"} <= set(put["responses"])
+    assert any(p["name"] == "if-match" for p in put.get("parameters", [])) or "If-Match" in str(put)
+    for name in ("NodePosition", "Viewport", "EditorStateIn"):
+        assert schemas[name]["additionalProperties"] is False
+    assert schemas["EditorStateOut"]["properties"]["row_version"]["type"] == "integer"
+    assert set(schemas["DiffField"]["properties"]["change"]["enum"]) == {"added", "removed", "changed"}

@@ -23,10 +23,12 @@ from simulation_platform.domain.pagination import (
     encode_cursor,
     make_tag,
 )
+from simulation_platform.domain.process_diff import diff_versions
 from simulation_platform.domain.revisions import ensure_transition
 from simulation_platform.models import (
     FlowEdge,
     FlowNode,
+    ProcessEditorState,
     ProcessStep,
     ProcessVersion,
     Product,
@@ -39,9 +41,12 @@ from simulation_platform.repositories import process as repo
 from simulation_platform.schemas.catalog import DefaultSpec
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.process import (
+    EditorStateIn,
+    EditorStateOut,
     GraphIn,
     GraphOut,
     IssueDto,
+    ProcessVersionCreate,
     ProcessVersionListItem,
     ProcessVersionOut,
     ProcessVersionPatch,
@@ -50,6 +55,7 @@ from simulation_platform.schemas.process import (
     StepOut,
     StepPatch,
     ValidationOut,
+    VersionDiffOut,
 )
 from simulation_platform.services.projects import require_admin, require_project, require_write
 from simulation_platform.services.unit_of_work import audit, transaction
@@ -246,6 +252,19 @@ def _id_conflict() -> ValidationFailed:
 ID_CONFLICTS = {"pk_flow_node": _id_conflict, "pk_flow_edge": _id_conflict}
 
 
+def _copy_editor_state(session: Session, base: ProcessVersion, version: ProcessVersion,
+                       node_ids: dict[str, str], principal: Principal) -> None:
+    """기준 버전의 화면 좌표를 새 노드 id로 옮겨 복사한다(없는 노드의 좌표는 버린다)."""
+    state = repo.get_editor_state(session, base.project_id, base.id)
+    if state is None:
+        return
+    positions = {node_ids[k]: v for k, v in state.node_positions.items() if k in node_ids}
+    session.add(ProcessEditorState(
+        id=new_id(), project_id=version.project_id, process_version_id=version.id, user_id=None,
+        node_positions=positions, viewport=state.viewport, created_by=principal.user_id))
+    session.flush()
+
+
 # --- 공개 함수 ---------------------------------------------------------------------------
 
 def list_versions(session: Session, principal: Principal, project_id: uuid.UUID,
@@ -265,8 +284,10 @@ def list_versions(session: Session, principal: Principal, project_id: uuid.UUID,
 
 
 def create_version(session: Session, principal: Principal, project_id: uuid.UUID,
-                   product_id: uuid.UUID, request_id: str | None) -> ProcessVersionOut:
-    """새 초안. 승인본이 있으면 그 내용(그래프 포함)을 새 id로 복사하고, 없으면 빈 그래프·미정 단위로 시작한다."""
+                   product_id: uuid.UUID, body: ProcessVersionCreate | None,
+                   request_id: str | None) -> ProcessVersionOut:
+    """새 초안. 기준 버전(`base_version_id`, 같은 제품의 모든 상태)이나 승인본의 내용(그래프 포함)을
+    새 id로 복사하고, 둘 다 없으면 빈 그래프·미정 단위로 시작한다. 승인·제출 기록은 복사하지 않는다."""
     access = require_project(session, principal, project_id)
     require_write(access)
     product = catalog_repo.get_item(session, Product, project_id, product_id, for_update=True)
@@ -275,7 +296,13 @@ def create_version(session: Session, principal: Principal, project_id: uuid.UUID
     if repo.find_open(session, project_id, product_id) is not None:
         raise _draft_exists()
 
-    base = repo.find_approved(session, project_id, product_id)
+    requested = None if body is None else body.base_version_id
+    if requested is None:
+        base = repo.find_approved(session, project_id, product_id)
+    else:
+        base = repo.get_version(session, project_id, requested)
+        if base is None or base.product_id != product_id:
+            raise NotFoundError(VERSION_NOT_FOUND)
     empty = DefaultSpec().model_dump(mode="json")
     version = ProcessVersion(
         id=new_id(), project_id=project_id, product_id=product_id,
@@ -285,10 +312,11 @@ def create_version(session: Session, principal: Principal, project_id: uuid.UUID
         finished_unit_spec=empty if base is None else base.finished_unit_spec,
         notes=None if base is None else base.notes, created_by=principal.user_id)
     graph = None
+    node_ids: dict[str, str] = {}
     kinds: dict[uuid.UUID, str] = {}
     if base is not None:
         nodes, edges = repo.load_graph(session, project_id, base.id)
-        node_ids = {n["id"]: str(new_id()) for n in nodes}
+        node_ids.update({n["id"]: str(new_id()) for n in nodes})
         graph = GraphIn.model_validate({
             "nodes": [{**n, "id": node_ids[n["id"]]} for n in nodes],
             "edges": [{**e, "id": str(new_id()), "from_node_id": node_ids[e["from_node_id"]],
@@ -299,6 +327,7 @@ def create_version(session: Session, principal: Principal, project_id: uuid.UUID
         session.flush()
         if graph is not None:
             _insert_graph(session, version, graph, kinds, principal.user_id)
+            _copy_editor_state(session, base, version, node_ids, principal)
         audit(session, organization_id=access.project.organization_id, project_id=project_id,
               actor_id=principal.user_id, action="process_version.create",
               entity_type="process_version", entity_id=version.id, before=None,
@@ -496,3 +525,94 @@ def reject_version(session, principal, project_id, version_id, expected, reason,
 def approve_version(session, principal, project_id, version_id, expected, request_id):
     return _transition(session, principal, project_id, version_id, expected, rules.APPROVED,
                        request_id)
+
+
+# --- 비교 (CR be05 §2-2) ------------------------------------------------------------------
+
+def _snapshot(session: Session, version: ProcessVersion) -> dict:
+    nodes, edges = repo.load_graph(session, version.project_id, version.id)
+    return {"header": {"raw_unit_spec": version.raw_unit_spec,
+                       "finished_unit_spec": version.finished_unit_spec, "notes": version.notes},
+            "nodes": nodes, "edges": edges}
+
+
+def _bad_against(message: str) -> ValidationFailed:
+    return ValidationFailed("비교할 버전을 정할 수 없습니다.", [ErrorDetail(
+        severity="error", rule_id="VAL-REF-004", field_path="/against", message=message)])
+
+
+def diff_version(session: Session, principal: Principal, project_id: uuid.UUID,
+                 version_id: uuid.UUID, against_id: uuid.UUID | None) -> VersionDiffOut:
+    """target(=version)을 against(기본: base_version_id, 없으면 현재 승인본)와 비교한다. 읽기 전용."""
+    require_project(session, principal, project_id)
+    target = _reload(session, project_id, version_id)
+    if against_id is None:
+        against_id = target.base_version_id
+    if against_id is None:
+        current = repo.find_approved(session, project_id, target.product_id)
+        against_id = None if current is None else current.id
+    if against_id is None:
+        raise _bad_against("비교 기준이 없습니다. against로 비교할 버전을 지정하세요.")
+    against = repo.get_version(session, project_id, against_id)
+    if against is None:
+        raise NotFoundError(VERSION_NOT_FOUND)
+    if against.product_id != target.product_id:
+        raise _bad_against("같은 제품의 공정 버전끼리만 비교할 수 있습니다.")
+    result = diff_versions(_snapshot(session, target), _snapshot(session, against))
+    return VersionDiffOut.model_validate(
+        {"target_version_id": target.id, "against_version_id": against.id, **result})
+
+
+# --- 편집기 상태 (CR be05 §2-3: 버전 공용, 어떤 상태에서도 저장 가능) ---------------------------------
+
+def _stale_editor(current: int) -> EditConflictError:
+    return EditConflictError(
+        "다른 곳에서 먼저 저장되었습니다.",
+        [ErrorDetail(message=f"현재 편집기 상태 버전은 {current}입니다.", field_path="/row_version")])
+
+
+def _editor_out(version_id: uuid.UUID, state: ProcessEditorState | None) -> EditorStateOut:
+    if state is None:
+        return EditorStateOut(process_version_id=version_id, node_positions={}, viewport=None,
+                              row_version=0, updated_at=None, updated_by=None)
+    return EditorStateOut(
+        process_version_id=version_id, node_positions=state.node_positions, viewport=state.viewport,
+        row_version=state.row_version, updated_at=state.updated_at or state.created_at,
+        updated_by=state.updated_by or state.created_by)
+
+
+def get_editor_state(session: Session, principal: Principal, project_id: uuid.UUID,
+                     version_id: uuid.UUID) -> EditorStateOut:
+    require_project(session, principal, project_id)
+    version = _reload(session, project_id, version_id)
+    return _editor_out(version.id, repo.get_editor_state(session, project_id, version.id))
+
+
+def put_editor_state(session: Session, principal: Principal, project_id: uuid.UUID,
+                     version_id: uuid.UUID, expected: int, body: EditorStateIn) -> EditorStateOut:
+    """좌표 전체 교체. 공정 버전의 row_version·상태·승인에 영향이 없고 감사 로그도 남기지 않는다."""
+    access = require_project(session, principal, project_id)
+    require_write(access)
+    version = _lock(session, project_id, version_id)  # 같은 버전의 동시 저장을 직렬화한다
+    known = repo.node_ids(session, project_id, version.id)
+    unknown = sorted(str(k) for k in body.node_positions if k not in known)
+    if unknown:
+        raise ValidationFailed("이 버전에 없는 노드의 좌표가 있습니다.", [ErrorDetail(
+            severity="error", rule_id="VAL-REF-005", field_path=f"/node_positions/{k}",
+            message="이 공정 버전의 노드 id가 아닙니다.") for k in unknown])
+    state = repo.get_editor_state(session, project_id, version.id)
+    current = 0 if state is None else state.row_version
+    if current != expected:
+        raise _stale_editor(current)
+    positions = {str(k): v.model_dump(mode="json") for k, v in body.node_positions.items()}
+    viewport = None if body.viewport is None else body.viewport.model_dump(mode="json")
+    with transaction(session, {"uq_process_editor_state_shared": lambda: _stale_editor(current)}):
+        if state is None:
+            session.add(ProcessEditorState(
+                id=new_id(), project_id=project_id, process_version_id=version.id, user_id=None,
+                node_positions=positions, viewport=viewport, created_by=principal.user_id))
+        else:
+            state.node_positions, state.viewport = positions, viewport
+            _touch(state, principal)
+    session.expire_all()
+    return _editor_out(version.id, repo.get_editor_state(session, project_id, version.id))

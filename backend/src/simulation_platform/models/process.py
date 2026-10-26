@@ -226,3 +226,31 @@ class FlowEdge(IdMixin, CreatedMixin, Base):
     to_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     edge_kind: Mapped[str] = mapped_column(Text)
     movement_rule: Mapped[dict] = mapped_column(JSONB)
+
+
+class ProcessEditorState(IdMixin, MutableMixin, Base):
+    """화면 좌표 전용(물리 위치·공정 내용과 무관). 버전 동결 대상이 아니다.
+
+    PoC: 버전당 공용 하나(user_id IS NULL). 사용자별 저장은 user_id를 채워 확장한다.
+    """
+
+    __tablename__ = "process_editor_state"
+    __table_args__ = (
+        _version_fk("process_editor_state"),
+        ForeignKeyConstraint(["user_id"], ["app_user.id"], name="fk_process_editor_state_user",
+                             ondelete="RESTRICT"),
+        CheckConstraint("jsonb_typeof(node_positions) = 'object'",
+                        name="ck_process_editor_state_positions"),
+        CheckConstraint("viewport IS NULL OR jsonb_typeof(viewport) = 'object'",
+                        name="ck_process_editor_state_viewport"),
+        Index("uq_process_editor_state_shared", "process_version_id", unique=True,
+              postgresql_where=text("user_id IS NULL")),
+        Index("uq_process_editor_state_user", "process_version_id", "user_id", unique=True,
+              postgresql_where=text("user_id IS NOT NULL")),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    process_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    node_positions: Mapped[dict] = mapped_column(JSONB)
+    viewport: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))

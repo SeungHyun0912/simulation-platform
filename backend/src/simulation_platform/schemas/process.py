@@ -9,7 +9,7 @@ import uuid
 from decimal import Decimal
 from typing import Annotated, ClassVar, Literal
 
-from pydantic import Field, StringConstraints, model_validator
+from pydantic import Field, JsonValue, StringConstraints, model_validator
 
 from simulation_platform.schemas.catalog import (
     CountMeasure,
@@ -349,3 +349,97 @@ class ValidationOut(Out):
     error_count: int
     warning_count: int
     issues: list[IssueDto]
+
+
+# --- 복제 기준·비교·편집기 상태 (CR be05, BE-04b) -----------------------------------------------
+
+class ProcessVersionCreate(StrictIn):
+    """새 초안 생성 본문(선택). 생략·null이면 현재 승인본을 복사한다(0.4.0 동작)."""
+
+    base_version_id: uuid.UUID | None = Field(
+        default=None, description="복사할 같은 제품의 공정 버전(모든 상태 가능). 복사본은 항상 draft.")
+
+
+DiffChange = Literal["added", "removed", "changed"]
+
+
+class DiffField(Out):
+    """엔티티 안의 JSON Pointer 경로와 before(against)·after(target) 값. 없는 쪽은 null이다."""
+
+    field_path: str
+    change: DiffChange
+    before: JsonValue
+    after: JsonValue
+
+
+class NodeChange(Out):
+    node_key: str
+    fields: list[DiffField]
+
+
+class EdgeChange(Out):
+    edge_key: str
+    fields: list[DiffField]
+
+
+class NodeDiff(Out):
+    added: list[GraphNode]
+    removed: list[GraphNode]
+    changed: list[NodeChange]
+
+
+class StepDiff(Out):
+    changed: list[NodeChange]
+
+
+class EdgeDiff(Out):
+    added: list[GraphEdge]
+    removed: list[GraphEdge]
+    changed: list[EdgeChange]
+
+
+class DiffSummary(Out):
+    added: int
+    removed: int
+    changed: int
+    identical: bool
+
+
+class VersionDiffOut(Out):
+    target_version_id: uuid.UUID
+    against_version_id: uuid.UUID
+    header: list[DiffField]
+    nodes: NodeDiff
+    steps: StepDiff
+    edges: EdgeDiff
+    summary: DiffSummary
+
+
+Coordinate = Annotated[float, Field(strict=True, ge=-1_000_000, le=1_000_000, allow_inf_nan=False)]
+
+
+class NodePosition(StrictIn):
+    x: Coordinate
+    y: Coordinate
+
+
+class Viewport(StrictIn):
+    x: Coordinate
+    y: Coordinate
+    zoom: Annotated[float, Field(strict=True, gt=0, le=1000, allow_inf_nan=False)]
+
+
+class EditorStateIn(StrictIn):
+    """화면 좌표 전체 교체. 키는 이 버전의 노드 id여야 한다(노드 수 상한 500과 같다)."""
+
+    node_positions: dict[uuid.UUID, NodePosition] = Field(max_length=500)
+    viewport: Viewport | None = None
+
+
+class EditorStateOut(Out):
+    process_version_id: uuid.UUID
+    node_positions: dict[uuid.UUID, NodePosition]
+    viewport: Viewport | None
+    row_version: int = Field(description="저장 전에는 0. 공정 버전의 row_version과 별개다.")
+    updated_at: UtcDatetime | None
+    updated_by: uuid.UUID | None

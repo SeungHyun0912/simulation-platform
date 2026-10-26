@@ -1,0 +1,96 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000026/diff?against=00000000-0000-4000-8000-000000000015"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": {
+        "target_version_id": "00000000-0000-4000-8000-000000000026",
+        "against_version_id": "00000000-0000-4000-8000-000000000015",
+        "header": [
+          {
+            "field_path": "/notes",
+            "change": "changed",
+            "before": null,
+            "after": "[시험] 절연 속도 검토"
+          }
+        ],
+        "nodes": {
+          "added": [],
+          "removed": [],
+          "changed": [
+            {
+              "node_key": "insulate",
+              "fields": [
+                {
+                  "field_path": "/label",
+                  "change": "changed",
+                  "before": "[시험] 절연(수정)",
+                  "after": "[시험] 절연(속도 상향)"
+                }
+              ]
+            }
+          ]
+        },
+        "steps": {
+          "changed": [
+            {
+              "node_key": "insulate",
+              "fields": [
+                {
+                  "field_path": "/timing_rule/processing/basis",
+                  "change": "added",
+                  "before": null,
+                  "after": "per_stream"
+                },
+                {
+                  "field_path": "/timing_rule/processing/kind",
+                  "change": "changed",
+                  "before": "none",
+                  "after": "output_speed"
+                },
+                {
+                  "field_path": "/timing_rule/processing/output_schedule",
+                  "change": "added",
+                  "before": null,
+                  "after": "sequential_units"
+                },
+                {
+                  "field_path": "/timing_rule/processing/parallel_streams",
+                  "change": "added",
+                  "before": null,
+                  "after": {
+                    "mode": "known",
+                    "value": 1
+                  }
+                },
+                {
+                  "field_path": "/timing_rule/processing/speed_m_per_min",
+                  "change": "added",
+                  "before": null,
+                  "after": {
+                    "mode": "known",
+                    "value": "45"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "edges": {
+          "added": [],
+          "removed": [],
+          "changed": []
+        },
+        "summary": {
+          "added": 0,
+          "removed": 0,
+          "changed": 2,
+          "identical": false
+        }
+      }
+    }
+  }
+}

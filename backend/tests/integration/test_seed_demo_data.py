@@ -155,6 +155,17 @@ def test_process_version_samples_cover_states_and_validation_levels(client, seed
                     headers=headers(admin)).json()["data"]
     assert [(v["version_no"], v["status"]) for v in p4] == [(2, "draft"), (1, "approved")]
     assert p4[0]["base_version_id"] == p4[1]["id"]  # 승인본에서 복사한 새 초안
+    diff = client.get(f"{url}/process-versions/{p4[0]['id']}/diff", headers=headers(admin)).json()["data"]
+    assert diff["against_version_id"] == p4[1]["id"] and diff["summary"]["identical"] is False
+    assert [f["field_path"] for f in diff["header"]] == ["/notes"]
+    assert [c["node_key"] for c in diff["nodes"]["changed"]] == ["step-1"]  # 이름 변경
+    assert any(f["field_path"].endswith("/speed_m_per_min/value")
+               for c in diff["steps"]["changed"] for f in c["fields"])  # 공정 속도 변경
+    first = client.get(f"{url}/products/{products['P-001']['id']}/process-versions",
+                       headers=headers(admin)).json()["data"][0]
+    editor = client.get(f"{url}/process-versions/{first['id']}/editor-state",
+                        headers=headers(admin)).json()["data"]
+    assert editor["row_version"] == 1 and len(editor["node_positions"]) == 5  # 승인본에도 좌표 저장
     approved = next(p for p in client.get(
         f"{url}/products/{products['P-001']['id']}/process-versions",
         headers=headers(admin)).json()["data"])
@@ -177,7 +188,7 @@ def test_seed_is_idempotent(client, engine, seeded, db):
                        p=seeded["projects"]["A"])
     second = seed_demo_data.seed(engine)
     assert second["assets"]["skipped"] is True and second["catalog"]["skipped"] is True
-    assert second["process"]["skipped"] is True
+    assert second["process"]["skipped"] is True and second["process"]["extras"]["added"] == []
     assert second["projects"] == seeded["projects"] and second["users"] == seeded["users"]
     assert db.scalar("select count(*) from asset where project_id = :p",
                      p=seeded["projects"]["A"]) == before == 61

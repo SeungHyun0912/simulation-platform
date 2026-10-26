@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -242,13 +242,13 @@ submitted_at|by, rejection_reason|null, rejected_at|null, approved_at|by, create
 | GET | /projects/{p}/process-versions/{v} | 상태·제품·검증 요약 |
 | GET/PUT | /projects/{p}/process-versions/{v}/graph | 그래프 전체 조회/원자 저장 |
 | PATCH | /projects/{p}/process-versions/{v}/steps/{step_id} | 공정 상세 수정, 전체 버전 ETag 검사 |
-| GET/PUT | /projects/{p}/process-versions/{v}/editor-state | 화면 좌표, 물리 layout 아님 |
+| GET/PUT | /projects/{p}/process-versions/{v}/editor-state | 화면 좌표, 물리 layout 아님(0.5.0, 버전 공용) |
 | POST | /projects/{p}/process-versions/{v}/validate | knowledge/run_template 구분 |
 | POST | /projects/{p}/process-versions/{v}/submit | 검토 요청 |
 | POST | /projects/{p}/process-versions/{v}/approve | 승인 |
 | POST | /projects/{p}/process-versions/{v}/reject | 반려 사유 |
-| POST | /projects/{p}/process-versions/{v}/clone | 새 초안 |
-| GET | /projects/{p}/process-versions/{v}/diff?base_id=... | 버전 비교 |
+| (별도 endpoint 없음) | POST …/process-versions 의 선택 본문 `base_version_id` | 복제 기준 선택(0.5.0, `clone` 경로는 두지 않음) |
+| GET | /projects/{p}/process-versions/{v}/diff?against=... | 버전 비교(0.5.0, 쿼리 이름은 `base_id`가 아니라 `against`) |
 
 PUT graph 규칙:
 1. 권한/If-Match 확인.
@@ -259,12 +259,13 @@ PUT graph 규칙:
 6. new row_version·validation summary 반환.
 7. 위키 갱신 outbox 생성. 승인 정보 공개는 승인 이벤트 때만.
 
-### 4.1 승인 scope `process-versions` — BE-04a (contract 0.4.0)
+### 4.1 승인 scope `process-versions` — BE-04a (contract 0.4.0), BE-04b (contract 0.5.0)
 
-위 표 중 **승인된 operation은 11개**(제품의 공정 버전 목록/생성, 버전 조회·수정, 그래프 조회/PUT, 단계 PATCH, validate, submit·reject·approve)뿐이다.
-`editor-state`, `clone`(명시적 base 선택), `diff`는 **PROPOSED**(BE-04b)이며 단계 입출력 재료 spec·join/supply 간선 spec 연결·completion milestone은 BE-04c다.
+위 표 중 **승인된 operation은 14개**다: 0.4.0의 11개(제품의 공정 버전 목록/생성, 버전 조회·수정, 그래프 조회/PUT, 단계 PATCH, validate, submit·reject·approve)와
+0.5.0의 3개(`diff`, `editor-state` GET·PUT)이며 0.5.0은 새 초안 생성의 **선택 본문**(`base_version_id`)도 더했다. 별도 `clone` endpoint는 두지 않는다.
+단계 입출력 재료 spec·join/supply 간선 spec 연결·completion milestone(BE-04c)과 `execution_rule`·`input_match_policy`·`condition_rule`·후보 `parameter_override`(값 구조 미정의)는 **PROPOSED**다.
 정본은 [openapi.json](openapi.json), 예제는 [examples/first-scope](examples/first-scope/)의 `process-*`·`product.get`·`error.graph-invalid`·`error.process-draft-exists`.
-근거 CR: [CR-backend-20261023-be04-process-versions](../docs/change-requests/CR-backend-20261023-be04-process-versions.md).
+근거 CR: [CR-backend-20261023-be04-process-versions](../docs/change-requests/CR-backend-20261023-be04-process-versions.md)(0.4.0), [CR-backend-20261026-be05-process-clone-diff-editor-state](../docs/change-requests/CR-backend-20261026-be05-process-clone-diff-editor-state.md)(0.5.0).
 
 **상태·권한(자산 버전과 같은 방식, 잠정)**: `draft → in_review → approved → superseded`, 반려는 `in_review → draft`(사유 필수).
 제품당 열린 버전(draft/in_review)은 하나, 승인본도 하나(새 승인이 나면 이전 승인본은 자동 `superseded`).
@@ -275,6 +276,7 @@ PUT graph 규칙:
 **버전**: `{id, project_id, product_id, version_no, status, base_version_id|null, schema_version, raw_unit_spec, finished_unit_spec, notes|null, issues[], submitted_*, rejection_*, approved_*, created_at, updated_at|null, row_version}`.
 `raw_unit_spec`(원자재 기본 단위)·`finished_unit_spec`(완제품 단위)은 재료 `default_spec`과 같은 값 객체(`length_m`·`weight_kg`·`unit_count`·`strand_count`, 길이·중량·보빈 수·가닥 수를 섞지 않음, 기본 모두 `unknown`)이며 `PATCH /process-versions/{v}`는 보낸 필드만 교체한다.
 **새 초안**(`POST …/process-versions`)은 승인본이 있으면 그래프를 **새 id로 복사**하고 `base_version_id`를 기록하며, 없으면 빈 그래프·미정 단위로 시작한다. 열린 버전이 있으면 409 `PROCESS_DRAFT_EXISTS`.
+0.5.0부터 본문 `{base_version_id}`로 복사할 버전을 고를 수 있다(아래 §4.1.1).
 
 **그래프**: `GET`은 `{process_version_id, row_version, nodes[], edges[], issues[]}`(노드는 `display_order`, `node_key` 순), `PUT`은 `{nodes[], edges[]}`로 **전체 교체**한다.
 - 노드 `{id, node_key, kind: source|buffer|operation|join|milestone|sink, label, asset_id|null, display_order, step|null}`. `id`는 **클라이언트가 만든 UUID**이고 다른 버전이 쓰는 id는 422(`VAL-REF-003`). `node_key`는 버전 안에서 유일.
@@ -297,12 +299,30 @@ buffer 같은 비 operation 노드의 id나 다른 버전의 단계 id는 404.
 **검증**(`POST …/validate?scope=knowledge|run_template`, 오류가 있어도 정상 수행이면 200, 버전 조회·그래프 응답의 `issues`는 knowledge 범위): 항목은 `{severity, rule_id, entity_id, field_path, message, resolution?}`이며
 `entity_id`는 단계·노드·간선(또는 버전 자체) id, `field_path`는 **그 엔티티 내부** JSON Pointer(예 `/timing_rule/processing`)다. 순서 번호는 쓰지 않는다.
 규칙 id: `VAL-TIME-001~005`(처리 방식·값·산출 방식·준비·공급 대기 미정), `VAL-OUT-001~004`(산출), `VAL-INPUT-001`·`VAL-HANDOFF-001`, `VAL-HANDLER-001`(operation_type 미정), `VAL-RES-001`(후보 수 오류)·`002~004`(자원 요구·후보·eligibility 미정),
-`VAL-GRAPH-001~004`(구조 오류)·`010~013`(단계 없음·순환·고립 단계·위치 미정 buffer), `VAL-VER-001·002`(원자재·완제품 단위 미정), `VAL-REF-001~003`(저장 시 참조 오류).
+`VAL-GRAPH-001~004`(구조 오류)·`010~013`(단계 없음·순환·고립 단계·위치 미정 buffer), `VAL-VER-001·002`(원자재·완제품 단위 미정), `VAL-REF-001~003`(저장 시 참조 오류), `VAL-REF-004`(비교 대상 오류)·`005`(편집기 상태의 없는 노드).
 **knowledge**에서는 구조 오류만 오류이고 미정은 모두 경고다. **run_template**에서는 실행에 필요한 미정(`VAL-TIME-*`, `VAL-OUT-001~003`, `VAL-RES-002~004`, `VAL-INPUT-001`, `VAL-HANDOFF-001`, `VAL-HANDLER-001`, `VAL-GRAPH-011`)이 오류로 승격되고,
 엔진이 지원하지 않는 handler는 `UNSUPPORTED_HANDLER`(rule_id) 오류가 된다. 지원 handler(07 §2): `pass_through_length`, `split_length`, `output_units_by_time`, `configured_yield`, `supply_delay`, `inspection`, `transport_manual`(handler_version `1`).
 등록(저장)은 handler 지원 여부와 무관하며 실행 가능 여부만 막는다(03 §12).
 
 **제품 응답 추가 필드**: `current_process_version`(현재 승인본), `latest_process_version`(가장 최근 버전) — 각각 `{id, version_no, status, approved_at|null}` 또는 `null`.
+
+#### 4.1.1 복제 기준 선택·비교·편집기 상태 (contract 0.5.0, 0.4.0과 호환)
+
+**복제 기준 선택**: `POST …/products/{id}/process-versions` 본문은 **선택**이다(없거나 `{}`·`{"base_version_id": null}`이면 0.4.0 동작 = 현재 승인본 복사).
+`base_version_id`는 **같은 제품의 모든 상태**의 버전이 될 수 있으며(실제로는 열린 버전이 있으면 어차피 409이므로 approved·superseded) 복사본은 항상 `draft`다.
+그래프·원자재/완제품 단위·메모를 새 id로 복사하되 **제출·승인·반려 기록은 복사하지 않는다**. 다른 제품·다른 프로젝트·없는 버전은 모두 404, 모르는 본문 필드는 422, 열린 버전이 있으면 기준을 지정해도 409 `PROCESS_DRAFT_EXISTS`.
+기준 버전의 **편집기 상태(화면 좌표)도 새 노드 id로 옮겨 복사**한다.
+
+**비교**: `GET …/process-versions/{v}/diff?against={other}`는 이 버전(target, after)을 `against`(before)와 비교한다. `against`를 생략하면 이 버전의 `base_version_id`, 없으면 현재 승인본이다. 기준이 없으면 422 `VAL-REF-004`(`/against`), 다른 제품의 버전도 422 `VAL-REF-004`, 없는 버전·접근 불가는 404. 읽기 전용(ETag 없음, 모든 멤버).
+- 노드·간선은 **`node_key`·`edge_key`로 맞춘다**(복제하면 id는 바뀌고 key는 유지된다). FE가 key를 새로 만들어 그래프를 통째로 다시 보내면 모두 추가·삭제로 보인다. 간선 끝점은 id가 아니라 `from_node_key`·`to_node_key`로 비교한다.
+- 응답 `{target_version_id, against_version_id, header[], nodes{added[],removed[],changed[]}, steps{changed[]}, edges{added[],removed[],changed[]}, summary{added,removed,changed,identical}}`.
+  `header`는 `/notes`·`/raw_unit_spec/…`·`/finished_unit_spec/…`, `nodes.changed`는 노드 자체 필드(`/kind`·`/label`·`/asset_id`·`/display_order`), `steps.changed`는 단계 내용(`/timing_rule/…`, 자원 요구는 `/resources/{role_key}/candidates/{asset_id}/…` — 순서가 아니라 role_key·후보 asset_id로 맞춘다).
+  각 항목은 `{field_path, change: added|removed|changed, before, after}`이며 없는 쪽 값은 `null`, 값은 입력 그대로(decimal 문자열 유지)다. 모드 `unknown → known`도 변경이다. `added`·`removed`는 전체 노드·간선(added는 target의 id, removed는 against의 id).
+
+**편집기 상태**: `GET·PUT …/process-versions/{v}/editor-state`, 본문 `{node_positions: {"<node_id>": {x, y}}, viewport: {x, y, zoom}|null}`(응답에 `process_version_id`·`row_version`·`updated_at|null`·`updated_by|null`).
+- **PoC 결정: 버전당 공용 하나**다(사용자별 저장은 이후 변경으로 도입, DB는 그것을 받을 수 있게 준비됨). 좌표는 JSON 숫자(문자열 거부, 절댓값 1,000,000 이하 유한수), `zoom`은 0 초과, 키는 **그 버전의 노드 id**여야 하며 아니면 422 `VAL-REF-005`(`/node_positions/{id}`). 노드 수 상한(500)이 곧 좌표 수 상한이다.
+- **버전 상태와 무관하게 저장할 수 있다**(검토 중·승인본·superseded 포함). 화면 좌표는 공정 내용도 물리 위치도 아니며 **공정 버전의 `row_version`·상태·승인에 영향이 없고 감사 로그도 남기지 않는다**. 저장은 admin·editor, 조회는 모든 멤버.
+- **자체 ETag**(이 상태의 `row_version`)를 쓴다: 저장 전 `GET`은 빈 좌표·`row_version: 0`(200, ETag `"0"`)이고 `PUT`은 `If-Match`가 필수(없으면 428, 어긋나면 412 `EDIT_CONFLICT`)이며 첫 저장은 `If-Match: "0"`이다. 전체 교체이므로 보내지 않은 노드의 좌표는 사라진다.
 
 ## 5. 시나리오·실행 API
 

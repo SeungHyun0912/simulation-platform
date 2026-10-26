@@ -20,7 +20,7 @@ def sqlstate(excinfo) -> str:
 
 def test_head_and_no_model_drift(engine, alembic_cfg):
     with engine.connect() as conn:
-        assert conn.execute(text("select version_num from alembic_version")).scalar() == "0004"
+        assert conn.execute(text("select version_num from alembic_version")).scalar() == "0005"
         diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     assert diff == []
 

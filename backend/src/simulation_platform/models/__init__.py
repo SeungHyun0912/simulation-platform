@@ -12,6 +12,7 @@ from simulation_platform.models.identity import (
 from simulation_platform.models.process import (
     FlowEdge,
     FlowNode,
+    ProcessEditorState,
     ProcessStep,
     ProcessVersion,
     RequirementCandidate,
@@ -33,6 +34,7 @@ __all__ = [
     "Organization",
     "OrganizationMember",
     "PortPolicy",
+    "ProcessEditorState",
     "ProcessStep",
     "ProcessVersion",
     "Product",
