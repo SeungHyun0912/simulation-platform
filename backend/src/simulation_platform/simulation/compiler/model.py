@@ -23,6 +23,17 @@ class OutputModel:
 
 
 @dataclass(frozen=True)
+class ResidualModel:
+    """잔량 규칙(03 §6). mode가 carry_same_product일 때만 scope·join_mode가 확정되어 있다."""
+
+    mode: str  # unknown | none | carry_same_product
+    on_product_change: str = "unknown"  # discard | carry | unknown
+    on_run_end: str = "unknown"  # discard | carry | unknown
+    scope: str | None = None  # machine | product | operation | lot
+    physical_join_mode: str = "unknown"  # abstract_length_pool | unknown
+
+
+@dataclass(frozen=True)
 class StepModel:
     key: str  # 노드 node_key
     node_id: str
@@ -38,6 +49,7 @@ class StepModel:
     handoff: str  # per_output_unit | total_batch
     residual_mode: str
     transport_minutes: Fraction | None = None
+    residual: ResidualModel | None = None
 
 
 @dataclass(frozen=True)

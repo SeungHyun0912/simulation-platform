@@ -31,11 +31,13 @@ class LineageRecord:
     child_lengths_m: tuple[Fraction, ...]
     residual_length_m: Fraction = Fraction(0)
     process_version_id: str | None = None
+    carried_in_m: Fraction = Fraction(0)  # 잔량 풀에서 이어 받은 길이
 
     @property
     def balanced(self) -> bool:
         """자식 길이 합 + 잔량 = 부모 길이(물량 보존). abstract_yield 같은 예외는 별도 handler 책임이다."""
-        return sum(self.child_lengths_m, Fraction(0)) + self.residual_length_m == self.parent_length_m
+        return (sum(self.child_lengths_m, Fraction(0)) + self.residual_length_m
+                == self.parent_length_m + self.carried_in_m)
 
 
 class ItemFactory:

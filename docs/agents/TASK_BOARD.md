@@ -15,6 +15,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-04c | 공정 단계 재료 spec·간선 spec 연결·완제품 지정(값 구조 미정의 규칙 필드 제외) | Backend | REVIEW | BE-04b | 03f21ba / contract 0.6.0(머지 대기) | HANDOFF-backend-20261026-BE-04c, CR-backend-20261026-be06 |
 | BE-C0 | 엔진 골격: 컴파일러·표준 handler·단일 선형 흐름 실행(C0-01~03), SimPy 4.1.2 고정(ADR-0002 제안) | Backend | REVIEW | BE-04c | ccf6072 이후 / contract 0.6.0(변경 없음) | HANDOFF-backend-20261026-C0-engine, ADR-0002 |
 | BE-C0-04 | 엔진: 서로 다른 제품이 같은 설비를 공유·경쟁(다중 공정 실행) | Backend | **구현완료·검증대기**(통합 검증 담당 재검증 필요) | BE-C0 | 0043d1b 이후 / contract 0.6.0(변경 없음) | HANDOFF-backend-20261026-C0-04 |
+| BE-C0-06 | 엔진: 잔량 이월·폐기(범위별 길이 풀, 제품 전환·실행 종료 정책) | Backend | **구현완료·검증대기** | BE-C0-04 | 93d63b9 이후 / contract 0.6.0(변경 없음) | HANDOFF-backend-20261026-C0-06 |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |
