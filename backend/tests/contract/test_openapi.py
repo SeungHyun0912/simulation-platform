@@ -52,6 +52,17 @@ EXPECTED = {
     ("get", "/api/v1/projects/{project_id}/process-versions/{version_id}/diff"),
     ("get", "/api/v1/projects/{project_id}/process-versions/{version_id}/editor-state"),
     ("put", "/api/v1/projects/{project_id}/process-versions/{version_id}/editor-state"),
+    # scope scenario-versions (contract 0.7.0)
+    ("get", "/api/v1/projects/{project_id}/scenarios"),
+    ("post", "/api/v1/projects/{project_id}/scenarios"),
+    ("get", "/api/v1/projects/{project_id}/scenarios/{scenario_id}"),
+    ("patch", "/api/v1/projects/{project_id}/scenarios/{scenario_id}"),
+    ("get", "/api/v1/projects/{project_id}/scenarios/{scenario_id}/versions"),
+    ("post", "/api/v1/projects/{project_id}/scenarios/{scenario_id}/versions"),
+    ("get", "/api/v1/projects/{project_id}/scenario-versions/{version_id}"),
+    ("patch", "/api/v1/projects/{project_id}/scenario-versions/{version_id}"),
+    ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/validate"),
+    ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/approve"),
 }
 
 
@@ -71,6 +82,7 @@ def test_local_debug_auth_is_not_exposed():
 
 REVISION = "/api/v1/projects/{project_id}/asset-revisions/{revision_id}"
 PROCESS = "/api/v1/projects/{project_id}/process-versions/{version_id}"
+SCENARIO_VERSION = "/api/v1/projects/{project_id}/scenario-versions/{version_id}"
 
 
 def test_mutating_operations_declare_if_match_and_precondition_errors():
@@ -90,6 +102,9 @@ def test_mutating_operations_declare_if_match_and_precondition_errors():
         ("post", f"{PROCESS}/submit"),
         ("post", f"{PROCESS}/reject"),
         ("post", f"{PROCESS}/approve"),
+        ("patch", "/api/v1/projects/{project_id}/scenarios/{scenario_id}"),
+        ("patch", SCENARIO_VERSION),
+        ("post", f"{SCENARIO_VERSION}/approve"),
     ]
     for method, path in targets:
         op = paths[path][method]
@@ -201,8 +216,8 @@ def test_contract_status_hash_matches_snapshot():
     assert status["openapi_sha256"] == digest
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
-                                         "products-materials", "process-versions"]
-    assert status["contract_version"] == "0.6.1"
+                                         "products-materials", "process-versions", "scenario-versions"]
+    assert status["contract_version"] == "0.7.0"
 
 
 def test_process_0_5_0_additions_are_compatible_and_closed():
@@ -244,3 +259,21 @@ def test_process_0_6_0_additions_are_optional_and_closed():
     assert "completion_node_id" not in schemas["GraphIn"].get("required", [])
     assert "completion_node_id" in schemas["GraphOut"]["required"]  # 응답에는 항상 있다(null 가능)
     assert "completion_node_id" in schemas["ProcessVersionOut"]["properties"]
+
+
+def test_scenario_0_7_0_schemas_are_closed_and_keep_units_and_unknowns_explicit():
+    """시나리오 요청 DTO는 닫힌 객체, 숫자는 decimal 문자열·개수는 정수, 종료 규칙은 판별자 객체."""
+    doc = _schema()
+    schemas, paths = doc["components"]["schemas"], doc["paths"]
+    for name in ("ScenarioCreate", "ScenarioPatch", "ScenarioVersionCreate", "ScenarioVersionPatch",
+                 "ScenarioProductDto", "ScenarioAssetDto", "ArrivalDto", "AssumptionsDto", "DrainRule",
+                 "FixedHorizonRule"):
+        assert schemas[name].get("additionalProperties") is False, name
+    arrival = schemas["ArrivalDto"]["properties"]
+    assert arrival["length_m"]["type"] == "string" and arrival["count"]["type"] == "integer"
+    stopping = schemas["ScenarioVersionOut"]["properties"]["stopping_rule"]
+    assert set(stopping["discriminator"]["mapping"]) == {"drain", "fixed_horizon"}
+    create = paths["/api/v1/projects/{project_id}/scenarios/{scenario_id}/versions"]["post"]
+    assert create["requestBody"].get("required", False) is False
+    assert {"403", "409", "412", "422", "428"} <= set(paths[f"{SCENARIO_VERSION}/approve"]["post"]["responses"])
+    assert set(schemas["PrecheckOut"]["properties"]) >= {"runnable", "issues", "products", "engine_version"}

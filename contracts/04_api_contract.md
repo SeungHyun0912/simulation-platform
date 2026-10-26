@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0, 패치 0.6.1)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0, 패치 0.6.1), `scenario-versions`(§5.1, contract 0.7.0)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -82,6 +82,9 @@ NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE
 | VERSION_IMMUTABLE | 409 | 초안이 아닌 버전(검토 중·승인·대체됨)의 내용을 수정하려 함(0.2.0) |
 | REVISION_DRAFT_EXISTS | 409 | 자산에 이미 열린 버전(draft/in_review)이 있어 새 초안을 만들 수 없음(0.2.0) |
 | INVALID_STATE_TRANSITION | 409 | 허용되지 않는 상태 변경(예: draft를 바로 approve)(0.2.0) |
+| SCENARIO_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 시나리오 코드(0.7.0) |
+| SCENARIO_DRAFT_EXISTS | 409 | 시나리오에 이미 초안 버전이 있음(0.7.0) |
+| SCENARIO_NOT_RUNNABLE | 422 | 실행 사전검증 오류가 있어 시나리오 버전을 승인할 수 없음(0.7.0, `details`에 오류) |
 
 `PROJECT_SCOPE_MISMATCH`는 이 scope에서 사용하지 않는다(타 프로젝트 자원은 404).
 
@@ -351,6 +354,9 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 
 ## 5. 시나리오·실행 API
 
+> 아래 표에서 시나리오 6행(목록~승인)은 §5.1로 **승인**(contract 0.7.0)되었다. 실행(`runs`)·비교 행은 PROPOSED이며
+> CR be08(스냅샷·job queue·worker)에서 다룬다.
+
 | Method | Path | 의미 |
 |---|---|---|
 | GET/POST | /projects/{p}/scenarios | 목록/생성 |
@@ -394,6 +400,24 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 
 초기 진행 조회는 polling. 실제 동작 검증 후 SSE를 추가해도 됨.
 target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현재 시각·생산량 표시.
+
+### 5.1 승인 scope `scenario-versions` — BE-05a (contract 0.7.0)
+근거: `docs/change-requests/CR-backend-20261026-be07-scenario-versions.md`(보드 DEC-007). 필드·타입의 정본은 openapi.json.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET/POST | /projects/{p}/scenarios | viewer / editor | 목록(code 순, 최근 버전 요약 포함) / 생성 → 첫 초안(version 1, 비어 있음, 종료 규칙 drain) 함께 생성. 코드 중복 409 `SCENARIO_CODE_CONFLICT` |
+| GET/PATCH | /projects/{p}/scenarios/{id} | viewer / editor | 이름·설명(If-Match = 시나리오 row_version) |
+| GET/POST | /projects/{p}/scenarios/{id}/versions | viewer / editor | 버전 목록(최신부터) / 새 초안(본문 선택 `from_version_id`, 생략하면 최근 승인 버전 복사, 없으면 빈 초안). 초안은 시나리오당 하나(409 `SCENARIO_DRAFT_EXISTS`) |
+| GET/PATCH | /projects/{p}/scenario-versions/{v} | viewer / editor | 초안 수정(If-Match 필수, 보낸 최상위 필드를 통째로 교체). 승인본은 409 `VERSION_IMMUTABLE` |
+| POST | /projects/{p}/scenario-versions/{v}/validate | viewer | 실행 사전검증(저장 안 함, 오류가 있어도 200) |
+| POST | /projects/{p}/scenario-versions/{v}/approve | project admin | draft → approved. 사전검증 오류가 있으면 422 `SCENARIO_NOT_RUNNABLE`. 승인 후 내용·제품·자산 고정은 DB가 동결 |
+
+- **내용:** `products[]`(제품 하나 = 실행의 공정 하나, 목록 순서 = 같은 시각 동순위 순서) — `product_id`, `process_version_id`(그 제품의 **승인됐던** 버전: approved 또는 superseded), `priority`, `arrivals[]`(`at_min` decimal ≥ 0, `count` 정수 ≥ 1, `length_m` decimal > 0, `lot`), `assumptions`(`equipment_hold`, `unbounded_buffers`, `manual_transport_minutes{node_key: 분}`, `residual_scope{node_key: machine|product|operation|lot}`). `assets[]`(`asset_id`, `asset_revision_id`: 그 자산의 승인됐던 자산 버전). `stopping_rule`: `{"mode":"drain"}` 또는 `{"mode":"fixed_horizon","horizon_min":"…"}`(`[0,H)`). `assumption_reason`, `notes`.
+- **저장 시 참조 오류(422 `VALIDATION_ERROR`):** `SCN-REF-001` 이 프로젝트의 제품이 아니거나 그 제품의 공정 버전이 아님, `SCN-REF-002` 승인되지 않은 공정 버전, `SCN-REF-003` 그 자산의 자산 버전이 아님, `SCN-REF-004` 승인되지 않은 자산 버전. 중복 공정 버전·자산은 422. 그 밖의 미정(도착 없음·가정 사유 없음 등)은 **초안 저장을 막지 않고** 사전검증에서 오류로 보인다.
+- **자산 버전 자동 고정:** `products`만 보내고 `assets`를 보내지 않으면, 공정이 참조하는 자산(공간 노드·설비 후보) 가운데 아직 고정되지 않은 것을 그 자산의 **현재 승인 버전**으로 채운다(이미 고정한 것은 그대로, 승인 버전이 없으면 비워 둠). `assets`를 함께 보내면 보낸 그대로다(빈 목록 = 고정 안 함).
+- **사전검증 응답:** `runnable`, `error_count`, `warning_count`, `engine_version`, `issues[]`(시나리오 수준: `SCN-PROD-001` 제품 없음, `SCN-ARR-001` 도착 없음, `SCN-ASM-001` 가정을 썼는데 사유 없음 — 오류; `SCN-ASSET-001` 공정이 쓰는 자산에 고정 버전 없음, `SCN-ASSET-002` 쓰지 않는 자산 고정 — 경고), `products[]`(제품마다 엔진 컴파일 결과: `compiled`, `compile_issues[]`, `assumptions_used[]`, `waived[]`). **엔진·도메인 실행 검증 코드(`VAL-*`, `BUFFER_POLICY_UNKNOWN`, `ENGINE_HANDLER_NOT_AVAILABLE` 등)를 번역하지 않고 그대로** 준다. `runnable`은 오류 0이고 모든 제품이 컴파일될 때만 true. 고정하지 않은 자산의 용량·배출 규칙은 모르는 값으로 판정한다(무제한으로 보지 않음).
+- 예제: `examples/first-scope/scenario.create`·`scenario-version.patch`·`scenario-version.validate`·`error.scenario-not-runnable`.
 
 ## 6. LLM·위키 API
 

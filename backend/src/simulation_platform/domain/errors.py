@@ -110,6 +110,23 @@ class RevisionDraftExistsError(DomainError):
     status_code = 409
 
 
+class ScenarioCodeConflict(DomainError):
+    code = "SCENARIO_CODE_CONFLICT"
+    status_code = 409
+
+
+class ScenarioDraftExistsError(DomainError):
+    code = "SCENARIO_DRAFT_EXISTS"
+    status_code = 409
+
+
+class ScenarioNotRunnable(DomainError):
+    """실행 사전검증 오류가 있어 시나리오 버전을 승인할 수 없음(DEC-007: 승인 = 실행 가능)."""
+
+    code = "SCENARIO_NOT_RUNNABLE"
+    status_code = 422
+
+
 class InvalidStateTransitionError(DomainError):
     code = "INVALID_STATE_TRANSITION"
     status_code = 409

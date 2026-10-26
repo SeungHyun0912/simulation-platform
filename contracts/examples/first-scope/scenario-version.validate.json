@@ -1,0 +1,73 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/scenario-versions/00000000-0000-4000-8000-000000000042/validate"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": {
+        "scenario_version_id": "00000000-0000-4000-8000-000000000042",
+        "runnable": false,
+        "error_count": 5,
+        "warning_count": 1,
+        "issues": [
+          {
+            "severity": "warning",
+            "rule_id": "SCN-ASSET-001",
+            "field_path": "/assets",
+            "message": "공정이 쓰는 자산 1개에 고정한 자산 버전이 없습니다. 그 자산의 용량·배출 규칙은 모르는 값으로 실행 판정합니다(무제한으로 보지 않음)."
+          }
+        ],
+        "products": [
+          {
+            "product_id": "00000000-0000-4000-8000-000000000013",
+            "process_version_id": "00000000-0000-4000-8000-000000000015",
+            "compiled": false,
+            "compile_issues": [
+              {
+                "rule_id": "VAL-GRAPH-014",
+                "node_key": null,
+                "field_path": "/completion_node_id",
+                "message": "완제품 판정 시점(완제품 milestone)이 미정입니다."
+              },
+              {
+                "rule_id": "VAL-TIME-004",
+                "node_key": "insulate",
+                "field_path": "/timing_rule/setup",
+                "message": "[시험] 절연(수정): 준비 시점 또는 시간이 미정입니다(0이 아님)."
+              },
+              {
+                "rule_id": "VAL-TIME-005",
+                "node_key": "insulate",
+                "field_path": "/timing_rule/precondition_delay",
+                "message": "[시험] 절연(수정): 공급 대기의 발생 시점·시간·설비 점유 여부가 미정입니다."
+              },
+              {
+                "rule_id": "ENGINE_HANDLER_NOT_AVAILABLE",
+                "node_key": "insulate",
+                "field_path": null,
+                "message": "insulate: handler output_units_by_time v1은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다."
+              },
+              {
+                "rule_id": "ENGINE_HANDLER_NOT_AVAILABLE",
+                "node_key": "sheath",
+                "field_path": null,
+                "message": "sheath: handler output_units_by_time v1은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다."
+              }
+            ],
+            "assumptions_used": [
+              {
+                "code": "UNBOUNDED_BUFFERS",
+                "node_key": null,
+                "message": "용량을 모르는 대기 장소 1곳을 용량 제한 없이 대기하는 것으로 가정"
+              }
+            ],
+            "waived": []
+          }
+        ],
+        "engine_version": "c0.1"
+      }
+    }
+  }
+}

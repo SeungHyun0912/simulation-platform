@@ -1,6 +1,6 @@
 # CR-backend-20261026-be07-scenario-versions
 - 요청자: Backend / 작업 BE-05a(임시 ID) / 대상: contracts/04(새 §4.2 시나리오), ERD §6(`scenario`·`scenario_version`·`scenario_product`·`scenario_asset`), 03 §9(실행 입력 스냅샷)·§10(종료 규칙)
-- 상태: **승인 대기**(보드 §7 DEC-007). 승인 전에는 migration·API를 구현하지 않는다.
+- 상태: **승인·구현·승격됨(contract 0.7.0)** — 사용자가 PR #40 머지 후 "권당안대로 진행해줘"(2026-10-27)라고 지시해 §5의 권장안 1~5를 승인으로 기록(보드 DEC-007). 결과는 §7.
 - 선행: 엔진 C0(C0-01~07, `main` `ba6f95e`). 계약 0.6.1. 이 CR은 게시된 계약을 바꾸지 않고 **새 범위를 추가**한다(0.7.0 예정).
 
 ## 1. 왜 지금 필요한가
@@ -77,3 +77,8 @@
 1. migration 0007 + 동결 트리거 + DB 통합 시험(프로젝트 격리·복합 FK·동결).
 2. 순수 규칙(`SCN-*` 검증), 서비스·API, 사전검증은 DB에서 공정 버전·그래프·자산 버전을 읽어 엔진 `compile_snapshot`에 넘긴다(엔진은 DB를 모르는 그대로).
 3. OpenAPI 후보(`backend/artifacts/openapi.candidate.json`) → 계약 0.7.0 승격(04 §4.2, 예제, CHANGELOG), 개발 시드에 시험 시나리오 1건, 인계 문서.
+
+## 7. 구현 결과와 CR 원안과의 차이 (BE-05a, 2026-10-27)
+- 구현: migration 0007(`scenario`·`scenario_version`·`scenario_product`·`scenario_asset`, 동결 트리거, 공정 버전 `(project_id, product_id, id)` 유일 제약 추가), API 10개, 계약 0.7.0. 구현 커밋 `f776dc3`. 증거는 `docs/handoffs/HANDOFF-backend-20261027-BE-05a.md`.
+- **원안과 다른 점:** (a) 가정 사유 누락(`SCN-ASM-001`)은 저장 시 422가 아니라 **사전검증 오류**로 했다(초안 저장과 실행 가능 판정 분리, AGENTS §5). (b) 승인 권한은 원안의 "approver"가 아니라 공정·자산 버전과 같은 **project admin**이다(역할 체계에 approver 역할이 없음). (c) 상태는 draft → approved만 있고 검토(in_review) 단계는 두지 않았다(승인 조건이 사전검증이라 별도 검토 단계가 필요 없음). (d) 자산 자동 채움은 시나리오 생성 시점이 아니라 `products`를 저장할 때(그때 공정이 정해지므로) 한다. (e) 승인 후 대체된(superseded) 공정·자산 버전도 동결 내용이라 넣을 수 있다.
+- **결정 적용:** §5의 5개 결정은 권장안 그대로.

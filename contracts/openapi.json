@@ -19,6 +19,46 @@
         "title": "AllocationRule",
         "type": "object"
       },
+      "ArrivalDto": {
+        "additionalProperties": false,
+        "description": "지정 시각 도착(시나리오 시작 기준 분). 같은 시각에 count개가 도착한다. 길이 단위 작업물만(중량 도착 제외).",
+        "properties": {
+          "at_min": {
+            "default": "0",
+            "title": "At Min",
+            "type": "string"
+          },
+          "count": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "length_m": {
+            "title": "Length M",
+            "type": "string"
+          },
+          "lot": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot"
+          }
+        },
+        "required": [
+          "count",
+          "length_m"
+        ],
+        "title": "ArrivalDto",
+        "type": "object"
+      },
       "AssetCreate": {
         "additionalProperties": false,
         "description": "포트는 요청에 없다. 서버가 kind에 맞춰 같은 트랜잭션에서 생성한다.",
@@ -536,6 +576,94 @@
         "title": "AssetRevisionOut",
         "type": "object"
       },
+      "AssumptionUseOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "node_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Key"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AssumptionUseOut",
+        "type": "object"
+      },
+      "AssumptionsDto": {
+        "additionalProperties": false,
+        "description": "공정의 미정을 이 시나리오에서만 해소하는 가정(master 공정은 바뀌지 않는다, ADR-017).\n\n키는 그 공정 버전의 node_key다. 값이 하나라도 있으면 시나리오 버전의 `assumption_reason`이 필요하다.",
+        "properties": {
+          "equipment_hold": {
+            "anyOf": [
+              {
+                "const": "hold_for_operation",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "한 작업이 여러 산출을 낼 때 설비 점유 정책(07 §13)",
+            "title": "Equipment Hold"
+          },
+          "manual_transport_minutes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "수동 운반 단계(node_key)별 이동 시간(분, 0도 명시해야 함)",
+            "maxProperties": 200,
+            "propertyNames": {
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "title": "Manual Transport Minutes",
+            "type": "object"
+          },
+          "residual_scope": {
+            "additionalProperties": {
+              "enum": [
+                "machine",
+                "product",
+                "operation",
+                "lot"
+              ],
+              "type": "string"
+            },
+            "description": "잔량 이월 단계(node_key)별 잔량 범위(공정에 미정일 때만)",
+            "maxProperties": 200,
+            "propertyNames": {
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "title": "Residual Scope",
+            "type": "object"
+          },
+          "unbounded_buffers": {
+            "default": false,
+            "description": "용량을 모르는 대기 장소를 용량 제한 없이 대기하는 것으로 가정",
+            "title": "Unbounded Buffers",
+            "type": "boolean"
+          }
+        },
+        "title": "AssumptionsDto",
+        "type": "object"
+      },
       "CandidateDto": {
         "additionalProperties": false,
         "properties": {
@@ -623,6 +751,47 @@
           "mode"
         ],
         "title": "Capacity",
+        "type": "object"
+      },
+      "CompileIssueOut": {
+        "description": "엔진 컴파일 결과를 번역하지 않고 그대로 담는다(rule_id = 엔진 코드 또는 도메인 실행 검증 코드).",
+        "properties": {
+          "field_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Path"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "node_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Key"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "message"
+        ],
+        "title": "CompileIssueOut",
         "type": "object"
       },
       "CountMeasure": {
@@ -857,6 +1026,22 @@
           "wait_at_in_if_busy"
         ],
         "title": "DispatchWhenAvailable",
+        "type": "object"
+      },
+      "DrainRule": {
+        "additionalProperties": false,
+        "description": "모든 작업물이 소진될 때까지(또는 더 진행할 사건이 없을 때까지).",
+        "properties": {
+          "mode": {
+            "const": "drain",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "DrainRule",
         "type": "object"
       },
       "DurationMeasure": {
@@ -1237,6 +1422,27 @@
           "error"
         ],
         "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "FixedHorizonRule": {
+        "additionalProperties": false,
+        "description": "고정 지평선 `[0, H)`: H 시각의 사건은 처리하지 않는다(07 §11).",
+        "properties": {
+          "horizon_min": {
+            "title": "Horizon Min",
+            "type": "string"
+          },
+          "mode": {
+            "const": "fixed_horizon",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "horizon_min"
+        ],
+        "title": "FixedHorizonRule",
         "type": "object"
       },
       "GraphEdge": {
@@ -1758,6 +1964,46 @@
           "page"
         ],
         "title": "ListOut[ProjectOut]",
+        "type": "object"
+      },
+      "ListOut_ScenarioOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[ScenarioOut]",
+        "type": "object"
+      },
+      "ListOut_ScenarioVersionListItem_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioVersionListItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[ScenarioVersionListItem]",
         "type": "object"
       },
       "MaterialCreate": {
@@ -2655,6 +2901,94 @@
         "title": "PortPolicyPatch",
         "type": "object"
       },
+      "PrecheckIssue": {
+        "properties": {
+          "field_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Path"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "rule_id",
+          "message"
+        ],
+        "title": "PrecheckIssue",
+        "type": "object"
+      },
+      "PrecheckOut": {
+        "properties": {
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/PrecheckIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ProductPrecheck"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "runnable": {
+            "title": "Runnable",
+            "type": "boolean"
+          },
+          "scenario_version_id": {
+            "format": "uuid",
+            "title": "Scenario Version Id",
+            "type": "string"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_version_id",
+          "runnable",
+          "error_count",
+          "warning_count",
+          "issues",
+          "products",
+          "engine_version"
+        ],
+        "title": "PrecheckOut",
+        "type": "object"
+      },
       "PreconditionDelay": {
         "additionalProperties": false,
         "description": "공급 대기(예: AL 싱글-12의 120분). 설비 점유 여부(occupancy)는 미정일 수 있다.",
@@ -3340,6 +3674,55 @@
         "title": "ProductPatch",
         "type": "object"
       },
+      "ProductPrecheck": {
+        "properties": {
+          "assumptions_used": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionUseOut"
+            },
+            "title": "Assumptions Used",
+            "type": "array"
+          },
+          "compile_issues": {
+            "items": {
+              "$ref": "#/components/schemas/CompileIssueOut"
+            },
+            "title": "Compile Issues",
+            "type": "array"
+          },
+          "compiled": {
+            "title": "Compiled",
+            "type": "boolean"
+          },
+          "process_version_id": {
+            "format": "uuid",
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "waived": {
+            "items": {
+              "$ref": "#/components/schemas/CompileIssueOut"
+            },
+            "title": "Waived",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_id",
+          "process_version_id",
+          "compiled",
+          "compile_issues",
+          "assumptions_used",
+          "waived"
+        ],
+        "title": "ProductPrecheck",
+        "type": "object"
+      },
       "ProjectCreate": {
         "additionalProperties": false,
         "properties": {
@@ -3775,6 +4158,596 @@
         "title": "RevisionSummary",
         "type": "object"
       },
+      "ScenarioAssetDto": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "asset_revision_id": {
+            "description": "그 자산의 승인된(또는 승인 후 대체된) 자산 버전",
+            "format": "uuid",
+            "title": "Asset Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "asset_revision_id"
+        ],
+        "title": "ScenarioAssetDto",
+        "type": "object"
+      },
+      "ScenarioCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "ScenarioCreate",
+        "type": "object"
+      },
+      "ScenarioOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioVersionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "code",
+          "name",
+          "description",
+          "latest_version",
+          "created_at",
+          "updated_at",
+          "row_version"
+        ],
+        "title": "ScenarioOut",
+        "type": "object"
+      },
+      "ScenarioPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "ScenarioPatch",
+        "type": "object"
+      },
+      "ScenarioProductDto": {
+        "additionalProperties": false,
+        "description": "제품 하나 = 실행의 공정 하나. 목록 순서가 같은 시각 동순위의 처리 순서다.",
+        "properties": {
+          "arrivals": {
+            "items": {
+              "$ref": "#/components/schemas/ArrivalDto"
+            },
+            "maxItems": 1000,
+            "title": "Arrivals",
+            "type": "array"
+          },
+          "assumptions": {
+            "$ref": "#/components/schemas/AssumptionsDto"
+          },
+          "priority": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "process_version_id": {
+            "description": "그 제품의 승인된(또는 승인 후 대체된) 공정 버전",
+            "format": "uuid",
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "process_version_id"
+        ],
+        "title": "ScenarioProductDto",
+        "type": "object"
+      },
+      "ScenarioVersionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "from_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "복사할 같은 시나리오의 버전(모든 상태). 생략하면 가장 최근 승인 버전, 없으면 빈 초안",
+            "title": "From Version Id"
+          }
+        },
+        "title": "ScenarioVersionCreate",
+        "type": "object"
+      },
+      "ScenarioVersionListItem": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "scenario_id": {
+            "format": "uuid",
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "scenario_id",
+          "version_no",
+          "status",
+          "base_version_id",
+          "approved_at",
+          "created_at",
+          "updated_at",
+          "row_version"
+        ],
+        "title": "ScenarioVersionListItem",
+        "type": "object"
+      },
+      "ScenarioVersionOut": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioAssetDto"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "assumption_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumption Reason"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioProductDto"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "scenario_id": {
+            "format": "uuid",
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "stopping_rule": {
+            "discriminator": {
+              "mapping": {
+                "drain": "#/components/schemas/DrainRule",
+                "fixed_horizon": "#/components/schemas/FixedHorizonRule"
+              },
+              "propertyName": "mode"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DrainRule"
+              },
+              {
+                "$ref": "#/components/schemas/FixedHorizonRule"
+              }
+            ],
+            "title": "Stopping Rule"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "scenario_id",
+          "version_no",
+          "status",
+          "base_version_id",
+          "approved_at",
+          "created_at",
+          "updated_at",
+          "row_version",
+          "products",
+          "assets",
+          "stopping_rule",
+          "assumption_reason",
+          "notes",
+          "approved_by"
+        ],
+        "title": "ScenarioVersionOut",
+        "type": "object"
+      },
+      "ScenarioVersionPatch": {
+        "additionalProperties": false,
+        "description": "보낸 최상위 필드를 통째로 교체한다(초안만). `products`만 보내고 `assets`를 보내지 않으면, 공정이 참조하는\n자산 가운데 아직 고정되지 않은 것을 그 자산의 현재 승인 버전으로 채운다(이미 고정한 것은 그대로).",
+        "properties": {
+          "assets": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScenarioAssetDto"
+                },
+                "maxItems": 2000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assets"
+          },
+          "assumption_reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumption Reason"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "products": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScenarioProductDto"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products"
+          },
+          "stopping_rule": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "drain": "#/components/schemas/DrainRule",
+                    "fixed_horizon": "#/components/schemas/FixedHorizonRule"
+                  },
+                  "propertyName": "mode"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DrainRule"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FixedHorizonRule"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopping Rule"
+          }
+        },
+        "title": "ScenarioVersionPatch",
+        "type": "object"
+      },
+      "ScenarioVersionSummary": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_no",
+          "status"
+        ],
+        "title": "ScenarioVersionSummary",
+        "type": "object"
+      },
       "Setup": {
         "additionalProperties": false,
         "properties": {
@@ -3872,6 +4845,18 @@
         "title": "Single[MeOut]",
         "type": "object"
       },
+      "Single_PrecheckOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PrecheckOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[PrecheckOut]",
+        "type": "object"
+      },
       "Single_ProcessVersionOut_": {
         "properties": {
           "data": {
@@ -3906,6 +4891,30 @@
           "data"
         ],
         "title": "Single[ProjectOut]",
+        "type": "object"
+      },
+      "Single_ScenarioOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScenarioOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[ScenarioOut]",
+        "type": "object"
+      },
+      "Single_ScenarioVersionOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScenarioVersionOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[ScenarioVersionOut]",
         "type": "object"
       },
       "Single_StepOut_": {
@@ -8756,6 +9765,1043 @@
         "summary": "Create Process Version",
         "tags": [
           "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}": {
+      "get": {
+        "operationId": "get_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Scenario Version",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "patch": {
+        "description": "초안 수정(보낸 최상위 필드를 통째로 교체). 참조 오류는 422(SCN-REF-001~004)이고, 실행 가능 여부는 사전검증이\n따로 판정한다(미정이 있어도 초안은 저장된다). `products`만 보내면 고정하지 않은 자산을 현재 승인 버전으로 채운다.",
+        "operationId": "patch_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioVersionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Patch Scenario Version",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}/approve": {
+      "post": {
+        "description": "draft → approved(project admin). 사전검증 오류가 있으면 422 SCENARIO_NOT_RUNNABLE. 승인 후 내용은 바꿀 수 없다.",
+        "operationId": "approve_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Approve Scenario Version",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}/validate": {
+      "post": {
+        "description": "실행 사전검증(저장하지 않음). 시나리오 수준 검사(SCN-*)와, 제품마다 엔진 컴파일 결과(오류·사용한 가정·\n가정으로 면제한 항목)를 번역하지 않고 돌려준다. 오류가 있어도 검증이 정상 수행되면 200이다.",
+        "operationId": "precheck_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_PrecheckOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Precheck Scenario Version",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenarios": {
+      "get": {
+        "description": "시나리오 목록(code 순). 각 시나리오의 가장 최근 버전 요약을 함께 준다.",
+        "operationId": "list_scenarios_api_v1_projects__project_id__scenarios_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_ScenarioOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Scenarios",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "post": {
+        "description": "시나리오와 첫 초안(version 1, 비어 있음·종료 규칙 drain)을 함께 만든다. 코드 중복은 409 SCENARIO_CODE_CONFLICT.",
+        "operationId": "create_scenario_api_v1_projects__project_id__scenarios_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenarios/{scenario_id}": {
+      "get": {
+        "operationId": "get_scenario_api_v1_projects__project_id__scenarios__scenario_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "patch": {
+        "description": "이름·설명 수정. If-Match는 시나리오의 row_version이다(버전 내용과 무관).",
+        "operationId": "patch_scenario_api_v1_projects__project_id__scenarios__scenario_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Patch Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenarios/{scenario_id}/versions": {
+      "get": {
+        "description": "시나리오 버전 목록(최신 version_no부터).",
+        "operationId": "list_scenario_versions_api_v1_projects__project_id__scenarios__scenario_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_ScenarioVersionListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Scenario Versions",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "post": {
+        "description": "새 초안. `from_version_id`(같은 시나리오의 모든 상태) 또는 가장 최근 승인 버전의 내용을 복사하고, 둘 다 없으면\n빈 초안이다. 시나리오당 초안은 하나뿐이다(409 SCENARIO_DRAFT_EXISTS).",
+        "operationId": "create_scenario_version_api_v1_projects__project_id__scenarios__scenario_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ScenarioVersionCreate"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Scenario Version",
+        "tags": [
+          "scenarios"
         ]
       }
     }

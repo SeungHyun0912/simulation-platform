@@ -371,6 +371,27 @@ def main(out_dir: Path) -> None:
     spec_step_path = f"{spec_path}/steps/{first['id']}"
     r = client.patch(spec_step_path, json=revised, headers=match(2))
     record("process-step.patch-material-specs", "PATCH", spec_step_path, r, revised, {"If-Match": '"2"'})
+
+    # --- 시나리오 버전·실행 사전검증 (contract 0.7.0) -------------------------------------------------
+    scenarios = f"{api}/projects/{pid}/scenarios"
+    scenario_body = {"code": "S-001", "name": "[시험] 2교대 기준 시나리오", "description": "예제"}
+    r = client.post(scenarios, json=scenario_body, headers=base)
+    record("scenario.create", "POST", scenarios, r, scenario_body)
+    scenario_version_path = f"{api}/projects/{pid}/scenario-versions/{r.json()['data']['latest_version']['id']}"
+    product_id = product_path.rsplit("/", 1)[1]
+    scenario_patch = {
+        "products": [{"product_id": product_id, "process_version_id": version_id, "priority": 1,
+                      "arrivals": [{"at_min": "0", "count": 2, "length_m": "2000", "lot": "LOT-1"}],
+                      "assumptions": {"unbounded_buffers": True}}],
+        "stopping_rule": {"mode": "fixed_horizon", "horizon_min": "960"},
+        "assumption_reason": "[시험] 대기 공간 용량 확인 전 임시 가정"}
+    r = client.patch(scenario_version_path, json=scenario_patch, headers=match(1))
+    record("scenario-version.patch", "PATCH", scenario_version_path, r, scenario_patch, {"If-Match": '"1"'})
+    r = client.post(f"{scenario_version_path}/validate", headers=base)
+    record("scenario-version.validate", "POST", f"{scenario_version_path}/validate", r)
+    r = client.post(f"{scenario_version_path}/approve", headers=match(2))
+    record("error.scenario-not-runnable", "POST", f"{scenario_version_path}/approve", r, None,
+           {"If-Match": '"2"'})
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 

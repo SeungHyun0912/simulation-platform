@@ -34,6 +34,13 @@ from simulation_platform.schemas.process import (
 )
 from simulation_platform.schemas.project import ProjectCreate, ProjectOut
 from simulation_platform.schemas.revision import AssetRevisionOut, RejectBody, RevisionPatch
+from simulation_platform.schemas.scenario import (
+    PrecheckOut,
+    ScenarioCreate,
+    ScenarioOut,
+    ScenarioVersionOut,
+    ScenarioVersionPatch,
+)
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "contracts" / "examples" / "first-scope"
 
@@ -94,6 +101,11 @@ EXPECTED = {
     "process-graph.put-with-specs": (GraphIn, Single[GraphOut], 200),
     "process-step.patch-material-specs": (StepPatch, Single[StepOut], 200),
     "error.spec-link-invalid": (None, ERROR, 422),
+    # contract 0.7.0
+    "scenario.create": (ScenarioCreate, Single[ScenarioOut], 201),
+    "scenario-version.patch": (ScenarioVersionPatch, Single[ScenarioVersionOut], 200),
+    "scenario-version.validate": (None, Single[PrecheckOut], 200),
+    "error.scenario-not-runnable": (None, ERROR, 422),
 }
 
 
@@ -229,3 +241,20 @@ def test_material_spec_examples_show_specs_links_completion_and_the_link_error()
         "raw", "bobbin", "scrap"}
     error = _load("error.spec-link-invalid")["response"]["body"]["error"]["details"][0]
     assert error["rule_id"] == "VAL-SPEC-002" and error["field_path"] == "/edges/1/source_output_spec_key"
+
+
+def test_scenario_examples_show_draft_saving_precheck_and_the_approval_gate():
+    created = _load("scenario.create")["response"]["body"]["data"]
+    assert created["latest_version"] == {**created["latest_version"], "version_no": 1, "status": "draft"}
+    patched = _load("scenario-version.patch")["response"]
+    assert patched["headers"]["ETag"] == '"2"'
+    version = patched["body"]["data"]
+    assert version["products"][0]["arrivals"][0] == {"at_min": "0", "count": 2, "length_m": "2000", "lot": "LOT-1"}
+    assert version["stopping_rule"] == {"mode": "fixed_horizon", "horizon_min": "960"}
+    precheck = _load("scenario-version.validate")["response"]["body"]["data"]
+    assert precheck["runnable"] is False  # 미정·엔진 미구현이 남은 초안도 저장은 된다
+    compile_rules = {i["rule_id"] for i in precheck["products"][0]["compile_issues"]}
+    assert "ENGINE_HANDLER_NOT_AVAILABLE" in compile_rules  # 엔진 코드를 번역하지 않고 그대로
+    assert [a["code"] for a in precheck["products"][0]["assumptions_used"]] == ["UNBOUNDED_BUFFERS"]
+    error = _load("error.scenario-not-runnable")["response"]["body"]["error"]
+    assert error["code"] == "SCENARIO_NOT_RUNNABLE" and error["details"]
