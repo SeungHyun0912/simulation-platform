@@ -188,6 +188,33 @@ class RequirementDto(StrictIn):
         return self
 
 
+StateCode = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+FormText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+
+
+class MaterialSpecDto(StrictIn):
+    """operation 단계의 입력·출력 재료 spec(CR be06). 길이·중량·단위 수·가닥 수는 서로 환산하지 않는 별개 값이며
+    재료 `default_spec`과 같은 값 객체다(기본 unknown). spec_key는 단계 안에서 입력·출력 공통으로 유일하다."""
+
+    spec_key: Code
+    direction: Literal["input", "output"]
+    material_definition_id: uuid.UUID | None = None
+    state_code: StateCode | None = None
+    form: FormText | None = None
+    length_m: DecimalMeasure = Field(default_factory=DecimalMeasure)
+    weight_kg: DecimalMeasure = Field(default_factory=DecimalMeasure)
+    unit_count: CountMeasure = Field(default_factory=CountMeasure)
+    strand_count: CountMeasure = Field(default_factory=CountMeasure)
+    quantity_basis: Literal["unknown", "per_operation", "per_input_unit", "per_lot",
+                            "total_plan"] = "unknown"
+
+
+def _unique_spec_keys(specs: list[MaterialSpecDto]) -> None:
+    keys = [m.spec_key for m in specs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("material_specs의 spec_key가 중복되었습니다.")
+
+
 class StepDto(StrictIn):
     """operation 노드의 단계. 단계 id는 노드 id와 같다."""
 
@@ -199,12 +226,14 @@ class StepDto(StrictIn):
     handoff_rule: HandoffRule = Field(default_factory=HandoffRule)
     residual_rule: ResidualRule = Field(default_factory=ResidualRule)
     resources: list[RequirementDto] = Field(default_factory=list, max_length=50)
+    material_specs: list[MaterialSpecDto] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def _unique_roles(self):
         roles = [r.role_key for r in self.resources]
         if len(set(roles)) != len(roles):
             raise ValueError("resources의 role_key가 중복되었습니다.")
+        _unique_spec_keys(self.material_specs)
         return self
 
 
@@ -235,6 +264,10 @@ class GraphEdge(StrictIn):
     to_node_id: uuid.UUID
     edge_kind: EdgeKind = "material"
     movement_rule: MovementRule = Field(default_factory=MovementRule)
+    source_output_spec_key: Code | None = Field(
+        default=None, description="from 노드(operation) 단계의 output spec_key. precedence 간선에는 쓸 수 없다.")
+    target_input_spec_key: Code | None = Field(
+        default=None, description="to 노드(operation) 단계의 input spec_key. precedence 간선에는 쓸 수 없다.")
 
 
 class GraphIn(StrictIn):
@@ -242,6 +275,8 @@ class GraphIn(StrictIn):
 
     nodes: list[GraphNode] = Field(max_length=500)
     edges: list[GraphEdge] = Field(default_factory=list, max_length=2000)
+    completion_node_id: uuid.UUID | None = Field(
+        default=None, description="완제품으로 판정하는 milestone 노드 id(같은 요청의 노드). null=미정")
 
     @model_validator(mode="after")
     def _unique(self):
@@ -270,6 +305,7 @@ class GraphOut(Out):
     row_version: int
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+    completion_node_id: uuid.UUID | None
     issues: list[IssueDto]
 
 
@@ -294,6 +330,7 @@ class ProcessVersionOut(ProcessVersionListItem):
     raw_unit_spec: DefaultSpec
     finished_unit_spec: DefaultSpec
     notes: str | None
+    completion_node_id: uuid.UUID | None
     issues: list[IssueDto]
     submitted_by: uuid.UUID | None
     rejection_reason: str | None
@@ -316,7 +353,7 @@ class StepPatch(PatchIn):
 
     NON_NULLABLE: ClassVar[tuple[str, ...]] = (
         "label", "timing_rule", "input_rule", "output_rule", "handoff_rule", "residual_rule",
-        "resources")
+        "resources", "material_specs")
 
     label: Name | None = None
     operation_type: TypeKey | None = None
@@ -327,6 +364,7 @@ class StepPatch(PatchIn):
     handoff_rule: HandoffRule | None = None
     residual_rule: ResidualRule | None = None
     resources: list[RequirementDto] | None = Field(default=None, max_length=50)
+    material_specs: list[MaterialSpecDto] | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
     def _unique_roles(self):
@@ -334,6 +372,8 @@ class StepPatch(PatchIn):
             roles = [r.role_key for r in self.resources]
             if len(set(roles)) != len(roles):
                 raise ValueError("resources의 role_key가 중복되었습니다.")
+        if self.material_specs is not None:
+            _unique_spec_keys(self.material_specs)
         return self
 
 

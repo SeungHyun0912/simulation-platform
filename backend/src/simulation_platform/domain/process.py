@@ -27,7 +27,7 @@ SUPPORTED_HANDLER_VERSIONS = frozenset({"1"})
 RUN_BLOCKING = frozenset({
     "VAL-TIME-001", "VAL-TIME-002", "VAL-TIME-003", "VAL-TIME-004", "VAL-TIME-005",
     "VAL-OUT-001", "VAL-OUT-002", "VAL-OUT-003", "VAL-RES-002", "VAL-RES-003", "VAL-RES-004",
-    "VAL-GRAPH-011", "VAL-INPUT-001", "VAL-HANDOFF-001", "VAL-HANDLER-001"})
+    "VAL-GRAPH-011", "VAL-GRAPH-014", "VAL-INPUT-001", "VAL-HANDOFF-001", "VAL-HANDLER-001"})
 
 
 def _issue(entity_id, path, rule, severity, message, resolution=None) -> ErrorDetail:
@@ -39,10 +39,33 @@ def _unknown(measure: dict | None) -> bool:
     return measure is None or measure.get("mode") == "unknown"
 
 
-def structure_errors(nodes: list[dict], edges: list[dict]) -> list[tuple[str, str, str]]:
+def _spec_keys(node: dict | None, direction: str) -> set[str]:
+    step = (node or {}).get("step") or {}
+    return {m["spec_key"] for m in step.get("material_specs", []) if m["direction"] == direction}
+
+
+def structure_errors(nodes: list[dict], edges: list[dict],
+                     completion_node_id: str | None = None) -> list[tuple[str, str, str]]:
     """저장 불가능한 구조 오류. (body field_path, rule_id, message) 목록. PUT이 422로 거부한다."""
     errors: list[tuple[str, str, str]] = []
     by_id = {n["id"]: n for n in nodes}
+    if completion_node_id is not None and by_id.get(str(completion_node_id), {}).get("kind") != "milestone":
+        errors.append(("/completion_node_id", "VAL-GRAPH-005",
+                       "완제품 지정 노드는 같은 그래프의 milestone 노드여야 합니다."))
+    for i, edge in enumerate(edges):
+        source, target = edge.get("source_output_spec_key"), edge.get("target_input_spec_key")
+        if edge["edge_kind"] == "precedence":
+            for field, key in (("source_output_spec_key", source), ("target_input_spec_key", target)):
+                if key is not None:
+                    errors.append((f"/edges/{i}/{field}", "VAL-SPEC-004",
+                                   "precedence(완료 의존) 간선에는 재료 spec을 연결할 수 없습니다."))
+            continue
+        if source is not None and source not in _spec_keys(by_id.get(edge["from_node_id"]), "output"):
+            errors.append((f"/edges/{i}/source_output_spec_key", "VAL-SPEC-002",
+                           f"from 노드 단계에 output spec '{source}'가 없습니다."))
+        if target is not None and target not in _spec_keys(by_id.get(edge["to_node_id"]), "input"):
+            errors.append((f"/edges/{i}/target_input_spec_key", "VAL-SPEC-003",
+                           f"to 노드 단계에 input spec '{target}'이(가) 없습니다."))
     for i, edge in enumerate(edges):
         for end in ("from_node_id", "to_node_id"):
             if edge[end] not in by_id:
@@ -159,6 +182,10 @@ def _step_issues(node: dict) -> list[ErrorDetail]:
     if step["handoff_rule"]["mode"] == "unknown":
         add("/handoff_rule/mode", "VAL-HANDOFF-001", "다음 단계로의 인계 방식이 미정입니다.")
 
+    for j, spec in enumerate(step.get("material_specs", [])):
+        if all(_unknown(spec[f]) for f in ("length_m", "weight_kg", "unit_count", "strand_count")):
+            add(f"/material_specs/{j}", "VAL-SPEC-001",
+                f"{spec['spec_key']}({spec['direction']}): 길이·중량·단위 수·가닥 수가 모두 미정입니다.")
     if not step["resources"]:
         add("/resources", "VAL-RES-002", "자원 요구가 없습니다. 실행 전에 설비 또는 작업자를 지정해야 합니다.")
     for j, req in enumerate(step["resources"]):
@@ -174,10 +201,10 @@ def _step_issues(node: dict) -> list[ErrorDetail]:
 
 
 def graph_issues(version_id, raw_unit_spec: dict, finished_unit_spec: dict, nodes: list[dict],
-                 edges: list[dict]) -> list[ErrorDetail]:
+                 edges: list[dict], completion_node_id=None) -> list[ErrorDetail]:
     """knowledge 범위의 검증 항목(오류+경고). 정렬: 오류 먼저, 이후 입력 순서."""
     issues: list[ErrorDetail] = []
-    for path, rule, message in structure_errors(nodes, edges):
+    for path, rule, message in structure_errors(nodes, edges, completion_node_id):
         issues.append(_issue(version_id, path, rule, "error", message))
     if all(_unknown(v) for v in raw_unit_spec.values()):
         issues.append(_issue(version_id, "/raw_unit_spec", "VAL-VER-001", "warning",
@@ -189,6 +216,10 @@ def graph_issues(version_id, raw_unit_spec: dict, finished_unit_spec: dict, node
     if not operations:
         issues.append(_issue(version_id, "/nodes", "VAL-GRAPH-010", "warning",
                              "operation(단계) 노드가 없습니다."))
+    if operations and completion_node_id is None:
+        issues.append(_issue(version_id, "/completion_node_id", "VAL-GRAPH-014", "warning",
+                             "완제품 판정 시점(완제품 milestone)이 미정입니다.",
+                             "완제품으로 판정하는 milestone 노드를 지정하세요(실행 전 필수)."))
     if _has_cycle(nodes, edges):
         issues.append(_issue(version_id, "/edges", "VAL-GRAPH-011", "warning",
                              "물류 간선에 순환(재작업)이 있습니다. 등록은 가능하지만 초기 엔진은 지원하지 않아 실행이 차단됩니다."))

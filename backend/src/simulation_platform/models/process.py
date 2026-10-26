@@ -22,6 +22,8 @@ from simulation_platform.models.base import Base, CreatedMixin, IdMixin, Mutable
 PROCESS_STATUSES = ("draft", "in_review", "approved", "superseded")
 NODE_KINDS = ("source", "buffer", "operation", "join", "milestone", "sink")
 EDGE_KINDS = ("material", "precedence", "supply")
+SPEC_DIRECTIONS = ("input", "output")
+QUANTITY_BASES = ("unknown", "per_operation", "per_input_unit", "per_lot", "total_plan")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -45,6 +47,12 @@ class ProcessVersion(IdMixin, MutableMixin, Base):
         ForeignKeyConstraint(
             ["project_id", "product_id"], ["product.project_id", "product.id"],
             name="fk_process_version_product", ondelete="RESTRICT"),
+        ForeignKeyConstraint(
+            ["project_id", "id", "completion_node_id", "completion_node_kind"],
+            ["flow_node.project_id", "flow_node.process_version_id", "flow_node.id",
+             "flow_node.kind"], name="fk_process_version_completion", ondelete="RESTRICT",
+            use_alter=True),  # flow_node ↔ process_version 상호 참조(순환)라 테이블 생성 후 추가
+        CheckConstraint("completion_node_kind = 'milestone'", name="ck_process_version_completion_kind"),
         CheckConstraint(_in("status", PROCESS_STATUSES), name="ck_process_version_status"),
         CheckConstraint("version_no > 0", name="ck_process_version_no"),
         CheckConstraint(
@@ -74,6 +82,8 @@ class ProcessVersion(IdMixin, MutableMixin, Base):
     rejected_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    completion_node_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    completion_node_kind: Mapped[str] = mapped_column(Text, server_default="milestone")
 
 
 class FlowNode(IdMixin, CreatedMixin, Base):
@@ -212,7 +222,24 @@ class FlowEdge(IdMixin, CreatedMixin, Base):
             ["project_id", "process_version_id", "to_node_id"],
             ["flow_node.project_id", "flow_node.process_version_id", "flow_node.id"],
             name="fk_flow_edge_to", ondelete="RESTRICT"),
+        ForeignKeyConstraint(
+            ["project_id", "process_version_id", "from_node_id", "source_output_spec_id",
+             "source_spec_direction"],
+            ["step_material_spec.project_id", "step_material_spec.process_version_id",
+             "step_material_spec.step_node_id", "step_material_spec.id",
+             "step_material_spec.direction"], name="fk_flow_edge_source_spec", ondelete="RESTRICT"),
+        ForeignKeyConstraint(
+            ["project_id", "process_version_id", "to_node_id", "target_input_spec_id",
+             "target_spec_direction"],
+            ["step_material_spec.project_id", "step_material_spec.process_version_id",
+             "step_material_spec.step_node_id", "step_material_spec.id",
+             "step_material_spec.direction"], name="fk_flow_edge_target_spec", ondelete="RESTRICT"),
         UniqueConstraint("process_version_id", "edge_key", name="uq_flow_edge_key"),
+        CheckConstraint("source_spec_direction = 'output'", name="ck_flow_edge_source_direction"),
+        CheckConstraint("target_spec_direction = 'input'", name="ck_flow_edge_target_direction"),
+        CheckConstraint(
+            "edge_kind <> 'precedence' OR (source_output_spec_id IS NULL AND target_input_spec_id IS NULL)",
+            name="ck_flow_edge_spec_link_kind"),
         CheckConstraint(_in("edge_kind", EDGE_KINDS), name="ck_flow_edge_kind"),
         CheckConstraint("from_node_id <> to_node_id", name="ck_flow_edge_no_self_loop"),
         CheckConstraint("btrim(edge_key) <> ''", name="ck_flow_edge_edge_key"),
@@ -225,6 +252,10 @@ class FlowEdge(IdMixin, CreatedMixin, Base):
     from_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     to_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     edge_kind: Mapped[str] = mapped_column(Text)
+    source_output_spec_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    source_spec_direction: Mapped[str] = mapped_column(Text, server_default="output")
+    target_input_spec_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    target_spec_direction: Mapped[str] = mapped_column(Text, server_default="input")
     movement_rule: Mapped[dict] = mapped_column(JSONB)
 
 
@@ -254,3 +285,41 @@ class ProcessEditorState(IdMixin, MutableMixin, Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     node_positions: Mapped[dict] = mapped_column(JSONB)
     viewport: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+
+
+class StepMaterialSpec(IdMixin, CreatedMixin, Base):
+    """operation 단계의 입력·출력 재료 spec. 수량은 재료 default_spec과 같은 값 객체(JSONB)다."""
+
+    __tablename__ = "step_material_spec"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "process_version_id", "step_node_id"],
+            ["process_step.project_id", "process_step.process_version_id", "process_step.node_id"],
+            name="fk_step_material_spec_step", ondelete="RESTRICT"),
+        ForeignKeyConstraint(
+            ["project_id", "material_definition_id"],
+            ["material_definition.project_id", "material_definition.id"],
+            name="fk_step_material_spec_material", ondelete="RESTRICT"),
+        UniqueConstraint("step_node_id", "spec_key", name="uq_step_material_spec_key"),
+        UniqueConstraint("project_id", "process_version_id", "step_node_id", "id", "direction",
+                         name="uq_step_material_spec_edge_ref"),
+        CheckConstraint(_in("direction", SPEC_DIRECTIONS), name="ck_step_material_spec_direction"),
+        CheckConstraint(_in("quantity_basis", QUANTITY_BASES), name="ck_step_material_spec_basis"),
+        CheckConstraint("btrim(spec_key) <> ''", name="ck_step_material_spec_key"),
+        CheckConstraint("state_code IS NULL OR btrim(state_code) <> ''",
+                        name="ck_step_material_spec_state"),
+        CheckConstraint("form IS NULL OR btrim(form) <> ''", name="ck_step_material_spec_form"),
+        CheckConstraint("jsonb_typeof(quantity) = 'object'", name="ck_step_material_spec_quantity"),
+        Index("ix_step_material_spec_process_version_id", "process_version_id"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    process_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    step_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    spec_key: Mapped[str] = mapped_column(Text)
+    direction: Mapped[str] = mapped_column(Text)
+    material_definition_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    state_code: Mapped[str | None] = mapped_column(Text)
+    form: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[dict] = mapped_column(JSONB)
+    quantity_basis: Mapped[str] = mapped_column(Text, server_default="unknown")

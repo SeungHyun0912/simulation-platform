@@ -31,7 +31,7 @@ def version(prefix="x", **header):
     edges = [edge(f"{prefix}e1", "src-op", f"{prefix}1", f"{prefix}2"),
              edge(f"{prefix}e2", "op-sink", f"{prefix}2", f"{prefix}3")]
     base = {"raw_unit_spec": {"length_m": {"mode": "unknown", "value": None}},
-            "finished_unit_spec": {}, "notes": None}
+            "finished_unit_spec": {}, "notes": None, "completion_node_key": None}
     return {"header": {**base, **header}, "nodes": nodes, "edges": edges}
 
 
