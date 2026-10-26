@@ -100,6 +100,28 @@ def test_previous_product_on_the_selected_asset_is_recorded_without_adding_chang
     assert started(result, b.model.version_id)[0][0] == F(200, 3)
 
 
+def test_allocator_serves_the_oldest_waiter_and_keeps_the_candidate_order():
+    """대기열을 훑지 않는 구현이어도 순서는 그대로다: 풀린 설비는 그 설비를 후보로 가진 가장 오래된 대기자에게,
+    후보가 여럿이면 후보 목록의 앞쪽 빈 설비가 먼저, 다른 후보로 이미 배정된 대기자는 건너뛴다."""
+    import simpy
+
+    from simulation_platform.simulation.resources import EquipmentAllocator
+
+    env = simpy.Environment()
+    pool = EquipmentAllocator(env)
+    assert pool.acquire(("a", "b")).value == "a"  # 후보 순서의 첫 빈 설비
+    assert pool.acquire(("a", "b")).value == "b"
+    first, second, third = pool.acquire(("a", "b")), pool.acquire(("b",)), pool.acquire(("a",))
+    assert not (first.triggered or second.triggered or third.triggered)
+    pool.release("b")  # b를 후보로 가진 가장 오래된 대기자는 first
+    assert first.triggered and first.value == "b" and not second.triggered
+    pool.release("a")  # a는 first가 아닌 다음 대기자(third)에게. first는 이미 배정돼 건너뛴다
+    assert third.triggered and third.value == "a" and not second.triggered
+    pool.release("b")
+    assert second.triggered and second.value == "b"
+    assert pool.is_busy("a") and pool.is_busy("b")
+
+
 def test_lineage_and_items_carry_their_product_and_stay_balanced():
     a, b = lane([Arrival("2000")]), lane([Arrival("2000")], speed_value="60")
     result = run_models([a, b])
