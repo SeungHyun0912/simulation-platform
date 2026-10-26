@@ -323,3 +323,113 @@ export function setNextLocation(
   });
   return buildLinear({ ...chain, items }, doc, newId);
 }
+
+/* ---------------- 일반 그래프 편집(직선이 아니어도 가능) ---------------- */
+
+export type NodeKind = GraphNode["kind"];
+export type EdgeKind = NonNullable<GraphEdge["edge_kind"]>;
+export type MovementRule = NonNullable<GraphEdge["movement_rule"]>;
+
+/** 저장·도킹 공간(asset)을 가리킬 수 있는 노드 종류. 작업·합류·완료 기준 노드에는 설비·공간을 직접 박지 않는다. */
+export const SPACE_KINDS: readonly NodeKind[] = ["source", "buffer", "sink"];
+
+const KEY_PREFIX: Record<NodeKind, string> = { source: "src", buffer: "buf", operation: "op", join: "join", milestone: "ms", sink: "sink" };
+
+const uniqueKey = (doc: GraphDoc, kind: NodeKind, id: string) => {
+  const base = `${KEY_PREFIX[kind]}-${shortId(id)}`;
+  let key = base;
+  for (let i = 2; doc.nodes.some((n) => n.node_key === key); i++) key = `${base}-${i}`;
+  return key;
+};
+
+const maxOrder = (doc: GraphDoc) => doc.nodes.reduce((m, n) => Math.max(m, n.display_order ?? 0), -1);
+
+/** 노드 추가(맨 끝 순서). 연결은 만들지 않는다 — 간선은 사용자가 직접 추가한다. 작업 노드는 모두 미정인 단계로 시작한다. */
+export function addNode(
+  doc: GraphDoc,
+  kind: NodeKind,
+  label: string,
+  newId: () => string = () => crypto.randomUUID(),
+): { doc: GraphDoc; id: string } {
+  const id = newId();
+  const node: GraphNode = {
+    id,
+    node_key: uniqueKey(doc, kind, id),
+    kind,
+    label,
+    asset_id: null,
+    display_order: maxOrder(doc) + 1,
+    step: kind === "operation" ? emptyStep() : null,
+  };
+  return { doc: { ...doc, nodes: [...doc.nodes, node] }, id };
+}
+
+/** 이름·공간만 바꾼다. 종류와 키는 만든 뒤 바꾸지 않는다. 공간은 시작·대기·끝 노드에만 둘 수 있다. */
+export function patchNode(doc: GraphDoc, id: string, patch: { label?: string; asset_id?: string | null }): GraphDoc {
+  return updateNode(doc, id, (n) => ({
+    ...n,
+    ...(patch.label !== undefined ? { label: patch.label } : {}),
+    ...(patch.asset_id !== undefined && SPACE_KINDS.includes(n.kind) ? { asset_id: patch.asset_id } : {}),
+  }));
+}
+
+export function connectedEdges(doc: GraphDoc, nodeId: string): GraphEdge[] {
+  return doc.edges.filter((e) => e.from_node_id === nodeId || e.to_node_id === nodeId);
+}
+
+/**
+ * 노드 삭제. 연결된 간선도 함께 지운다. 앞뒤를 자동으로 잇지 않는다(묵시적으로 엉뚱한 연결을 만들지 않는다) —
+ * 어떤 간선이 사라지는지는 호출한 쪽이 `connectedEdges`로 미리 보여 준다.
+ */
+export function removeNode(doc: GraphDoc, nodeId: string): GraphDoc {
+  return {
+    nodes: doc.nodes.filter((n) => n.id !== nodeId),
+    edges: doc.edges.filter((e) => e.from_node_id !== nodeId && e.to_node_id !== nodeId),
+  };
+}
+
+/** 노드 표시 순서(display_order)를 이웃과 바꾼다. 직선이 아닌 공정의 단계 표 순서에 쓰인다. 순서는 0부터 빈틈없이 다시 매긴다. */
+export function moveNodeOrder(doc: GraphDoc, nodeId: string, delta: -1 | 1): GraphDoc {
+  const sorted = [...doc.nodes].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || a.node_key.localeCompare(b.node_key));
+  const i = sorted.findIndex((n) => n.id === nodeId);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= sorted.length) return doc;
+  [sorted[i], sorted[j]] = [sorted[j]!, sorted[i]!];
+  const order = new Map(sorted.map((n, idx) => [n.id, idx]));
+  return { ...doc, nodes: doc.nodes.map((n) => ({ ...n, display_order: order.get(n.id)! })) };
+}
+
+/** 같은 시작·끝·종류의 간선이 이미 있는지(중복 연결 방지) */
+export function hasEdge(doc: GraphDoc, from: string, to: string, kind: EdgeKind, exceptId?: string): boolean {
+  return doc.edges.some((e) => e.id !== exceptId && e.from_node_id === from && e.to_node_id === to && (e.edge_kind ?? "material") === kind);
+}
+
+/** 간선 추가. 이동 규칙은 보내지 않아 서버 기본(미정)이 된다. */
+export function addEdge(
+  doc: GraphDoc,
+  from: string,
+  to: string,
+  kind: EdgeKind,
+  newId: () => string = () => crypto.randomUUID(),
+): { doc: GraphDoc; id: string } {
+  const id = newId();
+  const edge: GraphEdge = { id, edge_key: `e-${shortId(id)}`, from_node_id: from, to_node_id: to, edge_kind: kind };
+  return { doc: { ...doc, edges: [...doc.edges, edge] }, id };
+}
+
+export function patchEdge(
+  doc: GraphDoc,
+  id: string,
+  patch: { from_node_id?: string; to_node_id?: string; edge_kind?: EdgeKind; movement_rule?: MovementRule },
+): GraphDoc {
+  return { ...doc, edges: doc.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) };
+}
+
+export function removeEdge(doc: GraphDoc, edgeId: string): GraphDoc {
+  return { ...doc, edges: doc.edges.filter((e) => e.id !== edgeId) };
+}
+
+/** 서버 기본값(미정)을 채운 이동 규칙. direct_feed도 이동 시간을 0으로 가정하지 않는다(03 §7). */
+export function movementOf(e: GraphEdge): { mode: NonNullable<MovementRule["mode"]>; duration_min: DurationMeasure } {
+  return { mode: e.movement_rule?.mode ?? "unknown", duration_min: e.movement_rule?.duration_min ?? { mode: "unknown" } };
+}

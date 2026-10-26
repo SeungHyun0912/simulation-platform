@@ -23,9 +23,9 @@ import { useProjectTimezone } from "../projects/queries";
 import { useCurrentProject } from "../projects/useCurrentProject";
 import { useProductDetail } from "../products/queries";
 import { parseLinear, nextLocationOf, operationsInOrder, stepOf, type GraphDoc, type GraphNode } from "./processDoc";
+import { GraphEditor } from "./GraphEditor";
+import { validateGraphStructure } from "./processGraph";
 import {
-  EDGE_KIND_LABELS,
-  NODE_KIND_LABELS,
   isOpenProcessStatus,
   issuesByEntity,
   outputText,
@@ -214,7 +214,7 @@ function ProcessEditor({
   }
 
   // 입력 형식 오류(클라이언트)는 저장 전에 막고, 미정 경고는 서버 검증(issues)이 정본이다.
-  const inputIssues = rows.flatMap((n, i) => validateStepInput(n, i + 1));
+  const inputIssues = [...rows.flatMap((n, i) => validateStepInput(n, i + 1)), ...validateGraphStructure(doc)];
   const unitErrs = {
     raw: validateUnitSpec(editor.draft.raw),
     finished: validateUnitSpec(editor.draft.finished),
@@ -286,19 +286,6 @@ function ProcessEditor({
         );
       },
     },
-  ];
-
-  const graphColumns: Column<GraphNode>[] = [
-    { key: "key", header: "키", render: (n) => n.node_key },
-    { key: "kind", header: "종류", render: (n) => NODE_KIND_LABELS[n.kind] },
-    { key: "label", header: "이름", render: (n) => n.label },
-    { key: "asset", header: "공간", render: (n) => (n.asset_id ? assetCode(n.asset_id) : n.kind === "buffer" || n.kind === "source" || n.kind === "sink" ? "위치 미정" : "-") },
-  ];
-  const nodeLabel = new Map(doc.nodes.map((n) => [n.id, n.label || n.node_key]));
-  const edgeColumns = [
-    { key: "from", header: "에서", render: (e: GraphDoc["edges"][number]) => nodeLabel.get(e.from_node_id) ?? e.from_node_id.slice(0, 8) },
-    { key: "to", header: "으로", render: (e: GraphDoc["edges"][number]) => nodeLabel.get(e.to_node_id) ?? e.to_node_id.slice(0, 8) },
-    { key: "kind", header: "관계", render: (e: GraphDoc["edges"][number]) => EDGE_KIND_LABELS[e.edge_kind ?? "material"] },
   ];
 
   const saveDisabledReason = !live
@@ -554,8 +541,8 @@ function ProcessEditor({
       {!linear && (
         <Block>
           <StateNotice kind="contract-pending" title="직선이 아닌 공정입니다">
-            합류·분기·선후/공급 간선·연속된 대기 공간이 있어 표로 구조를 바꿀 수 없습니다. 각 단계의 내용만 수정할 수 있으며, 노드와 간선은
-            서버에서 받은 그대로 보존됩니다. 단계 추가·삭제·이동과 다음 위치 변경은 그래프 화면에서 제공될 예정입니다.
+            분기·합류·선후/공급 간선이 있어 이 표에서는 단계 내용만 수정합니다(단계 추가·삭제·이동은 직선 공정에서만). 구조는 아래 "그래프 구성"에서
+            노드와 간선을 직접 편집하세요.
           </StateNotice>
         </Block>
       )}
@@ -578,12 +565,23 @@ function ProcessEditor({
         />
       )}
 
-      {!linear && (
-        <Section id="sec-graph" title="그래프 구성 (읽기 전용)">
-          <DataTable caption="노드" columns={graphColumns} rows={doc.nodes} getRowKey={(n) => n.id} wrapCells />
-          <DataTable caption="간선" columns={edgeColumns} rows={doc.edges} getRowKey={(e) => e.id} wrapCells />
-        </Section>
-      )}
+      <GraphEditor
+        doc={doc}
+        editable={editable}
+        options={options}
+        issues={byEntity}
+        selectedStepId={editingId}
+        onOpenStep={(id) => setEditingId(id === "" ? null : id)}
+        api={{
+          addNode: editor.addGraphNode,
+          patchNode: editor.patchGraphNode,
+          removeNode: editor.removeGraphNode,
+          moveNode: editor.moveGraphNode,
+          addEdge: editor.addGraphEdge,
+          patchEdge: editor.patchGraphEdge,
+          removeEdge: editor.removeGraphEdge,
+        }}
+      />
 
       {!live && <PreviewStateLinks states={["loading", "error", "forbidden", "conflict"]} />}
     </>

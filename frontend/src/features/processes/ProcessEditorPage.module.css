@@ -7,3 +7,12 @@
   white-space: nowrap;
 }
 
+.addForm {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin: 0;
+  background: var(--status-neutral-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}

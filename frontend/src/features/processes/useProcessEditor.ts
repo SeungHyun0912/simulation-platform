@@ -3,15 +3,25 @@ import { useDataSource } from "../../shared/api/ApiContext";
 import { ApiError, classifyError, toIssues } from "../../shared/api/errors";
 import type { ValidationIssue } from "../../shared/components/ValidationPanel";
 import {
+  addEdge,
+  addNode,
   addStep,
+  moveNodeOrder,
   moveStep,
+  patchEdge,
+  patchNode,
+  removeEdge,
+  removeNode,
   removeStep,
   setNextLocation,
   updateNode,
   updateStep,
+  type EdgeKind,
   type GraphDoc,
   type GraphNode,
+  type MovementRule,
   type NextLocation,
+  type NodeKind,
   type StepDto,
 } from "./processDoc";
 import {
@@ -282,6 +292,31 @@ export function useProcessEditor(args: {
     setUnits,
     editDoc,
     add,
+    /** 일반 그래프 편집(직선이 아니어도 가능). 노드 삭제는 연결된 간선도 함께 지우며 앞뒤를 자동으로 잇지 않는다. */
+    addGraphNode: (kind: NodeKind, label: string): string => {
+      const r = addNode(draft.doc, kind, label);
+      edit((d) => ({ ...d, doc: r.doc }));
+      return r.id;
+    },
+    patchGraphNode: (id: string, patch: { label?: string; asset_id?: string | null }) => {
+      dropRejected(id);
+      editDoc((doc) => patchNode(doc, id, patch));
+    },
+    removeGraphNode: (id: string) => editDoc((doc) => removeNode(doc, id)),
+    moveGraphNode: (id: string, delta: -1 | 1) => editDoc((doc) => moveNodeOrder(doc, id, delta)),
+    addGraphEdge: (from: string, to: string, kind: EdgeKind): string => {
+      const r = addEdge(draft.doc, from, to, kind);
+      edit((d) => ({ ...d, doc: r.doc }));
+      return r.id;
+    },
+    patchGraphEdge: (
+      id: string,
+      patch: { from_node_id?: string; to_node_id?: string; edge_kind?: EdgeKind; movement_rule?: MovementRule },
+    ) => {
+      dropRejected(id);
+      editDoc((doc) => patchEdge(doc, id, patch));
+    },
+    removeGraphEdge: (id: string) => editDoc((doc) => removeEdge(doc, id)),
     remove: (id: string) => editDoc((doc) => removeStep(doc, id)),
     move: (id: string, delta: -1 | 1) => editDoc((doc) => moveStep(doc, id, delta)),
     setNext: (id: string, next: NextLocation) => editDoc((doc) => setNextLocation(doc, id, next)),

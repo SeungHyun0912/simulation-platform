@@ -1,7 +1,11 @@
 import { toAssetInfo } from "../../src/features/assets/apiMappers";
 import {
+  addEdge,
+  addNode,
   addStep,
   operationsInOrder,
+  patchEdge,
+  removeEdge,
   parseLinear,
   stepOf,
   updateNode,
@@ -195,6 +199,60 @@ describe.skipIf(!LIVE || !WRITE)("실제 API: 공정 쓰기 (P-006 하나의 초
     // 서버가 돌려준 문서를 그대로 다시 보내도 변하지 않는다(왕복 안정)
     const again = await admin.put<Schemas["Single_GraphOut_"]>(`${base()}/graph`, { body: toGraphIn(saved.doc), ifMatch: r.version! });
     expect(toGraphView(again.body.data).doc).toEqual(saved.doc);
+  });
+
+  it("그래프 편집: 분기·합류·선후 간선·이동 규칙·순환을 서버가 받아들이고 왕복 안정이며, 물류 규칙 위반은 422(VAL-GRAPH-004)로 매핑된다", async () => {
+    const start = await read();
+    const original = start.graph.doc; // 끝나면 이 직선 그래프로 복원한다
+    const src = original.nodes.find((n) => n.kind === "source")!;
+    const sink = original.nodes.find((n) => n.kind === "sink")!;
+    // 이름이 같은 단계가 여러 번 남아 있을 수 있어(이전 실행) 끝 노드로 이어지는 마지막 단계를 쓴다
+    const lastEdge = original.edges.find((e) => e.to_node_id === sink.id)!;
+    const op = original.nodes.find((n) => n.id === lastEdge.from_node_id)!;
+    expect(op.kind).toBe("operation");
+
+    // 원자재 → [단계, 가닥 B] → 합류 → 완제품, 단계→합류는 사람이 정한 5분, 원자재→합류 선후 관계
+    let doc = removeEdge(original, lastEdge.id);
+    const b = addNode(doc, "operation", "[FE 시험] 가닥 B");
+    const j = addNode(b.doc, "join", "[FE 시험] 합류");
+    doc = j.doc;
+    doc = addEdge(doc, src.id, b.id, "material").doc;
+    const toJoin = addEdge(doc, op.id, j.id, "material");
+    doc = patchEdge(toJoin.doc, toJoin.id, { movement_rule: { mode: "manual_duration", duration_min: { mode: "known", value: "5" } } });
+    doc = addEdge(doc, b.id, j.id, "material").doc;
+    doc = addEdge(doc, j.id, sink.id, "material").doc;
+    const prec = addEdge(doc, src.id, j.id, "precedence");
+    doc = prec.doc;
+    const r = await admin.put<Schemas["Single_GraphOut_"]>(`${base()}/graph`, { body: toGraphIn(doc), ifMatch: (await read()).version.rowVersion });
+    expect(r.status).toBe(200);
+    const saved = toGraphView(r.body.data);
+    expect(parseLinear(saved.doc)).toBeNull(); // 분기·합류·선후 간선이 있어 직선이 아니다
+    expect(saved.doc.nodes.map((n) => n.id).sort()).toEqual(doc.nodes.map((n) => n.id).sort());
+    expect(saved.doc.edges.find((e) => e.id === toJoin.id)!.movement_rule).toMatchObject({ mode: "manual_duration", duration_min: { mode: "known", value: "5" } });
+    expect(saved.doc.edges.find((e) => e.id === prec.id)!.edge_kind).toBe("precedence");
+    // 서버가 돌려준 문서를 그대로 다시 보내도 변하지 않는다
+    const again = await admin.put<Schemas["Single_GraphOut_"]>(`${base()}/graph`, { body: toGraphIn(saved.doc), ifMatch: r.version! });
+    expect(toGraphView(again.body.data).doc).toEqual(saved.doc);
+
+    // 되돌아가는 연결(재작업)은 저장할 수 있다
+    const cyc = addEdge(saved.doc, j.id, op.id, "material");
+    const withCycle = await admin.put<Schemas["Single_GraphOut_"]>(`${base()}/graph`, { body: toGraphIn(cyc.doc), ifMatch: again.version! });
+    expect(withCycle.status).toBe(200);
+    expect(toGraphView(withCycle.body.data).issues.some((i) => i.rule_id === "VAL-GRAPH-011")).toBe(true); // 순환은 경고
+
+    // 끝에서 나가는 물류 간선은 422이고 field_path(요청 본문 기준)가 간선 id로 매핑된다
+    const bad = addEdge(toGraphView(withCycle.body.data).doc, sink.id, op.id, "material", () => "00000000-0000-4000-8000-0000000000e2");
+    const sent = toGraphIn(bad.doc);
+    const e = await failure(admin.put(`${base()}/graph`, { body: sent, ifMatch: withCycle.version! }));
+    expect(e.status).toBe(422);
+    expect(e.details.some((d) => d.rule_id === "VAL-GRAPH-004")).toBe(true);
+    expect(mapGraphErrors(e, sent)[0]).toMatchObject({ entity_id: "00000000-0000-4000-8000-0000000000e2" });
+
+    // 복원: 원래 직선 그래프로
+    const cur = await read();
+    const back = await admin.put<Schemas["Single_GraphOut_"]>(`${base()}/graph`, { body: toGraphIn(original), ifMatch: cur.version.rowVersion });
+    expect(back.status).toBe(200);
+    expect(parseLinear(toGraphView(back.body.data).doc)).not.toBeNull();
   });
 
   it("그래프 오류는 422이고 아무것도 저장하지 않으며 field_path(요청 본문 기준)가 간선 id로 매핑된다", async () => {

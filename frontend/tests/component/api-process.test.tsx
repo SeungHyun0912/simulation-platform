@@ -306,18 +306,18 @@ describe("공정 구조 편집 (직선)", () => {
 });
 
 describe("직선이 아닌 공정은 구조를 보존한다", () => {
-  it("단계 내용만 고칠 수 있고 노드·간선은 서버에서 받은 그대로 되돌려 보낸다", async () => {
+  it("단계 내용만 고치면 노드·간선은 서버에서 받은 그대로 되돌려 보낸다(표의 구조 편집은 직선 전용)", async () => {
     const user = userEvent.setup();
     const { server } = open(url(4, V4));
     await ready("P-004", 1);
     expect(screen.getByText("직선이 아닌 공정입니다")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "단계 추가" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /삭제$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "가닥 A 삭제" })).not.toBeInTheDocument(); // 단계 표의 삭제 버튼은 직선 전용
     expect(screen.getByRole("table", { name: "노드" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "간선" })).toBeInTheDocument();
     const before = structuredClone(graphOf(server, V4));
     await rename(user, "가닥 A", "가닥 A(수정)");
-    expect(screen.queryByLabelText("다음 위치")).not.toBeInTheDocument(); // 구조(다음 위치)는 편집하지 않는다
+    expect(screen.queryByLabelText("다음 위치")).not.toBeInTheDocument(); // 직선 전용 "다음 위치"는 편집하지 않는다
     await user.click(saveButton());
     await screen.findByText("공정을 저장했습니다.");
     const body = puts(server)[0]!.body;

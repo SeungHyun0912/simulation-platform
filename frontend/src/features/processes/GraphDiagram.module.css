@@ -1,0 +1,113 @@
+.wrap {
+  max-width: 100%;
+  padding: var(--space-2);
+  overflow: auto;
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.svg {
+  display: block;
+  font-family: var(--font-sans);
+}
+
+.node {
+  cursor: pointer;
+  outline: none;
+}
+
+.node rect {
+  fill: var(--color-surface);
+  stroke: var(--color-text-muted);
+  stroke-width: 1.5;
+}
+
+/* 종류는 색만이 아니라 글자(종류 이름)와 테두리 모양으로도 구분한다. */
+.operation rect {
+  fill: var(--status-info-bg);
+}
+
+.buffer rect {
+  fill: var(--status-neutral-bg);
+  stroke-dasharray: 5 3;
+}
+
+.source rect,
+.sink rect {
+  fill: var(--status-success-bg);
+}
+
+.join rect,
+.milestone rect {
+  fill: var(--status-warning-bg);
+}
+
+.node:focus-visible rect,
+.node:hover rect {
+  stroke: var(--color-focus);
+  stroke-width: 2.5;
+}
+
+.selected rect {
+  stroke: var(--color-primary);
+  stroke-width: 3;
+}
+
+.error rect {
+  stroke: var(--status-danger-fg);
+  stroke-width: 3;
+}
+
+.kind {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--color-text);
+}
+
+.edge {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.6;
+}
+
+.material {
+  stroke-dasharray: none;
+}
+
+.precedence {
+  stroke-dasharray: 7 4;
+}
+
+.supply {
+  stroke-dasharray: 2 4;
+}
+
+.back {
+  stroke: var(--status-warning-fg);
+}
+
+.edgeSelected {
+  stroke: var(--color-primary);
+  stroke-width: 3;
+}
+
+.arrow {
+  fill: var(--color-text-muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  list-style: none;
+}
