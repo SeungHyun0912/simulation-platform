@@ -1,10 +1,11 @@
 {
-  "contract_version": "0.3.1",
-  "openapi_sha256": "4821718a8971abafb26ca1d672b857cde18794fd1131b0bd07d87d8b49c23b5c",
+  "contract_version": "0.4.0",
+  "openapi_sha256": "1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45",
   "approved_scopes": [
     "project-assets-ports",
     "asset-revisions",
-    "products-materials"
+    "products-materials",
+    "process-versions"
   ],
   "generated_by": "openapi-typescript"
 }

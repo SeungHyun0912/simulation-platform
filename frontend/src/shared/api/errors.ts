@@ -77,6 +77,8 @@ export function classifyError(e: unknown): ErrorKind {
       return "state";
     case "PROJECT_CODE_CONFLICT":
     case "ASSET_CODE_CONFLICT":
+    case "PRODUCT_CODE_CONFLICT":
+    case "MATERIAL_CODE_CONFLICT":
       return "duplicate";
     case "VALIDATION_ERROR":
     case "INVALID_CURSOR":

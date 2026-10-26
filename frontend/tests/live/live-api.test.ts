@@ -1,4 +1,5 @@
 import { toAssetInfo, toRevisionDetail } from "../../src/features/assets/apiMappers";
+import { toProductView } from "../../src/features/products/productMappers";
 import { toMeView, toProjectView } from "../../src/features/projects/queries";
 import { createApiClient } from "../../src/shared/api/client";
 import { ApiError, classifyError } from "../../src/shared/api/errors";
@@ -150,5 +151,39 @@ describe.skipIf(!LIVE)("실제 API (읽기 전용)", () => {
     const e = await clientAs(ADMIN).get(`/projects/${PROJECT_A}/assets/not-a-uuid`).catch((x) => x);
     expect(e).toBeInstanceOf(ApiError);
     expect([404, 422]).toContain(e.status);
+  });
+});
+
+describe.skipIf(!LIVE)("실제 API: 제품 (읽기 전용, 시험 데이터 P-001~008)", () => {
+  it("제품 목록을 어댑터로 바꾼다: 규격 입력/미정(null)과 공정 요약 필드가 있다", async () => {
+    const r = await clientAs(ADMIN).get<Schemas["ListOut_ProductOut_"]>(`/projects/${PROJECT_A}/products`, { query: { limit: 50 } });
+    const items = r.body.data.map(toProductView);
+    expect(items.map((p) => p.code)).toEqual(expect.arrayContaining(["P-001", "P-002"]));
+    // 시험 데이터: 홀수는 규격 입력, 짝수는 규격 미정(null)
+    expect(items.find((p) => p.code === "P-001")!.specification).not.toBeNull();
+    expect(items.find((p) => p.code === "P-002")!.specification).toBeNull();
+    for (const p of items) {
+      expect(p.versions).toEqual([]);
+      expect(typeof p.rowVersion).toBe("number");
+    }
+  });
+
+  it("제품 상세와 검색·정렬이 서버에서 적용되고 프로젝트 B의 같은 코드 P-001과 격리된다", async () => {
+    const list = (await clientAs(ADMIN).get<Schemas["ListOut_ProductOut_"]>(`/projects/${PROJECT_A}/products`, { query: { q: "P-001" } })).body.data;
+    expect(list.map((p) => p.code)).toEqual(["P-001"]);
+    const one = await clientAs(ADMIN).get<Schemas["Single_ProductOut_"]>(`/projects/${PROJECT_A}/products/${list[0]!.id}`);
+    expect(toProductView(one.body.data).code).toBe("P-001");
+    expect(one.version).toBe(one.body.data.row_version); // ETag = row_version
+    const desc = (await clientAs(ADMIN).get<Schemas["ListOut_ProductOut_"]>(`/projects/${PROJECT_A}/products`, { query: { sort: "-code" } })).body.data;
+    expect(desc[0]!.code >= desc[1]!.code).toBe(true);
+    // A의 제품 id로 B를 조회하면 존재를 알리지 않고 404
+    const e = await clientAs(ADMIN).get(`/projects/${PROJECT_B}/products/${list[0]!.id}`).catch((x) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect(classifyError(e)).toBe("not-found");
+  });
+
+  it("조회자도 제품을 읽을 수 있다", async () => {
+    const r = await clientAs(VIEWER).get<Schemas["ListOut_ProductOut_"]>(`/projects/${PROJECT_A}/products`, { query: { limit: 3 } });
+    expect(r.body.data.length).toBe(3);
   });
 });
