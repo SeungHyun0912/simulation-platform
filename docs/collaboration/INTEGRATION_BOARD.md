@@ -112,6 +112,7 @@ ID는 중복 없이 조정자가 발급한다. 승인 전 작업을 자동 착�
 | DEC-001 | INT-F-001 | 프런트엔드 0.4.0 클라이언트가 그래프 저장 시 완제품 지정을 해제하는 상태를 "알려진 제한"으로 둘지, 합격 기준으로 둘지 | 없음 | 클라이언트 재생성 | 없음 | 사용자 | **결정: 알려진 제한**(2026-10-26 사용자). e382749에서 해소 확인 | 0.6.0 |
 | DEC-002 | INT-F-003 | STATUS·TASK_BOARD·README 낡은 서술 갱신 | 없음 | 없음 | 없음 | 조정자 | 변경 요청 제출(`docs/change-requests/CR-integration-20261026-doc-status-drift.md`), 조정자 검토 대기 | 해당 없음 |
 | DEC-003 | INT-F-002 | 시험 데이터(DEMO-A P-001·P-003·P-004)에 완제품 milestone을 두는 현재 시드를 유지할지(권장: 유지, FE가 직선 끝의 milestone을 처리하거나 live 테스트가 두 시드 세대 허용), 5노드 직선으로 되돌리고 milestone 표본을 별도 제품으로 분리할지 | 없음(시드 스크립트·시드 테스트만) | `parseLinear`·live 테스트 | 이미 시드된 개발 DB는 승인본 동결로 불변, 새 DB만 해당 | 조정자·사용자 | **결정 대기**(API 답변은 §13.3) | 해당 없음(0.6.0 변경 없음) |
+| DEC-004 | INT-F-002(UI 답변) | milestone(완제품 지정)이 있는 공정은 표의 "단계 추가"가 나오지 않고 "그래프 구성"의 "노드 추가"로 편집한다. 0.6.0 시드·실제 기준정보 대부분이 해당해 UX가 번거롭다. 표 어댑터가 직선 끝의 단일 milestone과 완제품 지정을 보존하며 직선으로 취급하도록 바꿀지(UI 설계 변경) | 없음 | `parseLinear`·표 편집기 | 없음 | 사용자·조정자 | **결정 대기**(UI 담당이 등록 요청, INT가 §7에 등록). 현재 동작은 의도된 것으로 확인 | 해당 없음(0.6.0 변경 없음) |
 
 결정 내용과 계약 파일이 불일치하면 작업을 차단하고 승인된 계약부터 갱신한다.
 통합 세션은 테스트 편의를 위해 요구사항·기대값을 바꾸지 않는다.
@@ -273,3 +274,26 @@ Mock 통과를 실제 연동 통과로 합산하지 않는다. FE 자체 live �
 
 ### 13.6 백엔드 전체 pytest 2회차
 `e382749`에서 `REQUIRE_DB=1 TEST_DATABASE_URL=…simulation_platform_intpytest_test pytest -q`(backend/): **490 passed, 경고 3건, 294 s**. 1회차 `0043d1b`는 478 passed. 증거 `tests/integration/evidence/20261026/round2-backend-pytest-full.log`. 백엔드 담당의 자체 보고와 같은 방향의 독립 재실행이며 API 계약 검증을 대체하지 않는다.
+
+### 13.7 3회차 재검증 — API·UI 답변 확인 (INT, 2026-10-26)
+기준: `origin/main`@`f4c3742`(PR #33 API 답변, PR #34 UI 답변·live 테스트 수정 병합, 충돌은 사용자가 해결). 계약 0.6.0 `509a71f1…38ef`, migration 0006. `e382749`→`f4c3742`에서 제품 코드(UI 변경은 `frontend/tests/live` 2개 파일)를 제외한 제품 코드(`backend/`·`frontend/src`·`contracts/`) 변경 없음.
+
+| 항목 | 방법·환경 | 결과 | 판정 |
+|---|---|---|---|
+| INT pytest(API↔전용 DB) | 저장소 루트, API 8100·전용 DB | 25 passed(`round3-pytest-api-db.log`) | **통과** |
+| INT vitest UI(jsdom↔API↔DB) | 동 | 10 passed(`round3-vitest-ui-live.log`) | **통과** |
+| **FE live 테스트(병합본 `f4c3742`)** | `LIVE_API=…8100 LIVE_WRITE=1 LIVE_APPROVE=1 pnpm test:live`, 새로 시드한 전용 DB | **55 passed, 0 failed**(이전 2건 실패 해소, `round3-fe-live-vitest-merged.log`). 병합 전 브랜치 파일로 먼저 확인한 같은 결과도 있음(`round3-fe-live-vitest-fe04b.log`) | **통과** |
+| FE typecheck / lint(병합본) | `pnpm typecheck`, `pnpm lint` | 종료 0 / 0 | 통과 |
+| API 답변의 사실 확인 | 커밋 `0d91d55`(2026-10-26 10:19 KST)의 `seed_demo_data.py`에 milestone·`completion_node_id` 추가 확인. 8100 DB에서 P-001 승인본·P-003 검토 중·P-004 승인본·초안: 6노드·milestone 1·완제품 지정, P-001·P-004 `run_template` 오류 0 | 답변과 일치. P-003은 의도된 검증 표본이라 오류 16 | 일치 |
+| API 답변 중 공유 개발 DB는 5노드·milestone 0 | **미확인**(INT는 공유 DB에 접근하지 않음, API 담당의 확인을 인용) | — | 미실행 |
+| BE-C0-04 재검증 방법 1~5 | `tests/simulation` 70 passed, 지정 3개 시나리오 포함 `test_shared_resources.py` 12 passed(`round3-engine-simulation.log`) | 인계의 기대와 일치. DB 없는 엔진 단위 시험이며 API·DB 검증이 아님 | **통과(엔진 범위)** |
+| BE-C0-04 재검증 방법 6(전체 회귀) | `e382749`(C0-04 포함)에서 백엔드 전체 490 passed(§13.6). `f4c3742`는 백엔드 코드 변경이 없어 재실행하지 않음 | 위 결과 인용 | 통과(`e382749`), `f4c3742` 전체 재실행은 미실행 |
+| BE-C0-04 재검증 방법 7(보드에 BE-C0-04 반영) | 보드 §9 API 행에 BE-C0-04 구현완료·검증대기 기록 확인. 정식 TASK ID는 조정자 발급 대기 | 반영됨 | 확인 |
+
+**INT-F-002 판정:** 원인은 API·UI 답변이 일치한다(시드가 0.6.0부터 milestone을 넣고 FE live 테스트가 직선 그래프를 가정). 제품 데이터·계약 결함이 아니다. UI 수정(live 테스트 가정 수정)은 **병합 후 재검증 통과**. UI의 "milestone 공정 표 편집 UX 한계"는 결함 후보로 인정되었고 사용자 결정(DEC-004)이 필요하다. DEC-003(시드 유지 여부)도 결정 대기. 따라서 결함으로서의 INT-F-002(새 DB에서 FE live 2건 실패)는 **해소(검증 완료)**, 남은 것은 DEC-003·DEC-004 결정이며 결정 전까지 상태는 "결정 대기"다.
+
+**병합 확인:** 보드에 API 답변(§13.3)과 UI 답변이 모두 남아 있고 충돌 표시가 없다(§9의 API·UI 행도 둘 다 반영).
+
+**관찰 INT-O-001(결함 단정 아님):** 빈 공정(P-002, 노드 0)의 `run_template` 검증이 오류 0(경고 3: `VAL-VER-001·002`, `VAL-GRAPH-010`)이다. 04 §4.1의 승격 규칙에 `VAL-GRAPH-010`(단계 없음)이 없어 명세와는 일치한다. 다만 "run_template 오류 0 = 실행 가능 표본"이라는 시드 테스트의 의도와 비교하면, 단계가 없는 공정이 실행 가능 판정으로 읽힐 수 있는지 조정자·API 담당이 확인하면 좋다. 우선순위 제안 P3.
+
+**미실행:** 프런트엔드 Mock 전체(`pnpm test`)와 백엔드 전체 pytest는 해당 코드 변경이 없거나 live 테스트뿐이라 재실행하지 않았다. T10, 실제 브라우저 E2E는 계속 미실행.
