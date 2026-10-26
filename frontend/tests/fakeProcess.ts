@@ -213,7 +213,7 @@ export function processSummaries(state: FakeState, productId: string) {
 const POS = /^(0|[1-9]\d*)(\.\d{1,6})?$/;
 
 /** 측정값 검사. 개수는 JSON 정수(1 이상), decimal은 0 초과 6자리까지(준비·대기 시간은 0 허용). */
-function measureError(m: any, path: string, kind: "decimal" | "count" | "duration"): FakeResponse | null {
+export function measureError(m: any, path: string, kind: "decimal" | "count" | "duration"): FakeResponse | null {
   if (m === undefined) return null;
   if (!m || !["unknown", "known", "not_applicable"].includes(m.mode)) return { status: 422, body: errorEnv(path, "측정값 모드가 올바르지 않습니다.") };
   if (m.mode !== "known") return m.value === undefined || m.value === null ? null : { status: 422, body: errorEnv(`${path}/value`, "known이 아니면 value를 보낼 수 없습니다.") };
