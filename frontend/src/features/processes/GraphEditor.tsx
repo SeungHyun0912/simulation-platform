@@ -11,6 +11,9 @@ import {
   SPACE_KINDS,
   connectedEdges,
   movementOf,
+  patchEdge,
+  specTitle,
+  stepOf,
   type EdgeKind,
   type GraphDoc,
   type GraphEdge,
@@ -21,6 +24,7 @@ import {
 import { edgeProblem } from "./processGraph";
 import { EDGE_KIND_LABELS, MOVEMENT_LABELS, NODE_KIND_LABELS, measureText } from "./processView";
 import type { AssetOptions } from "./queries";
+import type { MaterialOptions } from "../materials/queries";
 import styles from "./ProcessEditorPage.module.css";
 
 export type GraphEditorApi = {
@@ -29,17 +33,18 @@ export type GraphEditorApi = {
   removeNode: (id: string) => void;
   moveNode: (id: string, delta: -1 | 1) => void;
   addEdge: (from: string, to: string, kind: EdgeKind) => string;
-  patchEdge: (
-    id: string,
-    patch: { from_node_id?: string; to_node_id?: string; edge_kind?: EdgeKind; movement_rule?: MovementRule },
-  ) => void;
+  patchEdge: (id: string, patch: Parameters<typeof patchEdge>[2]) => void;
   removeEdge: (id: string) => void;
+  /** 완제품 판정 시점(milestone 노드, 미정은 null) */
+  setCompletion: (id: string | null) => void;
 };
 
 type Props = {
   doc: GraphDoc;
   editable: boolean;
   options: AssetOptions;
+  /** 재료 spec 이름 표시용 */
+  materials: MaterialOptions;
   /** entity_id별 서버·입력 검증 항목(노드·간선 행에 개수로 표시) */
   issues: Map<string, ValidationIssue[]>;
   api: GraphEditorApi;
@@ -73,7 +78,7 @@ const issueText = (list: ValidationIssue[] | undefined) => {
  * - 이동 규칙은 미정이 기본이고 직결 공급도 이동 시간을 0으로 가정하지 않는다.
  * - 좌표는 저장하지 않는다(도식은 자동 배치).
  */
-export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, selectedStepId }: Props) {
+export function GraphEditor({ doc, editable, options, materials, issues, api, onOpenStep, selectedStepId }: Props) {
   const [nodeId, setNodeId] = useState<string | null>(null);
   const [edgeId, setEdgeId] = useState<string | null>(null);
   const [deleteNode, setDeleteNode] = useState<string | null>(null);
@@ -88,6 +93,7 @@ export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, s
   const byId = new Map(doc.nodes.map((n) => [n.id, n]));
   const nodeName = (id: string) => byId.get(id)?.label || byId.get(id)?.node_key || id.slice(0, 8);
   const assetCode = (id: string | null | undefined) => (id ? (options.byId.get(id)?.code ?? id.slice(0, 8)) : null);
+  const milestones = nodes.filter((n) => n.kind === "milestone");
   const node = nodes.find((n) => n.id === nodeId) ?? null;
   const edge = doc.edges.find((e) => e.id === edgeId) ?? null;
   const deleting = nodes.find((n) => n.id === deleteNode) ?? null;
@@ -107,7 +113,11 @@ export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, s
 
   const nodeColumns: Column<GraphNode>[] = [
     { key: "order", header: "순서", align: "end", render: (n) => nodes.indexOf(n) + 1 },
-    { key: "kind", header: "종류", render: (n) => NODE_KIND_LABELS[n.kind] },
+    {
+      key: "kind",
+      header: "종류",
+      render: (n) => (doc.completion_node_id === n.id ? `${NODE_KIND_LABELS[n.kind]} · 완제품 지정` : NODE_KIND_LABELS[n.kind]),
+    },
     { key: "label", header: "이름", render: (n) => n.label || "(이름 없음)" },
     { key: "key", header: "키", render: (n) => <code>{n.node_key}</code> },
     {
@@ -163,6 +173,11 @@ export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, s
         const m = movementOf(e);
         return m.mode === "unknown" ? "미정" : `${MOVEMENT_LABELS[m.mode]} · ${measureText(m.duration_min, "분")}`;
       },
+    },
+    {
+      key: "specs",
+      header: "재료 연결",
+      render: (e) => (e.source_output_spec_key || e.target_input_spec_key ? `${e.source_output_spec_key ?? "-"} → ${e.target_input_spec_key ?? "-"}` : "없음"),
     },
     { key: "issues", header: "검증", render: (e) => issueText(issues.get(e.id)) },
     {
@@ -266,6 +281,7 @@ export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, s
         doc={doc}
         selectedNodeId={nodeId ?? selectedStepId}
         selectedEdgeId={edgeId}
+        completionId={doc.completion_node_id ?? null}
         errorIds={errorIds}
         onSelectNode={selectNode}
         onSelectEdge={(id) => {
@@ -301,6 +317,25 @@ export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, s
             </Button>
           </div>
         </fieldset>
+      )}
+
+      {milestones.length > 0 || doc.completion_node_id ? (
+        <SelectField
+          label="완제품 판정 노드"
+          hint="완제품이 되는 시점(완료 기준 노드)을 지정합니다. 미정이면 서버가 경고하고 실행 가능 검증에서는 오류입니다."
+          value={doc.completion_node_id ?? ""}
+          disabled={!editable}
+          onChange={(e) => api.setCompletion(e.target.value === "" ? null : e.target.value)}
+        >
+          <option value="">미정 (지정 안 함)</option>
+          {milestones.map((n) => (
+            <option key={n.id} value={n.id}>
+              {n.label || n.node_key}
+            </option>
+          ))}
+        </SelectField>
+      ) : (
+        editable && <Note>완제품 판정 시점을 지정하려면 먼저 "완료 기준" 노드를 추가하세요(지정하지 않으면 서버가 경고합니다).</Note>
       )}
 
       {nodes.length === 0 ? (
@@ -421,6 +456,57 @@ export function GraphEditor({ doc, editable, options, issues, api, onOpenStep, s
                 onChange={(m) => api.patchEdge(edge.id, { movement_rule: { mode: movementOf(edge).mode, duration_min: m } })}
               />
             )}
+            {(() => {
+              const from = byId.get(edge.from_node_id);
+              const to = byId.get(edge.to_node_id);
+              const kind = edge.edge_kind ?? "material";
+              const outs = from?.kind === "operation" ? stepOf(from).material_specs.filter((x) => x.direction === "output") : [];
+              const ins = to?.kind === "operation" ? stepOf(to).material_specs.filter((x) => x.direction === "input") : [];
+              const matName = (id: string) => materials.byId.get(id)?.name;
+              if (kind === "precedence") return <Note>선후 관계 간선에는 재료를 연결할 수 없습니다.</Note>;
+              if (from?.kind !== "operation" && to?.kind !== "operation")
+                return <Note>재료 연결은 공정 단계에 직접 이어진 간선에만 합니다(대기 공간을 사이에 둔 흐름에서는 단계에 붙은 간선에 연결).</Note>;
+              return (
+                <>
+                  {from?.kind === "operation" && (
+                    <SelectField
+                      label="출력 재료 연결 (시작 단계)"
+                      hint={outs.length === 0 ? "시작 단계에 산출 재료 spec이 없습니다. 단계 편집의 '투입·산출 재료'에서 추가하세요." : undefined}
+                      value={edge.source_output_spec_key ?? ""}
+                      onChange={(e) => api.patchEdge(edge.id, { source_output_spec_key: e.target.value === "" ? null : e.target.value })}
+                    >
+                      <option value="">연결 없음</option>
+                      {outs.map((s) => (
+                        <option key={s.spec_key} value={s.spec_key}>
+                          {specTitle(s, matName)}
+                        </option>
+                      ))}
+                      {edge.source_output_spec_key && !outs.some((s) => s.spec_key === edge.source_output_spec_key) && (
+                        <option value={edge.source_output_spec_key}>{edge.source_output_spec_key} (시작 단계에 없음)</option>
+                      )}
+                    </SelectField>
+                  )}
+                  {to?.kind === "operation" && (
+                    <SelectField
+                      label="입력 재료 연결 (끝 단계)"
+                      hint={ins.length === 0 ? "끝 단계에 투입 재료 spec이 없습니다. 단계 편집의 '투입·산출 재료'에서 추가하세요." : undefined}
+                      value={edge.target_input_spec_key ?? ""}
+                      onChange={(e) => api.patchEdge(edge.id, { target_input_spec_key: e.target.value === "" ? null : e.target.value })}
+                    >
+                      <option value="">연결 없음</option>
+                      {ins.map((s) => (
+                        <option key={s.spec_key} value={s.spec_key}>
+                          {specTitle(s, matName)}
+                        </option>
+                      ))}
+                      {edge.target_input_spec_key && !ins.some((s) => s.spec_key === edge.target_input_spec_key) && (
+                        <option value={edge.target_input_spec_key}>{edge.target_input_spec_key} (끝 단계에 없음)</option>
+                      )}
+                    </SelectField>
+                  )}
+                </>
+              );
+            })()}
           </fieldset>
           {edgeProblem(doc, edge.from_node_id, edge.to_node_id, edge.edge_kind ?? "material", edge.id) && (
             <Note>{edgeProblem(doc, edge.from_node_id, edge.to_node_id, edge.edge_kind ?? "material", edge.id)}</Note>

@@ -12,6 +12,8 @@ export type GraphNode = Schemas["GraphNode"];
 export type GraphEdge = Schemas["GraphEdge"];
 export type GraphIn = Schemas["GraphIn"];
 export type RequirementDto = Schemas["RequirementDto"];
+/** 단계가 받고 내보내는 재료의 상태·수량(0.6.0). 길이·중량·단위 수·가닥 수는 서로 환산하거나 섞지 않는다. */
+export type MaterialSpec = Schemas["MaterialSpecDto"];
 export type TimingRule = Schemas["TimingRule"];
 export type OutputRule = Schemas["OutputRule"];
 export type Processing = NonNullable<TimingRule["processing"]>;
@@ -24,6 +26,7 @@ export type FullStep = Omit<StepDto, "timing_rule" | "input_rule" | "output_rule
   handoff_rule: NonNullable<StepDto["handoff_rule"]>;
   residual_rule: NonNullable<StepDto["residual_rule"]>;
   resources: RequirementDto[];
+  material_specs: MaterialSpec[];
 };
 
 /**
@@ -125,6 +128,7 @@ export function emptyStep(): FullStep {
       physical_join_mode: "unknown",
     },
     resources: [],
+    material_specs: [],
   };
 }
 
@@ -141,6 +145,7 @@ export function stepOf(node: GraphNode): FullStep {
     handoff_rule: { ...base.handoff_rule, ...s.handoff_rule },
     residual_rule: { ...base.residual_rule, ...s.residual_rule },
     resources: s.resources ?? [],
+    material_specs: s.material_specs ?? [],
   };
 }
 
@@ -432,7 +437,14 @@ export function addEdge(
 export function patchEdge(
   doc: GraphDoc,
   id: string,
-  patch: { from_node_id?: string; to_node_id?: string; edge_kind?: EdgeKind; movement_rule?: MovementRule },
+  patch: {
+    from_node_id?: string;
+    to_node_id?: string;
+    edge_kind?: EdgeKind;
+    movement_rule?: MovementRule;
+    source_output_spec_key?: string | null;
+    target_input_spec_key?: string | null;
+  },
 ): GraphDoc {
   return {
     ...doc,
@@ -458,4 +470,51 @@ export function removeEdge(doc: GraphDoc, edgeId: string): GraphDoc {
 /** 서버 기본값(미정)을 채운 이동 규칙. direct_feed도 이동 시간을 0으로 가정하지 않는다(03 §7). */
 export function movementOf(e: GraphEdge): { mode: NonNullable<MovementRule["mode"]>; duration_min: DurationMeasure } {
   return { mode: e.movement_rule?.mode ?? "unknown", duration_min: e.movement_rule?.duration_min ?? { mode: "unknown" } };
+}
+
+/* ---------------- 완제품 지정·재료 spec·간선 spec 연결(계약 0.6.0) ---------------- */
+
+/** 완제품 판정 시점 지정. milestone 노드만 가능하며 null은 미정이다(서버가 경고 VAL-GRAPH-014). */
+export function setCompletion(doc: GraphDoc, nodeId: string | null): GraphDoc {
+  if (nodeId !== null && doc.nodes.find((n) => n.id === nodeId)?.kind !== "milestone") return doc;
+  return { ...doc, completion_node_id: nodeId };
+}
+
+/**
+ * 새 재료 spec. 값은 모두 미정(0이 아님)으로 시작하고 spec_key는 단계 안에서 입력·출력 공통으로 유일하다.
+ * 키는 만든 뒤 바꾸지 않는다(간선 연결이 key로 이어지므로).
+ */
+export function newMaterialSpec(direction: MaterialSpec["direction"], existing: readonly MaterialSpec[], newId: () => string = () => crypto.randomUUID()): MaterialSpec {
+  const prefix = direction === "input" ? "in" : "out";
+  let key = `${prefix}-${shortId(newId())}`;
+  for (let i = 2; existing.some((s) => s.spec_key === key); i++) key = `${prefix}-${shortId(newId())}-${i}`;
+  return {
+    spec_key: key,
+    direction,
+    material_definition_id: null,
+    state_code: null,
+    form: null,
+    length_m: { mode: "unknown" },
+    weight_kg: { mode: "unknown" },
+    unit_count: { mode: "unknown" },
+    strand_count: { mode: "unknown" },
+    quantity_basis: "unknown",
+  };
+}
+
+/** 이 노드의 spec 중 간선이 연결해 둔 key(제거하거나 방향을 바꾸면 서버가 422 VAL-SPEC-005) */
+export function linkedSpecKeys(doc: GraphDoc, nodeId: string): Set<string> {
+  const keys = new Set<string>();
+  for (const e of doc.edges) {
+    if (e.from_node_id === nodeId && e.source_output_spec_key) keys.add(e.source_output_spec_key);
+    if (e.to_node_id === nodeId && e.target_input_spec_key) keys.add(e.target_input_spec_key);
+  }
+  return keys;
+}
+
+/** spec의 표시 이름: 재료가 정해졌으면 재료, 아니면 상태·형태, 없으면 키 */
+export function specTitle(spec: MaterialSpec, materialName?: (id: string) => string | undefined): string {
+  const material = spec.material_definition_id ? materialName?.(spec.material_definition_id) : undefined;
+  const detail = [material, spec.state_code, spec.form].filter(Boolean).join(" · ");
+  return detail ? `${spec.spec_key} (${detail})` : spec.spec_key;
 }

@@ -394,6 +394,20 @@ export function validateStepInput(node: GraphNode, order: number): ValidationIss
   check(o?.weight_kg, "산출 중량", "positive", "kg", "/output_rule/weight_kg");
   check(o?.unit_count, "산출 수량", "count", "item", "/output_rule/unit_count");
 
+  const seenSpec = new Set<string>();
+  (step.material_specs ?? []).forEach((m, i) => {
+    const base = `/material_specs/${i}`;
+    const name = `${m.direction === "input" ? "투입" : "산출"} 재료 ${m.spec_key}`;
+    if (seenSpec.has(m.spec_key)) err(`${name}: 재료 spec 키가 중복됩니다.`, `${base}/spec_key`);
+    seenSpec.add(m.spec_key);
+    check(m.length_m, `${name} 길이`, "positive", "m", `${base}/length_m`);
+    check(m.weight_kg, `${name} 중량`, "positive", "kg", `${base}/weight_kg`);
+    check(m.unit_count, `${name} 단위 수`, "count", "item", `${base}/unit_count`);
+    check(m.strand_count, `${name} 가닥 수`, "count", "item", `${base}/strand_count`);
+    if ((m.state_code ?? "").length > 100) err(`${name}: 상태는 100자 이하여야 합니다.`, `${base}/state_code`);
+    if ((m.form ?? "").length > 50) err(`${name}: 형태는 50자 이하여야 합니다.`, `${base}/form`);
+  });
+
   (step.resources ?? []).forEach((r, i) => {
     const base = `/resources/${i}`;
     if ((r.role_key ?? "").trim() === "") err("자원 역할 이름을 입력하세요.", `${base}/role_key`);

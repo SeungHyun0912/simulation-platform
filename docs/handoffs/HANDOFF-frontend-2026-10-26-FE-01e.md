@@ -49,7 +49,7 @@
 - BE-REQ-015(공정 CR) `확인(BE)` 대기: 내 의견이 구현된 0.4.0과 어긋나는 곳이 있는지.
 
 ## 상대 담당자에게 필요한 조치
-- Backend: 개발 서버 재기동 여부 알림(이 파일 BE-REQ-014 방식), BE-REQ-015 `확인(BE)` 작성. 요청 상세는 `request-from-frontend.md`의 BE-REQ-017(FE 자체 기록).
+- Backend: 개발 서버 재기동 여부 알림(이 파일 BE-REQ-014 방식), BE-REQ-015 `확인(BE)` 작성. 요청 상세는 `request-from-frontend.md`의 FE-REC-017.
 
 ## 다음 세션의 첫 작업
 - 서버가 떠 있으면 `$env:LIVE_API="http://127.0.0.1:8000/api/v1"; pnpm test:live`로 읽기 전용 라이브 테스트 실행(쓰기는 사용자 허락 후, 시험 자산·제품 하나로 최소 범위).

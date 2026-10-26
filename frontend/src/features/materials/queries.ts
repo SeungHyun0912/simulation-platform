@@ -1,4 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useQuery, type InfiniteData } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 import { useApiClient, useDataSource } from "../../shared/api/ApiContext";
 import { ApiError } from "../../shared/api/errors";
 import { failure, fromQuery, pending, success, type Loadable } from "../../shared/api/loadable";
@@ -104,4 +105,50 @@ export function useMaterialDetail(projectId: string, materialId: string): Loadab
     return found ? success(found) : failure(new ApiError({ status: 404, code: "NOT_FOUND", message: "찾을 수 없습니다." }));
   }
   return fromQuery(query, (d) => d);
+}
+
+export type MaterialOption = { id: string; code: string; name: string; form: string };
+export type MaterialOptions = { options: MaterialOption[]; byId: Map<string, MaterialOption>; complete: boolean };
+
+const toOption = (m: MaterialView): MaterialOption => ({ id: m.id, code: m.code, name: m.name, form: m.form });
+
+/**
+ * 공정 단계의 재료 spec에서 고를 재료 선택지. 재료가 50건을 넘어도 잘리지 않게 모든 페이지를 이어서 받는다.
+ * 보관된 재료는 새로 고르지 못하게 선택지에서 빼되, 이미 지정된 재료는 id로 찾을 수 있게 `byId`에는 남긴다.
+ */
+export function useMaterialOptions(projectId: string): Loadable<MaterialOptions> {
+  const source = useDataSource();
+  const client = useApiClient();
+  const q = useInfiniteQuery({
+    queryKey: projectKey(projectId, source, "material-options"),
+    enabled: source === "api" && projectId !== "",
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: MaterialPage) => last.nextCursor ?? undefined,
+    queryFn: async ({ pageParam, signal }): Promise<MaterialPage> => {
+      const r = await client.get<Schemas["ListOut_MaterialOut_"]>(`/projects/${projectId}/materials`, {
+        // 보관된 재료도 받아 이미 지정된 재료의 이름을 찾는다(선택지에서는 뺀다)
+        query: { limit: 200, cursor: pageParam, sort: "code", include_archived: "true" },
+        signal,
+      });
+      return { items: r.body.data.map(toMaterialView), nextCursor: r.body.page.next_cursor };
+    },
+  });
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = q;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const data = q.data;
+  const built = useMemo(() => {
+    const all = source === "static" ? SAMPLE_MATERIALS : (data?.pages.flatMap((p) => p.items) ?? []);
+    return {
+      options: all.filter((m) => !m.archivedAt).map(toOption),
+      byId: new Map(all.map((m) => [m.id, toOption(m)])),
+    };
+  }, [source, data]);
+
+  if (source === "static") return success({ ...built, complete: true });
+  if (q.status === "pending") return pending;
+  if (q.status === "error") return { status: "error", error: q.error, retry: () => void q.refetch() };
+  return { status: "success", data: { ...built, complete: !hasNextPage }, refreshing: false };
 }

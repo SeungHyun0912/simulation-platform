@@ -21,8 +21,9 @@ import { formatDateTime } from "../../shared/format/datetime";
 import { canApprove, canEdit, projectRoleLabel } from "../projects/projectView";
 import { useProjectTimezone } from "../projects/queries";
 import { useCurrentProject } from "../projects/useCurrentProject";
+import { useMaterialOptions, type MaterialOptions } from "../materials/queries";
 import { useProductDetail } from "../products/queries";
-import { parseLinear, nextLocationOf, operationsInOrder, stepOf, type GraphDoc, type GraphNode } from "./processDoc";
+import { linkedSpecKeys, parseLinear, nextLocationOf, operationsInOrder, stepOf, type GraphDoc, type GraphNode } from "./processDoc";
 import { GraphEditor } from "./GraphEditor";
 import { validateGraphStructure } from "./processGraph";
 import {
@@ -55,6 +56,7 @@ export function ProcessEditorPage() {
   const product = useProductDetail(projectId, productId);
   const detail = useProcessDetail(projectId, productId, versionId);
   const options = useAssetOptions(projectId);
+  const materials = useMaterialOptions(projectId);
 
   const header = (title: string) => (
     <PageHeader
@@ -93,7 +95,7 @@ export function ProcessEditorPage() {
     );
 
   // 존재하지 않거나 접근할 수 없는 제품·버전은 서버가 구분 없이 404를 준다. 형식이 틀린 id(422)도 같은 화면으로 처리한다.
-  for (const r of [product, detail, options]) {
+  for (const r of [product, detail, options, materials]) {
     if (r.status === "error") {
       const kind = classifyError(r.error);
       const notFound = kind === "not-found" || kind === "validation";
@@ -111,14 +113,14 @@ export function ProcessEditorPage() {
       );
     }
   }
-  if (product.status === "pending" || detail.status === "pending" || options.status === "pending")
+  if (product.status === "pending" || detail.status === "pending" || options.status === "pending" || materials.status === "pending")
     return (
       <>
         {header("공정")}
         <StateNotice kind="loading" />
       </>
     );
-  if (product.status !== "success" || detail.status !== "success" || options.status !== "success") return null;
+  if (product.status !== "success" || detail.status !== "success" || options.status !== "success" || materials.status !== "success") return null;
 
   // key로 프로젝트·버전이 바뀌면 입력 중인 편집 상태를 완전히 버린다.
   return (
@@ -127,6 +129,7 @@ export function ProcessEditorPage() {
       version={detail.data.version}
       graph={detail.data.graph}
       options={options.data}
+      materials={materials.data}
       projectId={projectId}
       projectLabel={projectLabel}
       productCode={product.data.code}
@@ -158,6 +161,7 @@ function ProcessEditor({
   version,
   graph,
   options,
+  materials,
   projectId,
   projectLabel,
   productCode,
@@ -168,6 +172,7 @@ function ProcessEditor({
   version: ProcessVersionView;
   graph: ProcessGraphView;
   options: AssetOptions;
+  materials: MaterialOptions;
   projectId: string;
   projectLabel: string;
   productCode: string;
@@ -246,6 +251,15 @@ function ProcessEditor({
     { key: "processing", header: "처리", render: (n) => processingText(stepOf(n)) },
     { key: "setup", header: "준비", render: (n) => setupText(stepOf(n)) },
     { key: "output", header: "산출", render: (n) => outputText(stepOf(n)) },
+    {
+      key: "specs",
+      header: "재료 spec",
+      render: (n) => {
+        const specs = stepOf(n).material_specs;
+        const inCount = specs.filter((s) => s.direction === "input").length;
+        return specs.length === 0 ? "없음" : `투입 ${inCount} · 산출 ${specs.length - inCount}`;
+      },
+    },
     { key: "next", header: "다음 위치", render: (n) => nextText(doc, n, options) },
     {
       key: "issues",
@@ -557,6 +571,8 @@ function ProcessEditor({
           spaceOptions={options.spaces}
           assetById={options.byId}
           optionsComplete={options.complete}
+          materials={materials}
+          linkedSpecKeys={linkedSpecKeys(doc, editing.id)}
           nextLocation={chain ? nextLocationOf(chain, editing.id) : null}
           onLabel={(label) => editor.setLabel(editing.id, label)}
           onStep={(fn) => editor.editStep(editing.id, (s) => fn(s))}
@@ -569,6 +585,7 @@ function ProcessEditor({
         doc={doc}
         editable={editable}
         options={options}
+        materials={materials}
         issues={byEntity}
         selectedStepId={editingId}
         onOpenStep={(id) => setEditingId(id === "" ? null : id)}
@@ -580,6 +597,7 @@ function ProcessEditor({
           addEdge: editor.addGraphEdge,
           patchEdge: editor.patchGraphEdge,
           removeEdge: editor.removeGraphEdge,
+          setCompletion: editor.setCompletionNode,
         }}
       />
 

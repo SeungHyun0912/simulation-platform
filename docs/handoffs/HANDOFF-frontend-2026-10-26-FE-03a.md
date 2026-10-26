@@ -50,7 +50,7 @@
 - BE-REQ-015·018·019·020 `확인(BE)` 대기.
 
 ## 상대 담당자에게 필요한 조치
-- Backend: `request-from-frontend.md`의 BE-REQ-020을 읽고 `확인(BE)`를 남겨 주세요. 시험 데이터 초기화 시 P-007·FE-LIVE-M1·P-006 흔적을 알려 주세요.
+- Backend: `request-from-frontend.md`의 FE-REC-020을 읽고 `확인(BE)`를 남겨 주세요. 시험 데이터 초기화 시 P-007·FE-LIVE-M1·P-006 흔적을 알려 주세요.
 
 ## 다음 세션의 첫 작업
 - 사용자 선택: 프로젝트 생성·수정 연동, 반응형 레이아웃 복원(보류 해제), 공정 이동 규칙 `network_route` 세부 입력 등 계약 후속.
