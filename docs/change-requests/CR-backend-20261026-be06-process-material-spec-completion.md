@@ -1,6 +1,6 @@
 # CR-backend-20261026-be06-process-material-spec-completion
 - 요청자: Backend / 작업 BE-04c / 대상: contracts/04 §4.1(공정 버전), 03 §5·§8, ERD §5(`step_material_spec`·`flow_edge` spec 연결·`process_version.completion_node_id`)
-- 상태: **구현·승격됨(contract 0.6.0)** — 사용자가 "다음 과정 진행해 줘. 확인이 필요한 사항들은 모두 그대로 진행하면 될 것 같아"(2026-10-26)라고 지시한 것을 §5의 권장안 승인으로 **해석**했다(명시적 "be06 승인"·CR 머지 없음, FE 의견 없음 → 사용자·FE가 정정 가능). 0.5.0과 호환(추가 필드만, 단 PUT 전체 교체 주의는 §4).
+- 상태: **BE-04c 구현·승격됨(contract 0.6.0)** — 사용자가 "다음 과정 진행해 줘. 확인이 필요한 사항들은 모두 그대로 진행하면 될 것 같아"(2026-10-26)라고 지시한 것을 §5의 권장안 승인으로 **해석**했다(명시적 "be06 승인"·CR 머지 없음, FE 의견 없음 → 사용자·FE가 정정 가능). 0.5.0과 호환(추가 필드만, 단 PUT 전체 교체 주의는 §4).
 - 선행: CR be04 §7의 04c. 0.5.0은 `main`에 게시되어 있으며 이 CR은 게시된 계약을 바꾸지 않는다.
 
 ## 1. 왜 지금 필요한가
@@ -51,3 +51,11 @@
 1. migration 0006: `step_material_spec`, `flow_edge` spec 연결 컬럼·복합 FK(방향까지 DB가 강제), `process_version.completion_node_id`(milestone 노드만, 동결 대상) + 자식 가드 트리거.
 2. 순수 규칙(구조 검증·경고)·diff 확장 → 서비스·API → DB 통합 테스트 → 계약 0.6.0 승격(스냅샷·해시·예제·CHANGELOG·04 §4.1.2).
 3. 실제 기준정보 시드의 공정을 새 필드로 옮기고(`notes`의 구조화 가능한 값 제거) 이미 만든 개발 DB의 draft 공정에 멱등하게 보충한다.
+
+## 7. 구현 결과와 CR 원안과의 차이 (BE-04c, 2026-10-26)
+- 구현: migration 0006(`step_material_spec`, `flow_edge` spec 연결 컬럼, `process_version.completion_node_id`), 계약 0.6.0(operation 변경 없음, 선택 필드 추가). 증거는 `docs/handoffs/HANDOFF-backend-20261026-BE-04c.md`.
+- **DB가 강제하는 것(원안은 서비스 검증만 말했음):** 간선의 spec 연결은 상수 방향 컬럼을 포함한 복합 FK로 "spec이 간선 끝점 단계에 속함"과 "output/input 방향"을 DB가 직접 강제한다. 완제품 지정도 같은 방식으로 milestone 노드만 가리킨다. 그래프 저장 순서는 완제품 해제 → 간선 → spec → 단계 → 노드 삭제다.
+- **결정 적용:** §5의 5개 결정은 권장안 그대로(범위 3가지, 값 객체, `spec_key` 연결, 그래프 PUT의 `completion_node_id`, 미정은 knowledge 경고+run 오류).
+- **원안에서 구체화한 것:** (a) 단계가 하나도 없는 그래프에는 `VAL-GRAPH-014` 경고를 내지 않는다. (b) 입력 spec이 둘인 단계는 간선마다 `target_input_spec_key`로 구분한다(P04 싱글 메인: 선행 직결 `pre` + 공급 `feed`). (c) 단계 PATCH의 spec 교체는 `spec_key`로 맞춰 id를 유지한다(연결이 끊기지 않음). (d) `output_rule`과 spec은 서로 자동 검증하지 않는다(물량 보존 판정은 범위 밖).
+- **여전히 제외:** `input_match_policy`·`condition_rule`·`execution_rule`·`parameter_override`(값 구조 미정의), join 준비 조건, 분할/합류 allocate 규칙.
+- **실제 기준정보 시드 연계:** `seed_wire_factory.py`가 4가지 공정의 단계별 투입·산출 수량, 12가닥 공급, 간선 연결, 완제품 milestone(P04~P06; P01~P03은 문서에 없어 미정)을 새 필드로 만들고, 이미 만든 개발 DB의 draft 6건에는 멱등하게 보충했다.

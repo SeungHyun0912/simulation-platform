@@ -1,0 +1,224 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000028/steps/00000000-0000-4000-8000-000000000030",
+    "headers": {
+      "If-Match": "\"2\""
+    },
+    "body": {
+      "material_specs": [
+        {
+          "spec_key": "raw",
+          "direction": "input",
+          "state_code": "원자재",
+          "form": "보빈",
+          "weight_kg": {
+            "mode": "known",
+            "value": "3300"
+          },
+          "unit_count": {
+            "mode": "known",
+            "value": 11
+          },
+          "quantity_basis": "per_operation"
+        },
+        {
+          "spec_key": "bobbin",
+          "direction": "output",
+          "state_code": "절연 후",
+          "form": "보빈",
+          "length_m": {
+            "mode": "known",
+            "value": "1200"
+          },
+          "unit_count": {
+            "mode": "known",
+            "value": 3
+          },
+          "quantity_basis": "per_input_unit"
+        },
+        {
+          "spec_key": "scrap",
+          "direction": "output",
+          "state_code": "폐기",
+          "weight_kg": {
+            "mode": "known",
+            "value": "300"
+          }
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"3\""
+    },
+    "body": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "label": "[시험] insulate",
+        "row_version": 3,
+        "step": {
+          "operation_type": "output_units_by_time",
+          "handler_version": "1",
+          "timing_rule": {
+            "processing": {
+              "kind": "output_speed",
+              "speed_m_per_min": {
+                "mode": "known",
+                "value": "30"
+              },
+              "basis": "per_stream",
+              "output_schedule": "sequential_units",
+              "parallel_streams": {
+                "mode": "known",
+                "value": 1
+              }
+            },
+            "setup": {
+              "duration_min": {
+                "mode": "not_applicable",
+                "value": null
+              },
+              "trigger": "not_applicable"
+            },
+            "precondition_delay": {
+              "duration_min": {
+                "mode": "not_applicable",
+                "value": null
+              },
+              "trigger": "not_applicable",
+              "occupancy": "unknown"
+            }
+          },
+          "input_rule": {
+            "acquire_scope": "per_operation",
+            "consume_policy": "consume"
+          },
+          "output_rule": {
+            "mode": "configured_units",
+            "unit_form": null,
+            "length_m": {
+              "mode": "known",
+              "value": "1000"
+            },
+            "weight_kg": {
+              "mode": "unknown",
+              "value": null
+            },
+            "unit_count": {
+              "mode": "known",
+              "value": 2
+            },
+            "quantity_basis": "per_operation",
+            "schedule": "sequential_units",
+            "accounting_mode": "physical"
+          },
+          "handoff_rule": {
+            "mode": "per_output_unit"
+          },
+          "residual_rule": {
+            "mode": "unknown",
+            "on_product_change": "unknown",
+            "on_run_end": "unknown",
+            "scope": "unknown",
+            "physical_join_mode": "unknown"
+          },
+          "resources": [
+            {
+              "role_key": "main",
+              "resource_kind": "equipment",
+              "selection_mode": "one_of",
+              "required_count": 1,
+              "capacity_mode": "finite",
+              "allocation_rule": {
+                "mode": "unknown"
+              },
+              "candidates": [
+                {
+                  "asset_id": "00000000-0000-4000-8000-000000000003",
+                  "eligibility_status": "confirmed"
+                }
+              ]
+            }
+          ],
+          "material_specs": [
+            {
+              "spec_key": "raw",
+              "direction": "input",
+              "material_definition_id": null,
+              "state_code": "원자재",
+              "form": "보빈",
+              "length_m": {
+                "mode": "unknown",
+                "value": null
+              },
+              "weight_kg": {
+                "mode": "known",
+                "value": "3300"
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 11
+              },
+              "strand_count": {
+                "mode": "unknown",
+                "value": null
+              },
+              "quantity_basis": "per_operation"
+            },
+            {
+              "spec_key": "bobbin",
+              "direction": "output",
+              "material_definition_id": null,
+              "state_code": "절연 후",
+              "form": "보빈",
+              "length_m": {
+                "mode": "known",
+                "value": "1200"
+              },
+              "weight_kg": {
+                "mode": "unknown",
+                "value": null
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 3
+              },
+              "strand_count": {
+                "mode": "unknown",
+                "value": null
+              },
+              "quantity_basis": "per_input_unit"
+            },
+            {
+              "spec_key": "scrap",
+              "direction": "output",
+              "material_definition_id": null,
+              "state_code": "폐기",
+              "form": null,
+              "length_m": {
+                "mode": "unknown",
+                "value": null
+              },
+              "weight_kg": {
+                "mode": "known",
+                "value": "300"
+              },
+              "unit_count": {
+                "mode": "unknown",
+                "value": null
+              },
+              "strand_count": {
+                "mode": "unknown",
+                "value": null
+              },
+              "quantity_basis": "unknown"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

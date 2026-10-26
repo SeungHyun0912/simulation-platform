@@ -1,0 +1,720 @@
+{
+  "request": {
+    "method": "PUT",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000028/graph",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000029",
+          "node_key": "src",
+          "kind": "source",
+          "label": "[시험] 원자재",
+          "display_order": 0
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000030",
+          "node_key": "insulate",
+          "kind": "operation",
+          "label": "[시험] insulate",
+          "display_order": 1,
+          "step": {
+            "operation_type": "output_units_by_time",
+            "handler_version": "1",
+            "timing_rule": {
+              "processing": {
+                "kind": "output_speed",
+                "speed_m_per_min": {
+                  "mode": "known",
+                  "value": "30"
+                },
+                "basis": "per_stream",
+                "output_schedule": "sequential_units",
+                "parallel_streams": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              "setup": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable"
+              },
+              "precondition_delay": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable",
+                "occupancy": "unknown"
+              }
+            },
+            "input_rule": {
+              "acquire_scope": "per_operation",
+              "consume_policy": "consume"
+            },
+            "output_rule": {
+              "mode": "configured_units",
+              "length_m": {
+                "mode": "known",
+                "value": "1000"
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 2
+              },
+              "quantity_basis": "per_operation",
+              "schedule": "sequential_units",
+              "accounting_mode": "physical"
+            },
+            "handoff_rule": {
+              "mode": "per_output_unit"
+            },
+            "resources": [
+              {
+                "role_key": "main",
+                "candidates": [
+                  {
+                    "asset_id": "00000000-0000-4000-8000-000000000003",
+                    "eligibility_status": "confirmed"
+                  }
+                ]
+              }
+            ],
+            "material_specs": [
+              {
+                "spec_key": "raw",
+                "direction": "input",
+                "state_code": "원자재",
+                "form": "보빈",
+                "weight_kg": {
+                  "mode": "known",
+                  "value": "3300"
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 11
+                },
+                "quantity_basis": "per_operation"
+              },
+              {
+                "spec_key": "bobbin",
+                "direction": "output",
+                "state_code": "절연 후",
+                "form": "보빈",
+                "length_m": {
+                  "mode": "known",
+                  "value": "1000"
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 3
+                },
+                "quantity_basis": "per_input_unit"
+              }
+            ]
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000031",
+          "node_key": "wait",
+          "kind": "buffer",
+          "label": "[시험] 대기 공간",
+          "asset_id": "00000000-0000-4000-8000-000000000006",
+          "display_order": 2
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000032",
+          "node_key": "sheath",
+          "kind": "operation",
+          "label": "[시험] sheath",
+          "display_order": 3,
+          "step": {
+            "operation_type": "output_units_by_time",
+            "handler_version": "1",
+            "timing_rule": {
+              "processing": {
+                "kind": "output_speed",
+                "speed_m_per_min": {
+                  "mode": "known",
+                  "value": "30"
+                },
+                "basis": "per_stream",
+                "output_schedule": "sequential_units",
+                "parallel_streams": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              "setup": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable"
+              },
+              "precondition_delay": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable",
+                "occupancy": "unknown"
+              }
+            },
+            "input_rule": {
+              "acquire_scope": "per_operation",
+              "consume_policy": "consume"
+            },
+            "output_rule": {
+              "mode": "configured_units",
+              "length_m": {
+                "mode": "known",
+                "value": "1000"
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 2
+              },
+              "quantity_basis": "per_operation",
+              "schedule": "sequential_units",
+              "accounting_mode": "physical"
+            },
+            "handoff_rule": {
+              "mode": "per_output_unit"
+            },
+            "resources": [
+              {
+                "role_key": "main",
+                "candidates": [
+                  {
+                    "asset_id": "00000000-0000-4000-8000-000000000003",
+                    "eligibility_status": "confirmed"
+                  }
+                ]
+              }
+            ],
+            "material_specs": [
+              {
+                "spec_key": "in",
+                "direction": "input",
+                "state_code": "절연 후",
+                "length_m": {
+                  "mode": "known",
+                  "value": "1000"
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              {
+                "spec_key": "strands",
+                "direction": "output",
+                "state_code": "공급 준비",
+                "form": "가닥",
+                "strand_count": {
+                  "mode": "known",
+                  "value": 12
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000033",
+          "node_key": "complete",
+          "kind": "milestone",
+          "label": "[시험] 완제품(쉬스 완료)",
+          "display_order": 4
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000034",
+          "node_key": "sink",
+          "kind": "sink",
+          "label": "[시험] 출고",
+          "display_order": 5
+        }
+      ],
+      "edges": [
+        {
+          "id": "00000000-0000-4000-8000-000000000035",
+          "edge_key": "src-insulate",
+          "from_node_id": "00000000-0000-4000-8000-000000000029",
+          "to_node_id": "00000000-0000-4000-8000-000000000030",
+          "edge_kind": "material",
+          "target_input_spec_key": "raw"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000040",
+          "edge_key": "insulate-wait",
+          "from_node_id": "00000000-0000-4000-8000-000000000030",
+          "to_node_id": "00000000-0000-4000-8000-000000000031",
+          "edge_kind": "material",
+          "source_output_spec_key": "bobbin"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000037",
+          "edge_key": "wait-sheath",
+          "from_node_id": "00000000-0000-4000-8000-000000000031",
+          "to_node_id": "00000000-0000-4000-8000-000000000032",
+          "edge_kind": "material",
+          "target_input_spec_key": "in"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000038",
+          "edge_key": "sheath-complete",
+          "from_node_id": "00000000-0000-4000-8000-000000000032",
+          "to_node_id": "00000000-0000-4000-8000-000000000033",
+          "edge_kind": "material",
+          "source_output_spec_key": "strands"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000039",
+          "edge_key": "complete-sink",
+          "from_node_id": "00000000-0000-4000-8000-000000000033",
+          "to_node_id": "00000000-0000-4000-8000-000000000034",
+          "edge_kind": "material"
+        }
+      ],
+      "completion_node_id": "00000000-0000-4000-8000-000000000033"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"2\""
+    },
+    "body": {
+      "data": {
+        "process_version_id": "00000000-0000-4000-8000-000000000028",
+        "row_version": 2,
+        "nodes": [
+          {
+            "id": "00000000-0000-4000-8000-000000000029",
+            "node_key": "src",
+            "kind": "source",
+            "label": "[시험] 원자재",
+            "asset_id": null,
+            "display_order": 0,
+            "step": null
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000030",
+            "node_key": "insulate",
+            "kind": "operation",
+            "label": "[시험] insulate",
+            "asset_id": null,
+            "display_order": 1,
+            "step": {
+              "operation_type": "output_units_by_time",
+              "handler_version": "1",
+              "timing_rule": {
+                "processing": {
+                  "kind": "output_speed",
+                  "speed_m_per_min": {
+                    "mode": "known",
+                    "value": "30"
+                  },
+                  "basis": "per_stream",
+                  "output_schedule": "sequential_units",
+                  "parallel_streams": {
+                    "mode": "known",
+                    "value": 1
+                  }
+                },
+                "setup": {
+                  "duration_min": {
+                    "mode": "not_applicable",
+                    "value": null
+                  },
+                  "trigger": "not_applicable"
+                },
+                "precondition_delay": {
+                  "duration_min": {
+                    "mode": "not_applicable",
+                    "value": null
+                  },
+                  "trigger": "not_applicable",
+                  "occupancy": "unknown"
+                }
+              },
+              "input_rule": {
+                "acquire_scope": "per_operation",
+                "consume_policy": "consume"
+              },
+              "output_rule": {
+                "mode": "configured_units",
+                "unit_form": null,
+                "length_m": {
+                  "mode": "known",
+                  "value": "1000"
+                },
+                "weight_kg": {
+                  "mode": "unknown",
+                  "value": null
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 2
+                },
+                "quantity_basis": "per_operation",
+                "schedule": "sequential_units",
+                "accounting_mode": "physical"
+              },
+              "handoff_rule": {
+                "mode": "per_output_unit"
+              },
+              "residual_rule": {
+                "mode": "unknown",
+                "on_product_change": "unknown",
+                "on_run_end": "unknown",
+                "scope": "unknown",
+                "physical_join_mode": "unknown"
+              },
+              "resources": [
+                {
+                  "role_key": "main",
+                  "resource_kind": "equipment",
+                  "selection_mode": "one_of",
+                  "required_count": 1,
+                  "capacity_mode": "finite",
+                  "allocation_rule": {
+                    "mode": "unknown"
+                  },
+                  "candidates": [
+                    {
+                      "asset_id": "00000000-0000-4000-8000-000000000003",
+                      "eligibility_status": "confirmed"
+                    }
+                  ]
+                }
+              ],
+              "material_specs": [
+                {
+                  "spec_key": "raw",
+                  "direction": "input",
+                  "material_definition_id": null,
+                  "state_code": "원자재",
+                  "form": "보빈",
+                  "length_m": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "weight_kg": {
+                    "mode": "known",
+                    "value": "3300"
+                  },
+                  "unit_count": {
+                    "mode": "known",
+                    "value": 11
+                  },
+                  "strand_count": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "quantity_basis": "per_operation"
+                },
+                {
+                  "spec_key": "bobbin",
+                  "direction": "output",
+                  "material_definition_id": null,
+                  "state_code": "절연 후",
+                  "form": "보빈",
+                  "length_m": {
+                    "mode": "known",
+                    "value": "1000"
+                  },
+                  "weight_kg": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "unit_count": {
+                    "mode": "known",
+                    "value": 3
+                  },
+                  "strand_count": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "quantity_basis": "per_input_unit"
+                }
+              ]
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000031",
+            "node_key": "wait",
+            "kind": "buffer",
+            "label": "[시험] 대기 공간",
+            "asset_id": "00000000-0000-4000-8000-000000000006",
+            "display_order": 2,
+            "step": null
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000032",
+            "node_key": "sheath",
+            "kind": "operation",
+            "label": "[시험] sheath",
+            "asset_id": null,
+            "display_order": 3,
+            "step": {
+              "operation_type": "output_units_by_time",
+              "handler_version": "1",
+              "timing_rule": {
+                "processing": {
+                  "kind": "output_speed",
+                  "speed_m_per_min": {
+                    "mode": "known",
+                    "value": "30"
+                  },
+                  "basis": "per_stream",
+                  "output_schedule": "sequential_units",
+                  "parallel_streams": {
+                    "mode": "known",
+                    "value": 1
+                  }
+                },
+                "setup": {
+                  "duration_min": {
+                    "mode": "not_applicable",
+                    "value": null
+                  },
+                  "trigger": "not_applicable"
+                },
+                "precondition_delay": {
+                  "duration_min": {
+                    "mode": "not_applicable",
+                    "value": null
+                  },
+                  "trigger": "not_applicable",
+                  "occupancy": "unknown"
+                }
+              },
+              "input_rule": {
+                "acquire_scope": "per_operation",
+                "consume_policy": "consume"
+              },
+              "output_rule": {
+                "mode": "configured_units",
+                "unit_form": null,
+                "length_m": {
+                  "mode": "known",
+                  "value": "1000"
+                },
+                "weight_kg": {
+                  "mode": "unknown",
+                  "value": null
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 2
+                },
+                "quantity_basis": "per_operation",
+                "schedule": "sequential_units",
+                "accounting_mode": "physical"
+              },
+              "handoff_rule": {
+                "mode": "per_output_unit"
+              },
+              "residual_rule": {
+                "mode": "unknown",
+                "on_product_change": "unknown",
+                "on_run_end": "unknown",
+                "scope": "unknown",
+                "physical_join_mode": "unknown"
+              },
+              "resources": [
+                {
+                  "role_key": "main",
+                  "resource_kind": "equipment",
+                  "selection_mode": "one_of",
+                  "required_count": 1,
+                  "capacity_mode": "finite",
+                  "allocation_rule": {
+                    "mode": "unknown"
+                  },
+                  "candidates": [
+                    {
+                      "asset_id": "00000000-0000-4000-8000-000000000003",
+                      "eligibility_status": "confirmed"
+                    }
+                  ]
+                }
+              ],
+              "material_specs": [
+                {
+                  "spec_key": "in",
+                  "direction": "input",
+                  "material_definition_id": null,
+                  "state_code": "절연 후",
+                  "form": null,
+                  "length_m": {
+                    "mode": "known",
+                    "value": "1000"
+                  },
+                  "weight_kg": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "unit_count": {
+                    "mode": "known",
+                    "value": 1
+                  },
+                  "strand_count": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "quantity_basis": "unknown"
+                },
+                {
+                  "spec_key": "strands",
+                  "direction": "output",
+                  "material_definition_id": null,
+                  "state_code": "공급 준비",
+                  "form": "가닥",
+                  "length_m": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "weight_kg": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "unit_count": {
+                    "mode": "unknown",
+                    "value": null
+                  },
+                  "strand_count": {
+                    "mode": "known",
+                    "value": 12
+                  },
+                  "quantity_basis": "unknown"
+                }
+              ]
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000033",
+            "node_key": "complete",
+            "kind": "milestone",
+            "label": "[시험] 완제품(쉬스 완료)",
+            "asset_id": null,
+            "display_order": 4,
+            "step": null
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000034",
+            "node_key": "sink",
+            "kind": "sink",
+            "label": "[시험] 출고",
+            "asset_id": null,
+            "display_order": 5,
+            "step": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000000-0000-4000-8000-000000000039",
+            "edge_key": "complete-sink",
+            "from_node_id": "00000000-0000-4000-8000-000000000033",
+            "to_node_id": "00000000-0000-4000-8000-000000000034",
+            "edge_kind": "material",
+            "movement_rule": {
+              "mode": "unknown",
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": null
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000040",
+            "edge_key": "insulate-wait",
+            "from_node_id": "00000000-0000-4000-8000-000000000030",
+            "to_node_id": "00000000-0000-4000-8000-000000000031",
+            "edge_kind": "material",
+            "movement_rule": {
+              "mode": "unknown",
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              }
+            },
+            "source_output_spec_key": "bobbin",
+            "target_input_spec_key": null
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000038",
+            "edge_key": "sheath-complete",
+            "from_node_id": "00000000-0000-4000-8000-000000000032",
+            "to_node_id": "00000000-0000-4000-8000-000000000033",
+            "edge_kind": "material",
+            "movement_rule": {
+              "mode": "unknown",
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              }
+            },
+            "source_output_spec_key": "strands",
+            "target_input_spec_key": null
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000035",
+            "edge_key": "src-insulate",
+            "from_node_id": "00000000-0000-4000-8000-000000000029",
+            "to_node_id": "00000000-0000-4000-8000-000000000030",
+            "edge_kind": "material",
+            "movement_rule": {
+              "mode": "unknown",
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": "raw"
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000037",
+            "edge_key": "wait-sheath",
+            "from_node_id": "00000000-0000-4000-8000-000000000031",
+            "to_node_id": "00000000-0000-4000-8000-000000000032",
+            "edge_kind": "material",
+            "movement_rule": {
+              "mode": "unknown",
+              "duration_min": {
+                "mode": "unknown",
+                "value": null
+              }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": "in"
+          }
+        ],
+        "completion_node_id": "00000000-0000-4000-8000-000000000033",
+        "issues": [
+          {
+            "severity": "warning",
+            "rule_id": "VAL-VER-001",
+            "entity_id": "00000000-0000-4000-8000-000000000028",
+            "field_path": "/raw_unit_spec",
+            "message": "원자재 기본 단위가 미정입니다.",
+            "resolution": null
+          },
+          {
+            "severity": "warning",
+            "rule_id": "VAL-VER-002",
+            "entity_id": "00000000-0000-4000-8000-000000000028",
+            "field_path": "/finished_unit_spec",
+            "message": "완제품 단위가 미정입니다.",
+            "resolution": null
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,301 @@
+{
+  "request": {
+    "method": "PUT",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000028/graph",
+    "headers": {
+      "If-Match": "\"1\""
+    },
+    "body": {
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000029",
+          "node_key": "src",
+          "kind": "source",
+          "label": "[시험] 원자재",
+          "display_order": 0
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000030",
+          "node_key": "insulate",
+          "kind": "operation",
+          "label": "[시험] insulate",
+          "display_order": 1,
+          "step": {
+            "operation_type": "output_units_by_time",
+            "handler_version": "1",
+            "timing_rule": {
+              "processing": {
+                "kind": "output_speed",
+                "speed_m_per_min": {
+                  "mode": "known",
+                  "value": "30"
+                },
+                "basis": "per_stream",
+                "output_schedule": "sequential_units",
+                "parallel_streams": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              "setup": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable"
+              },
+              "precondition_delay": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable",
+                "occupancy": "unknown"
+              }
+            },
+            "input_rule": {
+              "acquire_scope": "per_operation",
+              "consume_policy": "consume"
+            },
+            "output_rule": {
+              "mode": "configured_units",
+              "length_m": {
+                "mode": "known",
+                "value": "1000"
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 2
+              },
+              "quantity_basis": "per_operation",
+              "schedule": "sequential_units",
+              "accounting_mode": "physical"
+            },
+            "handoff_rule": {
+              "mode": "per_output_unit"
+            },
+            "resources": [
+              {
+                "role_key": "main",
+                "candidates": [
+                  {
+                    "asset_id": "00000000-0000-4000-8000-000000000003",
+                    "eligibility_status": "confirmed"
+                  }
+                ]
+              }
+            ],
+            "material_specs": [
+              {
+                "spec_key": "raw",
+                "direction": "input",
+                "state_code": "원자재",
+                "form": "보빈",
+                "weight_kg": {
+                  "mode": "known",
+                  "value": "3300"
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 11
+                },
+                "quantity_basis": "per_operation"
+              },
+              {
+                "spec_key": "bobbin",
+                "direction": "output",
+                "state_code": "절연 후",
+                "form": "보빈",
+                "length_m": {
+                  "mode": "known",
+                  "value": "1000"
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 3
+                },
+                "quantity_basis": "per_input_unit"
+              }
+            ]
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000031",
+          "node_key": "wait",
+          "kind": "buffer",
+          "label": "[시험] 대기 공간",
+          "asset_id": "00000000-0000-4000-8000-000000000006",
+          "display_order": 2
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000032",
+          "node_key": "sheath",
+          "kind": "operation",
+          "label": "[시험] sheath",
+          "display_order": 3,
+          "step": {
+            "operation_type": "output_units_by_time",
+            "handler_version": "1",
+            "timing_rule": {
+              "processing": {
+                "kind": "output_speed",
+                "speed_m_per_min": {
+                  "mode": "known",
+                  "value": "30"
+                },
+                "basis": "per_stream",
+                "output_schedule": "sequential_units",
+                "parallel_streams": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              "setup": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable"
+              },
+              "precondition_delay": {
+                "duration_min": {
+                  "mode": "not_applicable"
+                },
+                "trigger": "not_applicable",
+                "occupancy": "unknown"
+              }
+            },
+            "input_rule": {
+              "acquire_scope": "per_operation",
+              "consume_policy": "consume"
+            },
+            "output_rule": {
+              "mode": "configured_units",
+              "length_m": {
+                "mode": "known",
+                "value": "1000"
+              },
+              "unit_count": {
+                "mode": "known",
+                "value": 2
+              },
+              "quantity_basis": "per_operation",
+              "schedule": "sequential_units",
+              "accounting_mode": "physical"
+            },
+            "handoff_rule": {
+              "mode": "per_output_unit"
+            },
+            "resources": [
+              {
+                "role_key": "main",
+                "candidates": [
+                  {
+                    "asset_id": "00000000-0000-4000-8000-000000000003",
+                    "eligibility_status": "confirmed"
+                  }
+                ]
+              }
+            ],
+            "material_specs": [
+              {
+                "spec_key": "in",
+                "direction": "input",
+                "state_code": "절연 후",
+                "length_m": {
+                  "mode": "known",
+                  "value": "1000"
+                },
+                "unit_count": {
+                  "mode": "known",
+                  "value": 1
+                }
+              },
+              {
+                "spec_key": "strands",
+                "direction": "output",
+                "state_code": "공급 준비",
+                "form": "가닥",
+                "strand_count": {
+                  "mode": "known",
+                  "value": 12
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000033",
+          "node_key": "complete",
+          "kind": "milestone",
+          "label": "[시험] 완제품(쉬스 완료)",
+          "display_order": 4
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000034",
+          "node_key": "sink",
+          "kind": "sink",
+          "label": "[시험] 출고",
+          "display_order": 5
+        }
+      ],
+      "edges": [
+        {
+          "id": "00000000-0000-4000-8000-000000000035",
+          "edge_key": "src-insulate",
+          "from_node_id": "00000000-0000-4000-8000-000000000029",
+          "to_node_id": "00000000-0000-4000-8000-000000000030",
+          "edge_kind": "material",
+          "target_input_spec_key": "raw"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000036",
+          "edge_key": "insulate-wait",
+          "from_node_id": "00000000-0000-4000-8000-000000000030",
+          "to_node_id": "00000000-0000-4000-8000-000000000031",
+          "edge_kind": "material",
+          "source_output_spec_key": "raw"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000037",
+          "edge_key": "wait-sheath",
+          "from_node_id": "00000000-0000-4000-8000-000000000031",
+          "to_node_id": "00000000-0000-4000-8000-000000000032",
+          "edge_kind": "material",
+          "target_input_spec_key": "in"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000038",
+          "edge_key": "sheath-complete",
+          "from_node_id": "00000000-0000-4000-8000-000000000032",
+          "to_node_id": "00000000-0000-4000-8000-000000000033",
+          "edge_kind": "material",
+          "source_output_spec_key": "strands"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000039",
+          "edge_key": "complete-sink",
+          "from_node_id": "00000000-0000-4000-8000-000000000033",
+          "to_node_id": "00000000-0000-4000-8000-000000000034",
+          "edge_kind": "material"
+        }
+      ],
+      "completion_node_id": "00000000-0000-4000-8000-000000000033"
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "그래프 구조가 올바르지 않습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "from 노드 단계에 output spec 'raw'가 없습니다.",
+            "severity": "error",
+            "rule_id": "VAL-SPEC-002",
+            "field_path": "/edges/1/source_output_spec_key"
+          }
+        ]
+      }
+    }
+  }
+}

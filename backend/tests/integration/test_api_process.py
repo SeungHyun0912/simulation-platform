@@ -1053,7 +1053,7 @@ def test_material_of_the_same_project_can_be_referenced(client, ctx):
 def test_put_without_the_new_fields_clears_them_because_put_replaces_everything(client, ctx):
     """0.5.0 이하 화면이 새 필드를 모르고 저장하면 spec·간선 연결·완제품 지정이 지워진다(계약 문서의 주의)."""
     version, graph, _ = spec_version(client, ctx)
-    old_style = {"nodes": [{**n, "step": None if n["step"] is None else {
+    old_style = {"nodes": [{**n, "step": None if n.get("step") is None else {
         k: v for k, v in n["step"].items() if k != "material_specs"}} for n in graph["nodes"]],
         "edges": [{k: v for k, v in e.items() if not k.endswith("_spec_key")} for e in graph["edges"]]}
     current = get_version(client, ctx, version["id"])

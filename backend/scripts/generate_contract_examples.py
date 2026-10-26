@@ -314,6 +314,63 @@ def main(out_dir: Path) -> None:
     diff_path = f"{draft_path}/diff?against={version_id}"
     r = client.get(diff_path, headers=base)
     record("process-version.diff", "GET", diff_path, r)
+
+    # --- 재료 spec·간선 spec 연결·완제품 지정 (contract 0.6.0) ------------------------------------
+    r = client.post(products, json={"code": "P-003", "name": "[시험] 제품 3 (재료 spec 예시)"}, headers=base)
+    spec_versions = f"{products}/{r.json()['data']['id']}/process-versions"
+    r = client.post(spec_versions, headers=base)
+    spec_path = f"{api}/projects/{pid}/process-versions/{r.json()['data']['id']}"
+
+    def mspec(key, direction, **fields):
+        return {"spec_key": key, "direction": direction, **fields}
+
+    first = operation("insulate", 1, eq_id)
+    first["step"]["material_specs"] = [
+        mspec("raw", "input", state_code="원자재", form="보빈", weight_kg=known("3300"),
+              unit_count=known(11), quantity_basis="per_operation"),
+        mspec("bobbin", "output", state_code="절연 후", form="보빈", length_m=known("1000"),
+              unit_count=known(3), quantity_basis="per_input_unit")]
+    second = operation("sheath", 3, eq_id)
+    second["step"]["material_specs"] = [
+        mspec("in", "input", state_code="절연 후", length_m=known("1000"), unit_count=known(1)),
+        mspec("strands", "output", state_code="공급 준비", form="가닥", strand_count=known(12))]
+    done = {"id": str(uuid.uuid4()), "node_key": "complete", "kind": "milestone",
+            "label": "[시험] 완제품(쉬스 완료)", "display_order": 4}
+    spec_nodes = [
+        {"id": str(uuid.uuid4()), "node_key": "src", "kind": "source", "label": "[시험] 원자재",
+         "display_order": 0},
+        first,
+        {"id": str(uuid.uuid4()), "node_key": "wait", "kind": "buffer", "label": "[시험] 대기 공간",
+         "asset_id": st_id, "display_order": 2},
+        second, done,
+        {"id": str(uuid.uuid4()), "node_key": "sink", "kind": "sink", "label": "[시험] 출고",
+         "display_order": 5}]
+
+    def link(a, b, **keys):
+        return {"id": str(uuid.uuid4()), "edge_key": f"{a['node_key']}-{b['node_key']}",
+                "from_node_id": a["id"], "to_node_id": b["id"], "edge_kind": "material", **keys}
+
+    spec_edges = [
+        link(spec_nodes[0], first, target_input_spec_key="raw"),
+        link(first, spec_nodes[2], source_output_spec_key="bobbin"),
+        link(spec_nodes[2], second, target_input_spec_key="in"),
+        link(second, done, source_output_spec_key="strands"),
+        link(done, spec_nodes[5])]
+    bad_link = {"nodes": spec_nodes, "edges": [
+        spec_edges[0], {**spec_edges[1], "id": str(uuid.uuid4()), "source_output_spec_key": "raw"},
+        *spec_edges[2:]], "completion_node_id": done["id"]}  # raw는 input spec이라 출력으로 연결할 수 없다
+    r = client.put(f"{spec_path}/graph", json=bad_link, headers=match(1))
+    record("error.spec-link-invalid", "PUT", f"{spec_path}/graph", r, bad_link, {"If-Match": '"1"'})
+    with_specs = {"nodes": spec_nodes, "edges": spec_edges, "completion_node_id": done["id"]}
+    r = client.put(f"{spec_path}/graph", json=with_specs, headers=match(1))
+    record("process-graph.put-with-specs", "PUT", f"{spec_path}/graph", r, with_specs, {"If-Match": '"1"'})
+    revised = {"material_specs": [
+        first["step"]["material_specs"][0],
+        {**first["step"]["material_specs"][1], "length_m": known("1200")},
+        mspec("scrap", "output", state_code="폐기", weight_kg=known("300"))]}
+    spec_step_path = f"{spec_path}/steps/{first['id']}"
+    r = client.patch(spec_step_path, json=revised, headers=match(2))
+    record("process-step.patch-material-specs", "PATCH", spec_step_path, r, revised, {"If-Match": '"2"'})
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 

@@ -6,7 +6,8 @@
 - 서로 다른 공정 흐름은 4가지다: 실리콘 공통 경로(P01~P03, 값만 다름), P04(AL), P05(CU 세선), P06(CU 태선).
 - 모르는 값은 unknown으로 둔다(0·무제한·해당 없음으로 바꾸지 않는다). 후보 설비는 설비 한 대로 지정된 경우만 `confirmed`,
   여러 호기 중 선택은 "사용 가능 호기 미확정"이므로 `unknown`이다(문서 §2·§9-8). 용량·좌표·운반 자원은 모두 미정이라 만들지 않는다.
-- 현재 계약 0.5.0에 필드가 없는 값(단계별 투입 수량, 폐기량, 12가닥 공급 등)은 버전 메모(notes)에 문서 근거와 함께 남긴다.
+- 단계별 투입·산출 수량·12가닥 공급은 단계의 재료 spec, 간선은 spec 연결, 완제품 시점은 milestone 지정으로 만든다(계약 0.6.0).
+  계약에 필드가 없는 값(폐기량 등)은 버전 메모(notes)에 문서 근거와 함께 남긴다.
 - 시험 데이터(`seed_demo_data.py`, "[시험]" 이름)와 분리된 별도 프로젝트이며 재실행해도 중복 생성하지 않는다(멱등).
 - 운영(APP_ENV=production)에서는 실행을 거부한다.
 """
@@ -160,6 +161,28 @@ INSPECTOR = {"role_key": "inspector", "resource_kind": "worker", "selection_mode
              "candidates": []}
 
 
+def msp(key, direction, state, *, form="보빈", basis="per_operation", **quantity) -> dict:
+    """재료 spec(계약 0.6.0). 길이(length_m)·중량(weight_kg)은 decimal, 개수(unit_count)·가닥(strand_count)은 정수다.
+    길이·중량·보빈 수·가닥 수를 서로 환산하거나 섞지 않는다."""
+    spec = {"spec_key": key, "direction": direction, "state_code": state, "form": form,
+            "quantity_basis": basis}
+    for name, value in quantity.items():
+        spec[name] = count(value) if name in ("unit_count", "strand_count") else known(value)
+    return spec
+
+
+def io(inp: dict, out: dict, *, src_state, dst_state, src_form="보빈", dst_form="보빈",
+       dst_basis="per_operation") -> list[dict]:
+    """한 단계의 입력 spec `in`과 출력 spec `out`. 문서의 투입·산출 열을 그대로 옮긴다."""
+    return [msp("in", "input", src_state, form=src_form, **inp),
+            msp("out", "output", dst_state, form=dst_form, basis=dst_basis, **out)]
+
+
+def _keys(node: dict, direction: str) -> set[str]:
+    return {m["spec_key"] for m in (node["step"] or {}).get("material_specs", [])
+            if m["direction"] == direction}
+
+
 class Route:
     """한 제품의 그래프(노드·간선)를 만든다. 노드·간선 id는 새 UUID, node_key는 버전 안에서 유일."""
 
@@ -167,6 +190,9 @@ class Route:
         self.assets = assets
         self.nodes: list[dict] = []
         self.edges: list[dict] = []
+        self.completion: str | None = None  # 완제품으로 판정하는 milestone 노드 id
+        # 입력 spec이 여럿인 단계: {단계 node_key: {앞 노드 node_key: 입력 spec_key}}(기본은 "in")
+        self.input_keys: dict[str, dict[str, str]] = {}
 
     def _add(self, key, kind, label, asset=None, step=None) -> dict:
         node = {"id": str(uuid.uuid4()), "node_key": key, "kind": kind, "label": label,
@@ -182,13 +208,15 @@ class Route:
         return self._add("sink", "sink", label)
 
     def milestone(self, label):
-        return self._add("complete", "milestone", label)
+        node = self._add("complete", "milestone", label)
+        self.completion = node["id"]
+        return node
 
     def space(self, code, suffix="") -> dict:
         return self._add(f"{code.lower()}{suffix}", "buffer", f"{code} {SPACE_NAME[code]}", code)
 
     def op(self, key, label, handler, equipment, *, processing, setup=SETUP_UNKNOWN, delay=DELAY_UNKNOWN,
-           output=None, handoff="unknown", residual=None, worker=False) -> dict:
+           output=None, handoff="unknown", residual=None, worker=False, specs=None) -> dict:
         resources = []
         if equipment:
             status = "confirmed" if len(equipment) == 1 else "unknown"
@@ -202,7 +230,7 @@ class Route:
         step = {"operation_type": handler, "handler_version": "1",
                 "timing_rule": {"processing": processing, "setup": setup, "precondition_delay": delay},
                 "output_rule": output or out_pass(), "handoff_rule": {"mode": handoff},
-                "resources": resources}
+                "resources": resources, "material_specs": specs or []}
         if residual:
             step["residual_rule"] = residual
         return self._add(key, "operation", label, step=step)
@@ -223,70 +251,105 @@ class Route:
         for a, b in itertools.pairwise(nodes):
             self.link(a, b)
 
+    def _link_specs(self) -> None:
+        """단계에 붙은 간선에 재료 spec을 연결한다: 앞 단계의 `out` → 간선 → 뒤 단계의 입력 spec."""
+        by_id = {n["id"]: n for n in self.nodes}
+        for edge in self.edges:
+            origin, target = by_id[edge["from_node_id"]], by_id[edge["to_node_id"]]
+            if "out" in _keys(origin, "output"):
+                edge["source_output_spec_key"] = "out"
+            wanted = self.input_keys.get(target["node_key"], {}).get(origin["node_key"], "in")
+            if wanted in _keys(target, "input"):
+                edge["target_input_spec_key"] = wanted
+
     def graph(self) -> dict:
-        return {"nodes": self.nodes, "edges": self.edges}
+        self._link_specs()
+        return {"nodes": self.nodes, "edges": self.edges, "completion_node_id": self.completion}
 
 
-def inspect_op(r: Route, *, worker: bool, handoff: str, setup=SETUP_UNKNOWN, delay=DELAY_UNKNOWN):
+def inspect_op(r: Route, *, worker: bool, handoff: str, setup=SETUP_UNKNOWN, delay=DELAY_UNKNOWN,
+               specs=None):
     return r.op("inspect", "육안 검사", "inspection", [], processing=per_unit(10, "sequential_units"),
-                setup=setup, delay=delay, output=out_pass(), handoff=handoff, worker=worker)
+                setup=setup, delay=delay, output=out_pass(), handoff=handoff, worker=worker, specs=specs)
 
 
 # --- 공정 1: 실리콘 공통 경로(P01~P03, §4) -------------------------------------------------------
-def silicon(assets, *, bobbins, sheath_len, sheath_units, carry) -> dict:
+def silicon(assets, *, raw_len, bobbins, sheath_len, sheath_units, carry) -> dict:
     r = Route(assets)
     residual = ({"mode": "carry_same_product", "on_product_change": "discard", "on_run_end": "unknown",
                  "scope": "unknown", "physical_join_mode": "abstract_length_pool"} if carry else None)
+    bobbin = {"length_m": "1000", "unit_count": 1}
+    final = {"length_m": str(sheath_len), "unit_count": 1}
     chain = [
         r.source("원자재 (2t 롤)", "ST-001"), r.space("ST-002"),
         r.op("insulate", "절연 압출", "split_length", codes(1), processing=speed(20),
-             output=out_split(1000, bobbins)),
+             output=out_split(1000, bobbins),
+             specs=io({"length_m": str(raw_len), "weight_kg": "2000", "unit_count": 1},
+                      {"length_m": "1000", "unit_count": bobbins}, src_state="원자재", dst_state="절연 후",
+                      src_form="롤")),
         r.space("ST-004"),
-        r.op("braid", "실리콘 편조", "pass_through_length", codes(3, 10), processing=speed(1.5)),
-        r.op("tape", "실리콘 테이핑", "pass_through_length", codes(11, 12), processing=speed(20)),
+        r.op("braid", "실리콘 편조", "pass_through_length", codes(3, 10), processing=speed(1.5),
+             specs=io(bobbin, bobbin, src_state="절연 후", dst_state="편조 후")),
+        r.op("tape", "실리콘 테이핑", "pass_through_length", codes(11, 12), processing=speed(20),
+             specs=io(bobbin, bobbin, src_state="편조 후", dst_state="테이핑 후")),
         r.op("sheath", "쉬스 압출", "split_length", codes(2), processing=speed(15),
-             output=out_split(sheath_len, sheath_units, "per_lot"), residual=residual),
+             output=out_split(sheath_len, sheath_units, "per_lot"), residual=residual,
+             specs=io(bobbin, {"length_m": str(sheath_len), "unit_count": sheath_units},
+                      src_state="테이핑 후", dst_state="쉬스 후", dst_basis="per_lot")),
         r.space("ST-003"),
-        inspect_op(r, worker=False, handoff="unknown"),
+        inspect_op(r, worker=False, handoff="unknown",
+                   specs=io(final, final, src_state="쉬스 후", dst_state="검사 후")),
         r.sink("완제품"),
     ]
     r.chain(*chain)
-    return r.graph()
+    return r.graph()  # 완제품 판정 시점은 문서에 없어 completion_node_id는 미정(null)
 
 
 # --- 공정 2: P04 HV_조사_태선(AL) (§5) ------------------------------------------------------------
 def p04(assets) -> dict:
     r = Route(assets)
     N = {"handoff": "per_output_unit", "delay": DELAY_NONE}
-    src, st018 = r.source("원자재 (개당 2t)", "ST-017"), None
+    b4000 = {"length_m": "4000", "unit_count": 1}
+    src = r.source("원자재 (개당 2t)", "ST-017")
     multi = r.op("multi", "AL 멀티신선", "output_units_by_time", codes(89), processing=speed(100, single_stream=False),
-                 setup=setup_minutes(120), output=out_units(40000, 12), **N)
+                 setup=setup_minutes(120), output=out_units(40000, 12),
+                 specs=io({"weight_kg": "2000", "unit_count": 2}, {"length_m": "40000", "unit_count": 12},
+                          src_state="원자재", dst_state="멀티신선 후", src_form="원자재"), **N)
     st018 = r.space("ST-018")
     double = r.op("double", "AL 더블 집합", "split_length", codes(90, 93), processing=speed(100),
-                  setup=SETUP_NONE, output=out_split(4000, 10), **N)
+                  setup=SETUP_NONE, output=out_split(4000, 10),
+                  specs=io({"length_m": "40000", "unit_count": 1}, {"length_m": "4000", "unit_count": 10},
+                           src_state="멀티신선 후", dst_state="더블 집합 후"), **N)
     st019 = r.space("ST-019")
     pre = r.op("single-pre", "싱글-1 선행 가공", "pass_through_length", codes(94), processing=speed(4.4),
-               setup=SETUP_NONE, **N)
+               setup=SETUP_NONE, specs=io(b4000, b4000, src_state="더블 집합 후", dst_state="선행 가공 후"), **N)
     feed = r.op("single-feed", "싱글-12 공급 준비", "supply_delay", codes(95), processing=NO_PROCESSING,
                 setup=SETUP_NONE, delay={"duration_min": known(120), "trigger": "unknown",
                                          "occupancy": "unknown"},
-                handoff="total_batch")
+                handoff="total_batch",
+                specs=[msp("in", "input", "더블 집합 후", length_m="4000", unit_count=12),
+                       msp("out", "output", "공급 준비", form="가닥", strand_count=12)])
     main = r.op("single-main", "싱글 메인 집합", "configured_yield", codes(96),
                 processing=speed(32, single_stream=False), setup=SETUP_NONE,
-                output=out_units(4000, 10, "abstract_yield"), **N)
+                output=out_units(4000, 10, "abstract_yield"),
+                specs=[msp("pre", "input", "선행 가공 후", **b4000),
+                       msp("feed", "input", "공급 준비", form="가닥", strand_count=12),
+                       msp("out", "output", "싱글 집합 후", length_m="4000", unit_count=10)], **N)
+    r.input_keys["single-main"] = {"single-pre": "pre", "single-feed": "feed"}
     st020, fork = r.space("ST-020"), r.transport("forklift", "지게차", "ST-020", "ST-021")
     st021, amr = r.space("ST-021"), r.transport("amr", "AMR", "ST-021", "ST-008")
     st008 = r.space("ST-008")
     insulate = r.op("insulate", "절연", "pass_through_length", codes(32, 33), processing=speed(50),
-                    setup=SETUP_NONE, **N)
+                    setup=SETUP_NONE, specs=io(b4000, b4000, src_state="싱글 집합 후", dst_state="절연 후"), **N)
     st011 = r.space("ST-011")
     irradiate = r.op("irradiate", "보빈 조사", "pass_through_length", codes(36), processing=speed(110),
-                     setup=SETUP_NONE, **N)
+                     setup=SETUP_NONE, specs=io(b4000, b4000, src_state="절연 후", dst_state="조사 후"), **N)
     st012 = r.space("ST-012")
     rewind = r.op("rewind", "재권취", "pass_through_length", codes(85, 88), processing=speed(50),
-                  setup=SETUP_NONE, **N)
+                  setup=SETUP_NONE, specs=io(b4000, b4000, src_state="조사 후", dst_state="재권취 후"), **N)
     complete, st014 = r.milestone("완제품(재권취 완료)"), r.space("ST-014")
-    inspect = inspect_op(r, worker=True, handoff="per_output_unit", setup=SETUP_NONE, delay=DELAY_NONE)
+    inspect = inspect_op(r, worker=True, handoff="per_output_unit", setup=SETUP_NONE, delay=DELAY_NONE,
+                         specs=io(b4000, b4000, src_state="재권취 후", dst_state="검사 후"))
     r.chain(src, multi, st018, double, st019)
     r.link(st019, pre)
     r.link(st019, feed)
@@ -300,44 +363,58 @@ def p04(assets) -> dict:
 # --- 공정 3: P05 HV_복합_세선(CU) (§6) -------------------------------------------------------------
 def p05(assets) -> dict:
     r = Route(assets)
-    N = {"handoff": "per_output_unit", "delay": DELAY_NONE}
+    N = {"handoff": "per_output_unit", "delay": DELAY_NONE, "setup": SETUP_NONE}
+    b100k, b24k, b12k = ({"length_m": m, "unit_count": 1} for m in ("100000", "24000", "12000"))
     # 출발 공간 ST-005는 "원자재 공간과의 대응 제안"일 뿐 사용자가 직접 지정한 위치가 아니므로 위치를 비워 둔다.
     chain = [
         r.source("원자재 (3.3t/보빈, 출발 위치 미확정: ST-005 대응 제안)"),
         r.op("draw", "CU 태신선", "output_units_by_time", codes(13), processing=per_unit(22),
-             setup=SETUP_NONE, output=out_mass(1000, 36), **N),
+             output=out_mass(1000, 36),
+             specs=io({"weight_kg": "3300", "unit_count": 11}, {"weight_kg": "1000", "unit_count": 36},
+                      src_state="원자재", dst_state="태신선 후"), **N),
         r.space("ST-006"),
         r.op("multi", "CU 멀티신선", "output_units_by_time", codes(14), processing=speed(60, single_stream=False),
-             setup=setup_minutes(120), output=out_units(100000, 9), **N),
+             output=out_units(100000, 9),
+             specs=io({"weight_kg": "1000", "unit_count": 24}, {"length_m": "100000", "unit_count": 9},
+                      src_state="태신선 후", dst_state="멀티신선 후"), **{**N, "setup": setup_minutes(120)}),
         r.space("ST-007"),
         r.op("strand", "CU 연선", "pass_through_length", codes(15, 20), processing=speed(1000),
-             setup=setup_minutes(120), **N),
+             specs=io(b100k, b100k, src_state="멀티신선 후", dst_state="연선 후"),
+             **{**N, "setup": setup_minutes(120)}),
         r.space("ST-008"),
-        r.op("insulate", "절연", "split_length", codes(32, 33), processing=speed(160), setup=SETUP_NONE,
-             output=out_split(24000, 4), **N),
+        r.op("insulate", "절연", "split_length", codes(32, 33), processing=speed(160),
+             output=out_split(24000, 4),
+             specs=io(b100k, {"length_m": "24000", "unit_count": 4}, src_state="연선 후", dst_state="절연 후"),
+             **N),
         r.space("ST-011", "-1"),
         r.op("irradiate-1", "1차 보빈 조사", "pass_through_length", codes(36), processing=speed(206),
-             setup=SETUP_NONE, **N),
+             specs=io(b24k, b24k, src_state="절연 후", dst_state="1차 조사 후"), **N),
         r.space("ST-012", "-1"),
         r.transport("forklift", "지게차", "ST-012", "ST-013"),
         r.space("ST-013"),
-        r.op("braid", "CU 편조", "split_length", codes(39, 80), processing=speed(1.5), setup=SETUP_NONE,
-             output=out_split(12000, 2), **N),
+        r.op("braid", "CU 편조", "split_length", codes(39, 80), processing=speed(1.5),
+             output=out_split(12000, 2),
+             specs=io(b24k, {"length_m": "12000", "unit_count": 2}, src_state="1차 조사 후", dst_state="편조 후"),
+             **N),
         r.op("tape", "CU 테이핑", "pass_through_length", codes(81, 84), processing=speed(20),
-             setup=SETUP_NONE, **N),
+             specs=io(b12k, b12k, src_state="편조 후", dst_state="테이핑 후"), **N),
         r.space("ST-022"),  # 테이핑 OUT → ST-022 운반 방식은 미정(간선 이동 규칙 unknown)
         r.transport("amr", "AMR", "ST-022", "ST-009"),
         r.space("ST-009"),
         r.op("sheath", "쉬스 압출", "pass_through_length", codes(34, 35), processing=speed(60),
-             setup=SETUP_NONE, **N),
+             specs=io(b12k, b12k, src_state="테이핑 후", dst_state="쉬스 후"), **N),
         r.space("ST-011", "-2"),
         r.op("irradiate-2", "2차 보빈 조사", "pass_through_length", codes(36), processing=speed(195),
-             setup=SETUP_NONE, **N),
+             specs=io(b12k, b12k, src_state="쉬스 후", dst_state="2차 조사 후"), **N),
         r.space("ST-012", "-2"),
-        r.op("rewind", "재권취", "split_length", codes(85, 88), processing=speed(50), setup=SETUP_NONE,
-             output=out_split(600, 20), **N),
+        r.op("rewind", "재권취", "split_length", codes(85, 88), processing=speed(50),
+             output=out_split(600, 20),
+             specs=io(b12k, {"length_m": "600", "unit_count": 20}, src_state="2차 조사 후", dst_state="재권취 후"),
+             **N),
         r.milestone("완제품(재권취 완료)"), r.space("ST-014"),
-        inspect_op(r, worker=True, handoff="per_output_unit", setup=SETUP_NONE, delay=DELAY_NONE),
+        inspect_op(r, worker=True, handoff="per_output_unit", setup=SETUP_NONE, delay=DELAY_NONE,
+                   specs=io({"length_m": "600", "unit_count": 1}, {"length_m": "600", "unit_count": 1},
+                            src_state="재권취 후", dst_state="검사 후")),
         r.space("ST-016"), r.sink("완제품"),
     ]
     r.chain(*chain)
@@ -348,28 +425,39 @@ def p05(assets) -> dict:
 def p06(assets) -> dict:
     r = Route(assets)
     N = {"handoff": "per_output_unit", "delay": DELAY_NONE, "setup": SETUP_NONE}
+    b1000 = {"length_m": "1000", "unit_count": 1}
     chain = [
         r.source("원자재 (2t, 2,000m, 1보빈)", "ST-001"), r.space("ST-010"),
         # 최초 작업은 절연이지만 설비는 쉬스 압출기 EQ-034~035(EQ-032~033으로 바꾸지 않는다)
         r.op("insulate", "절연(쉬스 압출기 사용)", "split_length", codes(34, 35), processing=speed(30),
-             output=out_split(1000, 2), **N),
+             output=out_split(1000, 2),
+             specs=io({"length_m": "2000", "weight_kg": "2000", "unit_count": 1},
+                      {"length_m": "1000", "unit_count": 2}, src_state="원자재", dst_state="절연 후"), **N),
         r.space("ST-011", "-1"),
-        r.op("irradiate-1", "1차 보빈 조사", "pass_through_length", codes(36), processing=speed(50), **N),
+        r.op("irradiate-1", "1차 보빈 조사", "pass_through_length", codes(36), processing=speed(50),
+             specs=io(b1000, b1000, src_state="절연 후", dst_state="1차 조사 후"), **N),
         r.space("ST-012", "-1"),
         r.transport("forklift", "지게차", "ST-012", "ST-013"),
         r.space("ST-013"),
-        r.op("braid", "CU 편조", "pass_through_length", codes(39, 80), processing=speed(1.5), **N),
+        r.op("braid", "CU 편조", "pass_through_length", codes(39, 80), processing=speed(1.5),
+             specs=io(b1000, b1000, src_state="1차 조사 후", dst_state="편조 후"), **N),
         r.space("ST-022"),  # 편조 OUT → ST-022 운반 방식은 미정
         r.transport("amr", "AMR", "ST-022", "ST-009"),
         r.space("ST-009"),
-        r.op("sheath", "쉬스 압출", "pass_through_length", codes(34, 35), processing=speed(60), **N),
+        r.op("sheath", "쉬스 압출", "pass_through_length", codes(34, 35), processing=speed(60),
+             specs=io(b1000, b1000, src_state="편조 후", dst_state="쉬스 후"), **N),
         r.space("ST-011", "-2"),
-        r.op("irradiate-2", "2차 보빈 조사", "pass_through_length", codes(36), processing=speed(195), **N),
+        r.op("irradiate-2", "2차 보빈 조사", "pass_through_length", codes(36), processing=speed(195),
+             specs=io(b1000, b1000, src_state="쉬스 후", dst_state="2차 조사 후"), **N),
         r.space("ST-012", "-2"),
         r.op("rewind", "재권취", "split_length", codes(85, 88), processing=speed(30),
-             output=out_split(500, 2), **N),
+             output=out_split(500, 2),
+             specs=io(b1000, {"length_m": "500", "unit_count": 2}, src_state="2차 조사 후", dst_state="재권취 후"),
+             **N),
         r.milestone("완제품(재권취 완료)"), r.space("ST-014"),
-        inspect_op(r, worker=True, handoff="per_output_unit", setup=SETUP_NONE, delay=DELAY_NONE),
+        inspect_op(r, worker=True, handoff="per_output_unit", setup=SETUP_NONE, delay=DELAY_NONE,
+                   specs=io({"length_m": "500", "unit_count": 1}, {"length_m": "500", "unit_count": 1},
+                            src_state="재권취 후", dst_state="검사 후")),
         r.space("ST-016"), r.sink("완제품"),
     ]
     r.chain(*chain)
@@ -381,49 +469,52 @@ def _spec(**fields) -> dict:
 
 
 def _notes(product, lines) -> str:
-    head = f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft)이며 문서의 미정 값은 unknown으로 두었다."
-    return "\n".join([head, *lines])
+    return "\n".join([notes_head(product), *lines])
+
+
+def notes_head(product) -> str:
+    return f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft)이며 문서의 미정 값은 unknown으로 두었다."
 
 
 def definitions(assets: dict[str, str]) -> dict[str, dict]:
     """제품 코드 → {raw, finished, notes, graph}. 값의 근거는 문서 §4~7."""
-    si_notes = ["준비/교체 시간, 보빈 인계 시점, 검사 위치·자원 수, 완제품 판정 시점은 미정.",
+    si_notes = ["단계별 투입·산출 수량은 각 단계의 재료 spec(material_specs)에 있다.",
+                "준비/교체 시간, 보빈 인계 시점, 검사 위치·자원 수, 완제품 판정 시점은 미정(완제품 milestone 미지정).",
                 "편조·테이핑·쉬스 사이에 저장공간을 임의로 만들지 않았다(직결).",
                 "검사 자원은 이 제품에 확인된 바 없어 작업자 무제한으로 가정하지 않았다."]
     return {
         "P01": {"raw": _spec(length_m=3000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=300),
                 "notes": _notes("P01", [("절연 후 1,000m×3보빈, 쉬스 후 300m×10보빈/1롤분(잔량 이월: 동일 제품 연속 생산 때 이월, "
                                         "다른 제품 투입 시 폐기, 잔량 범위·생산 종료 처리·물리적 접속 방법 미정)."), *si_notes]),
-                "graph": silicon(assets, bobbins=3, sheath_len=300, sheath_units=10, carry=True)},
+                "graph": silicon(assets, raw_len=3000, bobbins=3, sheath_len=300, sheath_units=10, carry=True)},
         "P02": {"raw": _spec(length_m=4000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=500),
                 "notes": _notes("P02", ["절연 후 1,000m×4보빈, 쉬스 후 500m×8보빈/1롤분.", *si_notes]),
-                "graph": silicon(assets, bobbins=4, sheath_len=500, sheath_units=8, carry=False)},
+                "graph": silicon(assets, raw_len=4000, bobbins=4, sheath_len=500, sheath_units=8, carry=False)},
         "P03": {"raw": _spec(length_m=5000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=500),
                 "notes": _notes("P03", ["절연 후 1,000m×5보빈, 쉬스 후 500m×10보빈/1롤분.", *si_notes]),
-                "graph": silicon(assets, bobbins=5, sheath_len=500, sheath_units=10, carry=False)},
+                "graph": silicon(assets, raw_len=5000, bobbins=5, sheath_len=500, sheath_units=10, carry=False)},
         "P04": {"raw": _spec(weight_kg=2000, unit_count=1), "finished": _spec(length_m=4000),
                 "notes": _notes("P04", [
-                    ("단계별 투입(현재 스키마에 필드 없음): 멀티신선 2t×2개 동시 투입→40,000m×12보빈, 더블 40,000m×1→4,000m×10, "
-                    "싱글-1 4,000m×1(선행 가공), 싱글-12 4,000m×12보빈(12가닥 공급, 전체 준비 후 공급), 메인 선행1+공급12→4,000m×10보빈."),
+                    "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다(싱글-12의 12가닥 공급은 strand_count 12).",
                     "싱글 메인 산출 10개는 변경 가능한 per-operation 설정값이며 투입 길이로 자동 물량보존해 부정하지 않는다(abstract_yield).",
-                    "재권취 완료가 완제품이고 검사·적재는 별도 상태. 검사 작업자는 무제한 가용(확정), 10분/보빈.",
+                    "재권취 완료가 완제품(완제품 milestone 지정)이고 검사·적재는 별도 상태. 검사 작업자는 무제한 가용(확정), 10분/보빈.",
                     ("미정: 멀티신선 12보빈 동시/순차와 선속의 스트림 기준, 준비·대기 120분의 발생 주기, feeder 점유(OPEN-004), "
                     "싱글-1/메인의 인계·원자재 소비 시점. GRP-001(EQ-094~096 연계 그룹)은 계약 밖(그룹 미도입)."),
                     "운반: ST-020→ST-021 지게차, ST-021→ST-008 AMR(이동 시간·운반 자원 미확정)."]),
                 "graph": p04(assets)},
         "P05": {"raw": _spec(weight_kg=3300, unit_count=1), "finished": _spec(length_m=600),
                 "notes": _notes("P05", [
-                    ("단계별 투입(현재 스키마에 필드 없음): 태신선 3.3t×11개 동시→1t×36보빈, 멀티신선 1t×24보빈 동시→100,000m×9보빈, "
-                    "연선 100,000m×1→100,000m×1, 절연 100,000m×1→24,000m×4, 편조 24,000m×1→12,000m×2, 재권취 12,000m×1→600m×20."),
-                    "잔량: 태신선 36.3t 투입·36t 산출 차이 300kg 폐기, 절연 100,000m 투입·96,000m 산출 차이 4,000m 처리 미정.",
+                    "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다(태신선 3.3t×11개 동시→1t×36보빈, 재권취 12,000m→600m×20 등).",
+                    "잔량(현재 스키마에 필드 없음): 태신선 36.3t 투입·36t 산출 차이 300kg 폐기, 절연 100,000m 투입·96,000m 산출 차이 4,000m 처리 미정.",
                     "되돌리지 말 정정: 연선은 100,000→100,000(24,000×4 아님), 절연에서 24,000×4 분할, 1차 조사는 1→1, 검사 600→600.",
-                    "출발 위치 ST-005는 원자재 공간 대응 제안이라 위치를 비워 두었다(inferred). 모든 단계 보빈별 인계, 검사 작업자 무제한.",
+                    ("출발 위치 ST-005는 원자재 공간 대응 제안이라 위치를 비워 두었다(inferred). 모든 단계 보빈별 인계, 검사 작업자 무제한. "
+                    "재권취 완료가 완제품(완제품 milestone 지정)."),
                     "운반: ST-012→ST-013 지게차(1차 조사 후만), ST-022→ST-009 AMR. 테이핑 OUT→ST-022 운반 방식 미정."]),
                 "graph": p05(assets)},
         "P06": {"raw": _spec(length_m=2000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=500),
                 "notes": _notes("P06", [
                     "최초 작업은 절연이지만 설비는 쉬스 압출기 EQ-034~035(EQ-032~033이 아님). 테이핑 공정 없음(제품5 경로 복제 금지).",
-                    "단계별 투입(현재 스키마에 필드 없음): 절연 2,000m×1→1,000m×2, 이후 1,000m×1→1,000m×1, 재권취 1,000m×1→500m×2.",
+                    "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다. 재권취 완료가 완제품(완제품 milestone 지정).",
                     ("쉬스·2차 조사 입력은 1,000m, 검사 입력·완제품은 500m(문서의 100m/600m 표기는 오기). 무손실 단위 관계상 "
                     "원자재 1보빈→최종 500m 4보빈이며 실제 생산계획 수량이 아니다."),
                     "운반: ST-012→ST-013 지게차, 편조 OUT→ST-022 방식 미정, ST-022→ST-009 AMR. 검사 작업자 무제한."]),
@@ -496,23 +587,70 @@ def seed_products(seeder, project) -> dict[str, str]:
     return have
 
 
+def _get(seeder, url):
+    response = seeder.client.get(url, headers=seeder.headers)
+    assert response.status_code == 200, f"GET {url} -> {response.status_code}: {response.text}"
+    return response.json()["data"]
+
+
+def _send(seeder, method, url, body, etag):
+    response = getattr(seeder.client, method)(
+        url, json=body, headers={**seeder.headers, "If-Match": f'"{etag}"'})
+    if response.status_code >= 300:
+        raise RuntimeError(f"{method.upper()} {url} -> {response.status_code}: {response.text}")
+    return response.json()["data"]
+
+
+def _upgrade_version(seeder, project, code, spec, listed) -> bool:
+    """계약 0.6.0 이전에 만든 draft 공정에 재료 spec·간선 연결·완제품 지정을 보충한다(멱등).
+
+    이미 spec이나 완제품 지정이 있거나(보충됨·사람이 수정함) 구조가 시드와 다르면 건드리지 않는다.
+    기존 노드·간선 id는 유지하고 새 필드만 채워 그래프를 다시 저장한다."""
+    if listed["status"] != "draft":
+        return False
+    base = f"{API}/projects/{project}/process-versions/{listed['id']}"
+    version, graph = _get(seeder, base), _get(seeder, f"{base}/graph")
+    if graph["completion_node_id"] or any(n["step"] and n["step"]["material_specs"] for n in graph["nodes"]):
+        return False
+    wanted = spec["graph"]
+    nodes_by_key = {n["node_key"]: n for n in wanted["nodes"]}
+    edges_by_key = {e["edge_key"]: e for e in wanted["edges"]}
+    if {n["node_key"] for n in graph["nodes"]} != set(nodes_by_key) or \
+            {e["edge_key"] for e in graph["edges"]} != set(edges_by_key):
+        return False
+    nodes = [{**n, "step": None if n["step"] is None else {
+        **n["step"], "material_specs": nodes_by_key[n["node_key"]]["step"]["material_specs"]}}
+        for n in graph["nodes"]]
+    edges = [{**e, "source_output_spec_key": edges_by_key[e["edge_key"]].get("source_output_spec_key"),
+              "target_input_spec_key": edges_by_key[e["edge_key"]].get("target_input_spec_key")}
+             for e in graph["edges"]]
+    completion = next((n["id"] for n in graph["nodes"]
+                       if wanted["completion_node_id"] and n["node_key"] == "complete"), None)
+    saved = _send(seeder, "put", f"{base}/graph",
+                  {"nodes": nodes, "edges": edges, "completion_node_id": completion},
+                  version["row_version"])
+    if (version["notes"] or "").startswith(notes_head(code)):  # 시드가 쓴 메모만 새 내용으로 바꾼다
+        _send(seeder, "patch", base, {"notes": spec["notes"]}, saved["row_version"])
+    return True
+
+
 def seed_processes(seeder, project, products, assets) -> dict:
-    created = []
+    created, upgraded = [], []
     for code, spec in definitions(assets).items():
         url = f"{API}/projects/{project}/products/{products[code]}/process-versions"
-        if seeder.client.get(url, headers=seeder.headers).json()["data"]:
+        versions = _get(seeder, url)
+        if versions:
+            if _upgrade_version(seeder, project, code, spec, versions[0]):
+                upgraded.append(code)
             continue
         version = seeder.post(url)
         version = seeder.patch(f"{API}/projects/{project}/process-versions/{version['id']}", {
             "raw_unit_spec": spec["raw"], "finished_unit_spec": spec["finished"], "notes": spec["notes"]},
             version["row_version"])
-        response = seeder.client.put(
-            f"{API}/projects/{project}/process-versions/{version['id']}/graph", json=spec["graph"],
-            headers={**seeder.headers, "If-Match": f'"{version["row_version"]}"'})
-        if response.status_code >= 300:
-            raise RuntimeError(f"PUT graph {code} -> {response.status_code}: {response.text}")
+        _send(seeder, "put", f"{API}/projects/{project}/process-versions/{version['id']}/graph",
+              spec["graph"], version["row_version"])
         created.append(code)
-    return {"created": created}
+    return {"created": created, "upgraded": upgraded}
 
 
 def seed(engine: Engine) -> dict:

@@ -90,6 +90,10 @@ EXPECTED = {
     "process-version.diff": (None, Single[VersionDiffOut], 200),
     "process-editor-state.get": (None, Single[EditorStateOut], 200),
     "process-editor-state.put": (EditorStateIn, Single[EditorStateOut], 200),
+    # contract 0.6.0
+    "process-graph.put-with-specs": (GraphIn, Single[GraphOut], 200),
+    "process-step.patch-material-specs": (StepPatch, Single[StepOut], 200),
+    "error.spec-link-invalid": (None, ERROR, 422),
 }
 
 
@@ -154,9 +158,11 @@ def test_process_examples_show_graph_version_workflow_and_unknown_defaults():
     assert validation["scope"] == "run_template"
     # timing_rule을 통째로 교체해 setup·precondition_delay가 unknown으로 돌아간 단계는 실행(run_template)에서
     # 오류이지만 승인(knowledge)은 막지 않는다(이 예제는 그 직후 승인된다).
+    # 이 그래프에는 완제품 milestone이 없어 완제품 판정 시점(VAL-GRAPH-014)도 실행에서는 오류다(contract 0.6.0).
     errors = [i for i in validation["issues"] if i["severity"] == "error"]
-    assert {i["rule_id"] for i in errors} == {"VAL-TIME-004", "VAL-TIME-005"}
-    assert {i["entity_id"] for i in errors} == {patched["body"]["data"]["id"]}
+    assert {i["rule_id"] for i in errors} == {"VAL-TIME-004", "VAL-TIME-005", "VAL-GRAPH-014"}
+    assert {i["entity_id"] for i in errors if i["rule_id"].startswith("VAL-TIME")} == {
+        patched["body"]["data"]["id"]}
     assert {i["rule_id"] for i in validation["issues"] if i["severity"] == "warning"} == {
         "VAL-VER-001", "VAL-VER-002"}
     approved = _load("process-version.approve")["response"]
@@ -200,3 +206,26 @@ def test_clone_diff_and_editor_state_examples_show_the_documented_behavior():
     assert saved["headers"]["ETag"] == '"1"' and len(saved["body"]["data"]["node_positions"]) == 5
     # 승인본에도 저장됐고 공정 버전의 ETag(승인 후 5)에는 영향이 없다.
     assert approved["status"] == "approved"
+
+
+def test_material_spec_examples_show_specs_links_completion_and_the_link_error():
+    saved = _load("process-graph.put-with-specs")
+    graph = saved["response"]["body"]["data"]
+    assert saved["request"]["body"]["completion_node_id"] == graph["completion_node_id"]
+    keys = {n["node_key"]: n for n in graph["nodes"]}
+    assert graph["completion_node_id"] == keys["complete"]["id"] and keys["complete"]["kind"] == "milestone"
+    insulate = keys["insulate"]["step"]["material_specs"]
+    assert [m["spec_key"] for m in insulate] == ["raw", "bobbin"]  # 입력이 먼저
+    raw, bobbin = insulate
+    assert raw["weight_kg"] == {"mode": "known", "value": "3300"} and raw["unit_count"]["value"] == 11
+    assert raw["length_m"]["mode"] == "unknown" and bobbin["length_m"]["value"] == "1000"  # 단위를 섞지 않는다
+    strands = keys["sheath"]["step"]["material_specs"][1]
+    assert strands["strand_count"]["value"] == 12 and strands["unit_count"]["mode"] == "unknown"
+    links = {e["edge_key"]: (e["source_output_spec_key"], e["target_input_spec_key"]) for e in graph["edges"]}
+    assert links["src-insulate"] == (None, "raw") and links["insulate-wait"] == ("bobbin", None)
+    patched = _load("process-step.patch-material-specs")["response"]
+    assert patched["headers"]["ETag"] == '"3"'
+    assert {m["spec_key"] for m in patched["body"]["data"]["step"]["material_specs"]} == {
+        "raw", "bobbin", "scrap"}
+    error = _load("error.spec-link-invalid")["response"]["body"]["error"]["details"][0]
+    assert error["rule_id"] == "VAL-SPEC-002" and error["field_path"] == "/edges/1/source_output_spec_key"
