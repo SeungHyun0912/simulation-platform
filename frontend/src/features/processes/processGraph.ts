@@ -1,5 +1,5 @@
 import type { ValidationIssue } from "../../shared/components/ValidationPanel";
-import { hasEdge, measureToKnown, validateMeasure, type EdgeKind, type GraphDoc } from "./processDoc";
+import { hasEdge, measureToKnown, stepOf, validateMeasure, type EdgeKind, type GraphDoc } from "./processDoc";
 
 /**
  * 그래프 구조 검증(클라이언트 형식 검사)과 도식 배치.
@@ -23,6 +23,9 @@ export function validateGraphStructure(doc: GraphDoc): ValidationIssue[] {
     seen.add(n.node_key);
   }
 
+  if (doc.completion_node_id && byId.get(doc.completion_node_id)?.kind !== "milestone")
+    issues.push({ severity: "error", message: "완제품 판정 노드는 완료 기준(milestone) 노드여야 합니다.", field_path: "/completion_node_id", rule_id: "VAL-GRAPH-005" });
+
   for (const e of doc.edges) {
     const from = byId.get(e.from_node_id);
     const to = byId.get(e.to_node_id);
@@ -33,6 +36,16 @@ export function validateGraphStructure(doc: GraphDoc): ValidationIssue[] {
     const kind = e.edge_kind ?? "material";
     if (kind === "material" && from?.kind === "sink") err(`${name(from.id)}: 끝(완제품) 노드에서 나가는 물류 간선은 만들 수 없습니다.`, "/from_node_id");
     if (kind === "material" && to?.kind === "source") err(`${name(to.id)}: 시작(원자재) 노드로 들어오는 물류 간선은 만들 수 없습니다.`, "/to_node_id");
+    // 재료 spec 연결: 시작 단계의 출력 spec·끝 단계의 입력 spec이어야 하고 선후 관계에는 쓸 수 없다(VAL-SPEC-002~004)
+    const hasSpec = (n: typeof from, key: string, dir: "input" | "output") => !!n && stepOf(n).material_specs.some((m) => m.spec_key === key && m.direction === dir);
+    if ((e.source_output_spec_key || e.target_input_spec_key) && kind === "precedence")
+      err("선후 관계 간선에는 재료를 연결할 수 없습니다.", "/source_output_spec_key");
+    else {
+      if (e.source_output_spec_key && !hasSpec(from, e.source_output_spec_key, "output"))
+        err(`시작 단계에 출력 재료 ${e.source_output_spec_key}가 없어 연결할 수 없습니다.`, "/source_output_spec_key");
+      if (e.target_input_spec_key && !hasSpec(to, e.target_input_spec_key, "input"))
+        err(`끝 단계에 투입 재료 ${e.target_input_spec_key}가 없어 연결할 수 없습니다.`, "/target_input_spec_key");
+    }
     // 이동 시간은 0이 유효하다(미정과 다르다)
     const dur = validateMeasure(measureToKnown(e.movement_rule?.duration_min, "min"), "nonnegative");
     if (dur) err(`${from && to ? `${name(from.id)} → ${name(to.id)}` : "간선"} 이동 시간: ${dur}`, "/movement_rule/duration_min/value");

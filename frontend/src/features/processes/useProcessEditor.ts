@@ -13,13 +13,13 @@ import {
   removeEdge,
   removeNode,
   removeStep,
+  setCompletion,
   setNextLocation,
   updateNode,
   updateStep,
   type EdgeKind,
   type GraphDoc,
   type GraphNode,
-  type MovementRule,
   type NextLocation,
   type NodeKind,
   type StepDto,
@@ -311,12 +311,14 @@ export function useProcessEditor(args: {
     },
     patchGraphEdge: (
       id: string,
-      patch: { from_node_id?: string; to_node_id?: string; edge_kind?: EdgeKind; movement_rule?: MovementRule },
+      patch: Parameters<typeof patchEdge>[2],
     ) => {
       dropRejected(id);
       editDoc((doc) => patchEdge(doc, id, patch));
     },
     removeGraphEdge: (id: string) => editDoc((doc) => removeEdge(doc, id)),
+    /** 완제품 판정 시점 지정(milestone 노드 id, 미정은 null) */
+    setCompletionNode: (id: string | null) => editDoc((doc) => setCompletion(doc, id)),
     remove: (id: string) => editDoc((doc) => removeStep(doc, id)),
     move: (id: string, delta: -1 | 1) => editDoc((doc) => moveStep(doc, id, delta)),
     setNext: (id: string, next: NextLocation) => editDoc((doc) => setNextLocation(doc, id, next)),

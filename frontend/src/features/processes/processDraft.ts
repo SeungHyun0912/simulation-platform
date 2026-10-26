@@ -15,6 +15,7 @@ const json = (x: unknown) => JSON.stringify(x);
 /** 구조: 노드·간선의 존재와 연결(단계 내용은 제외). 간선의 이동 규칙도 구조로 본다. */
 function structureOf(d: GraphDoc): string {
   return json([
+    d.completion_node_id ?? null,
     d.nodes.map((n) => [n.id, n.node_key, n.kind, n.asset_id ?? null, n.display_order ?? 0]),
     d.edges.map((e) => [e.id, e.edge_key, e.from_node_id, e.to_node_id, e.edge_kind, e.movement_rule ?? null]),
   ]);
@@ -35,9 +36,12 @@ export function draftChanged(a: ProcessDraft, b: ProcessDraft): boolean {
   );
 }
 
-/** 서버에 보낼 그래프 본문(응답의 노드·간선을 그대로 되돌려 보낸다). */
+/**
+ * 서버에 보낼 그래프 본문. 응답의 노드·간선과 **완제품 지정**을 그대로 되돌려 보낸다(전체 교체라서 빠뜨리면 서버에서 지워진다).
+ * 응답에 없던 필드를 새로 만들어 보내지 않는다.
+ */
 export function toGraphIn(doc: GraphDoc): GraphIn {
-  return { nodes: doc.nodes, edges: doc.edges };
+  return { nodes: doc.nodes, edges: doc.edges, completion_node_id: doc.completion_node_id ?? null };
 }
 
 export type ProcessMerge = {
@@ -70,6 +74,7 @@ export function mergeProcessDraft(base: ProcessDraft, mine: ProcessDraft, server
     const baseNodes = new Map(base.doc.nodes.map((n) => [n.id, n]));
     const mineNodes = new Map(mine.doc.nodes.map((n) => [n.id, n]));
     doc = {
+      ...server.doc,
       edges: server.doc.edges,
       nodes: server.doc.nodes.map((s) => {
         const b = baseNodes.get(s.id)!;

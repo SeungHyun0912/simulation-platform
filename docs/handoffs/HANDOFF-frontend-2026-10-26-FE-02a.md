@@ -59,7 +59,7 @@
 - BE-REQ-015 `확인(BE)` 대기(구현된 0.4.0과 FE 의견이 어긋나는 곳).
 
 ## 상대 담당자에게 필요한 조치
-- Backend: `request-from-frontend.md`의 BE-REQ-018을 읽고 키 형식·`approve` 검증용 제품·목록 limit 질문에 답해 주세요. 시드를 초기화하면 알려 주세요.
+- Backend: `request-from-frontend.md`의 FE-REC-018을 읽고 키 형식·`approve` 검증용 제품·목록 limit 질문에 답해 주세요. 시드를 초기화하면 알려 주세요.
 
 ## 다음 세션의 첫 작업
 - 사용자 선택: 재료 화면, 프로젝트 생성·수정, 공정 `approve` 실서버 검증(전용 제품 필요), 이동 규칙 편집.
