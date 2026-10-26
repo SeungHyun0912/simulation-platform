@@ -1,99 +1,37 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SAMPLE_PROCESS_VERSIONS } from "../../src/features/processes/sampleProcesses";
-import {
-  newStep,
-  outputText,
-  processingText,
-  setupText,
-  validateStep,
-  UNKNOWN_VALUE,
-  type StepView,
-} from "../../src/features/processes/processView";
+import { SAMPLE_PROCESSES } from "../../src/features/processes/sampleProcesses";
 import { renderApp } from "../renderApp";
 
-const DRAFT = SAMPLE_PROCESS_VERSIONS.find((v) => v.status === "draft")!;
-const APPROVED = SAMPLE_PROCESS_VERSIONS.find((v) => v.status === "approved")!;
-const EMPTY = SAMPLE_PROCESS_VERSIONS.find((v) => v.steps.length === 0)!;
-const url = (v: { id: string; productId: string }, query = "") =>
-  `/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${v.productId}/processes/${v.id}${query}`;
+const PROJECT = "aaaaaaaa-0000-4000-8000-000000000001";
+const DRAFT = Object.values(SAMPLE_PROCESSES).find((p) => p.version.status === "draft")!.version;
+const APPROVED = Object.values(SAMPLE_PROCESSES).find((p) => p.version.status === "approved")!.version;
+const EMPTY = Object.values(SAMPLE_PROCESSES).find((p) => p.version.status === "in_review")!.version;
+const url = (v: { id: string; productId: string }, query = "") => `/projects/${PROJECT}/products/${v.productId}/processes/${v.id}${query}`;
+const stepTable = () => screen.getByRole("table", { name: /공정 v\d+ 단계/ });
 
-function step(patch: Partial<StepView>): StepView {
-  return { ...newStep("s1"), name: "단계", ...patch };
-}
-
-describe("processView 문구", () => {
-  it("선속과 보빈당 길이를 서로 다른 값으로 표시한다", () => {
-    const s = DRAFT.steps[0]!;
-    expect(processingText(s.processing)).toBe("20 m/분 (산출 기준)");
-    expect(outputText(s.output)).toBe("1000 m씩 분할");
-  });
-  it("준비 시점은 알지만 시간이 미정이면 0분이 아니라 미정으로 표시한다", () => {
-    expect(setupText(DRAFT.steps[1]!.setup)).toBe("미정 · 투입 교체마다");
-    expect(
-      setupText({ trigger: "per_operation", duration: { mode: "value", value: "0", unit: "min" } }),
-    ).toBe("0 분 · 작업마다");
-    expect(setupText({ trigger: "not_applicable", duration: UNKNOWN_VALUE("min") })).toBe("없음");
-  });
-  it("기준 길이당 시간은 기준 길이를 함께 보여 준다", () => {
-    expect(
-      processingText({
-        kind: "per_reference_length",
-        referenceLength: { mode: "value", value: "1000", unit: "m" },
-        value: { mode: "value", value: "720", unit: "min" },
-      }),
-    ).toBe("기준 1000 m당 720 분");
-  });
-});
-
-describe("validateStep", () => {
-  it("이름이 없으면 오류, 새 단계의 미정 값은 경고다", () => {
-    const issues = validateStep(newStep("s1"), 1);
-    expect(issues.filter((i) => i.severity === "error")).toHaveLength(1);
-    expect(issues.some((i) => i.severity === "warning")).toBe(true);
-  });
-  it("특정 설비 지정은 설비가 정확히 하나여야 한다", () => {
-    const two = step({ equipment: { mode: "specific", candidateCodes: ["EQ-001", "EQ-002"] } });
-    expect(validateStep(two, 1).some((i) => i.severity === "error")).toBe(true);
-    const one = step({ equipment: { mode: "specific", candidateCodes: ["EQ-001"] } });
-    expect(validateStep(one, 1).some((i) => i.field_path?.endsWith("/equipment"))).toBe(false);
-  });
-  it("값 있음인데 형식이 틀리면 오류이고 0은 유효하다", () => {
-    const bad = step({
-      processing: {
-        kind: "output_speed",
-        value: { mode: "value", value: "1e3", unit: "m_per_min" },
-        referenceLength: UNKNOWN_VALUE("m"),
-      },
-    });
-    expect(validateStep(bad, 1).some((i) => i.severity === "error")).toBe(true);
-    const zero = step({
-      setup: { trigger: "per_operation", duration: { mode: "value", value: "0", unit: "min" } },
-    });
-    expect(validateStep(zero, 1).some((i) => i.field_path?.includes("/setup"))).toBe(false);
-  });
-  it("그대로 유지(pass_through)는 산출 길이를 요구하지 않는다", () => {
-    const s = step({
-      output: { mode: "pass_through", unitCount: UNKNOWN_VALUE("bobbin"), length: UNKNOWN_VALUE("m") },
-    });
-    expect(validateStep(s, 1).some((i) => i.field_path?.includes("/output"))).toBe(false);
-  });
-});
-
-describe("공정 표 편집 (초안 UI)", () => {
-  it("초안 UI 표시와 예시 표시, 단계 표를 보여 준다", () => {
+describe("공정 화면 (정적 예시)", () => {
+  it("예시 표시와 단계 표: 설비 후보·처리·다음 위치를 자산 표시 코드로 보여 준다", () => {
     renderApp(url(DRAFT));
-    expect(screen.getByText("초안 UI")).toBeInTheDocument();
     expect(screen.getByText(/예시 데이터입니다/)).toBeInTheDocument();
-    const table = screen.getByRole("table", { name: /단계/ });
-    expect(within(table).getAllByRole("row")).toHaveLength(DRAFT.steps.length + 1);
+    expect(screen.queryByText("초안 UI")).not.toBeInTheDocument(); // 계약이 승인되어 더 이상 초안 UI가 아니다
+    const table = stepTable();
+    expect(within(table).getAllByRole("row")).toHaveLength(4); // 단계 3 + 머리글
+    expect(within(table).getByText("EQ-001, EQ-002 (택1)")).toBeInTheDocument();
     expect(within(table).getByText("20 m/분 (산출 기준)")).toBeInTheDocument();
-    expect(within(table).getByText("후보 없음")).toBeInTheDocument();
+    expect(within(table).getByText("ST-001")).toBeInTheDocument();
+    expect(within(table).getByText("위치 미정")).toBeInTheDocument(); // 공간은 있으나 위치 미정
+    expect(within(table).getByText("공간 없음")).toBeInTheDocument(); // 공간 자체가 없음(위치 미정과 다르다)
+    expect(within(table).getByText("미정 · 투입 교체마다")).toBeInTheDocument(); // 준비 시간 미정 ≠ 0분
   });
 
-  it("미정 값은 경고로 모으고 오류는 없다", () => {
+  it("미정은 서버 검증 경고로 보이고 오류는 없다(FE가 경고를 만들지 않는다)", () => {
     renderApp(url(DRAFT));
-    expect(screen.getByRole("alert", { name: "검증 결과" })).toHaveTextContent("오류 0건");
+    const panel = screen.getByRole("alert", { name: "검증 결과" });
+    expect(panel).toHaveTextContent("오류 0건, 경고 6건");
+    expect(panel).toHaveTextContent("대기 공간의 위치가 미정입니다.");
+    const row = within(stepTable()).getByText("예시 검사").closest("tr")!;
+    expect(row).toHaveTextContent("경고 2"); // 처리 방식 미정 + 설비 후보 없음, entity_id로 단계에 연결된다
   });
 
   it("편집을 열면 제목으로 포커스가 이동하고 닫으면 편집 버튼으로 돌아온다", async () => {
@@ -114,8 +52,7 @@ describe("공정 표 편집 (초안 UI)", () => {
     await user.clear(name);
     await user.type(name, "새 이름");
     expect(screen.getByText(/저장하지 않은 변경이 있습니다/)).toBeInTheDocument();
-    const table = screen.getByRole("table", { name: /단계/ });
-    expect(within(table).getByText("새 이름")).toBeInTheDocument();
+    expect(within(stepTable()).getByText("새 이름")).toBeInTheDocument();
   });
 
   it("처리 방식을 바꿔 값이 사라질 때는 확인하고, 취소하면 그대로 둔다", async () => {
@@ -125,75 +62,75 @@ describe("공정 표 편집 (초안 UI)", () => {
     await user.selectOptions(screen.getByLabelText("처리 방식"), "per_output_unit");
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("입력한 값이 사라집니다");
-    expect(dialog).toHaveTextContent("값: 20 m/분");
+    expect(dialog).toHaveTextContent("선속: 20 m/분");
     await user.click(within(dialog).getByRole("button", { name: "취소" }));
     expect(screen.getByLabelText("처리 방식")).toHaveValue("output_speed");
     expect(screen.getByLabelText("선속 값")).toHaveValue("20");
     expect(screen.queryByText(/저장하지 않은 변경이 있습니다/)).not.toBeInTheDocument();
   });
 
+  it("확인하면 새 방식으로 바뀌고 이전 단위의 값을 이어받지 않는다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
+    await user.selectOptions(screen.getByLabelText("처리 방식"), "per_output_unit");
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "값을 버리고 변경" }));
+    expect(screen.getByLabelText("처리 방식")).toHaveValue("per_output_unit");
+    // 선속 20이 시간 20분으로 둔갑하지 않는다
+    expect(within(screen.getByRole("radiogroup", { name: "산출 단위당 시간 상태" })).getByRole("radio", { name: "미정", checked: true })).toBeInTheDocument();
+    expect(screen.getByText(/저장하지 않은 변경이 있습니다/)).toBeInTheDocument();
+  });
+
   it("버릴 값이 없으면 확인 없이 바로 바뀐다", async () => {
     const user = userEvent.setup();
     renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "예시 검사 편집" }));
-    await user.selectOptions(screen.getByLabelText("처리 방식"), "output_speed");
+    await user.selectOptions(screen.getByLabelText("처리 방식"), "per_output_unit");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("처리 방식")).toHaveValue("output_speed");
+    expect(screen.getByLabelText("처리 방식")).toHaveValue("per_output_unit");
   });
 
-  it("같은 단위(분)로 바뀌는 방식 사이에서는 값을 유지하고 확인하지 않는다", async () => {
-    const user = userEvent.setup();
-    renderApp(url(DRAFT));
-    await user.click(screen.getByRole("button", { name: "예시 편조 편집" }));
-    expect(screen.getByLabelText("산출 단위당 시간 값")).toHaveValue("22");
-    await user.selectOptions(screen.getByLabelText("처리 방식"), "per_reference_length");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("기준 길이당 시간 값")).toHaveValue("22");
-  });
-
-  it("산출 방식을 바꿔 길이·수량이 사라질 때도 확인한다", async () => {
+  it("산출 방식을 바꿔 길이가 사라질 때도 확인한다", async () => {
     const user = userEvent.setup();
     renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
     await user.selectOptions(screen.getByLabelText("산출 방식"), "pass_through");
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("산출 길이: 1000 m");
-    await user.click(within(dialog).getByRole("button", { name: "값을 버리고 변경" }));
-    expect(screen.getByLabelText("산출 방식")).toHaveValue("pass_through");
-    expect(screen.queryByLabelText("산출 길이 값")).not.toBeInTheDocument();
-  });
-
-  it("처리 방식을 바꾸면 이전 단위의 값을 이어받지 않는다", async () => {
-    const user = userEvent.setup();
-    renderApp(url(DRAFT));
-    await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
-    expect(screen.getByLabelText("선속 값")).toHaveValue("20");
-    await user.selectOptions(screen.getByLabelText("처리 방식"), "per_output_unit");
-    await user.click(await screen.findByRole("button", { name: "값을 버리고 변경" }));
-    expect(screen.queryByLabelText("선속 값")).not.toBeInTheDocument();
-    const group = screen.getByRole("radiogroup", { name: "산출 단위당 시간 상태" });
-    expect(within(group).getByRole("radio", { name: "미정" })).toBeChecked();
-    const table = screen.getByRole("table", { name: /단계/ });
-    expect(within(table).getAllByText("산출 단위당 미정").length).toBeGreaterThan(0);
+    await user.click(within(dialog).getByRole("button", { name: "취소" }));
+    expect(screen.getByLabelText("산출 방식")).toHaveValue("split_length");
   });
 
   it("준비 시점이 해당 없음이면 준비 시간 입력이 없다", async () => {
     const user = userEvent.setup();
     renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
-    expect(screen.queryByRole("group", { name: "준비 시간" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("준비 시간 값")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("준비 시점"), "per_operation");
-    expect(screen.getByRole("group", { name: "준비 시간" })).toBeInTheDocument();
+    // 준비 시간 입력이 나타나며 기본은 미정이다(0분이 아니다)
+    const group = screen.getByRole("radiogroup", { name: "준비 시간 상태" });
+    expect(within(group).getByRole("radio", { name: "미정", checked: true })).toBeInTheDocument();
+    await user.click(within(group).getByRole("radio", { name: "값 있음" }));
+    await user.type(screen.getByLabelText("준비 시간 값"), "0");
+    expect(screen.getByLabelText("준비 시간 값")).toBeValid(); // 준비 시간 0분은 유효하다
   });
 
-  it("특정 설비 지정에서 후보를 둘 고르면 오류가 된다", async () => {
+  it("설비 후보는 자산 id로 고르고 후보 수보다 많은 수량은 오류가 된다", async () => {
     const user = userEvent.setup();
     renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "예시 압출 편집" }));
-    await user.selectOptions(screen.getByLabelText("배정 방식"), "specific");
+    expect(screen.getByLabelText(/EQ-001 예시 절연 압출기/)).toBeChecked();
+    expect(screen.getByLabelText(/EQ-002 예시 쉬스 압출기/)).toBeChecked();
+    const count = screen.getByLabelText("자원 1 필요 수량");
+    await user.clear(count);
+    await user.type(count, "3");
     expect(screen.getByRole("alert", { name: "검증 결과" })).toHaveTextContent("오류 1건");
-    await user.click(screen.getByLabelText(/EQ-002/));
+    expect(screen.getByRole("region", { name: "이 단계의 검증 항목" })).toBeInTheDocument();
+    await user.clear(count);
+    await user.type(count, "2");
     expect(screen.getByRole("alert", { name: "검증 결과" })).toHaveTextContent("오류 0건");
+    // 후보 확인 상태는 확인됨으로 가정하지 않는다
+    expect(screen.getByLabelText("EQ-002 후보 확인 상태 (자원 1)")).toHaveValue("unknown");
   });
 
   it("단계를 추가하면 이름 없는 단계가 오류가 되고 편집이 열린다", async () => {
@@ -202,6 +139,7 @@ describe("공정 표 편집 (초안 UI)", () => {
     await user.click(screen.getByRole("button", { name: "단계 추가" }));
     expect(await screen.findByRole("heading", { name: /단계 편집/ })).toBeInTheDocument();
     expect(screen.getByRole("alert", { name: "검증 결과" })).toHaveTextContent("오류 1건");
+    expect(screen.getByRole("button", { name: "저장 (정적 예시)" })).toBeDisabled();
   });
 
   it("순서를 바꾸면 표의 순서가 바뀌고 첫 단계는 위로 이동할 수 없다", async () => {
@@ -209,9 +147,10 @@ describe("공정 표 편집 (초안 UI)", () => {
     renderApp(url(DRAFT));
     expect(screen.getByRole("button", { name: "예시 압출 위로 이동" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "예시 압출 아래로 이동" }));
-    const rows = within(screen.getByRole("table", { name: /단계/ })).getAllByRole("row");
+    const rows = within(stepTable()).getAllByRole("row");
     expect(rows[1]).toHaveTextContent("예시 편조");
     expect(rows[2]).toHaveTextContent("예시 압출");
+    expect(rows[2]).toHaveTextContent("ST-001"); // 다음 위치는 단계와 함께 움직인다
   });
 
   it("삭제는 확인 후에만 반영되고 취소하면 유지된다", async () => {
@@ -223,9 +162,30 @@ describe("공정 표 편집 (초안 UI)", () => {
     expect(screen.getByRole("button", { name: "예시 검사 편집" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "예시 검사 삭제" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "삭제" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "예시 검사 편집" })).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: "예시 검사 편집" })).not.toBeInTheDocument());
+  });
+
+  it("다음 위치를 바꾼다: 공간 없음 / 위치 미정 / 특정 공간", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    await user.click(screen.getByRole("button", { name: "예시 검사 편집" }));
+    await user.selectOptions(screen.getByLabelText("다음 위치"), "unset");
+    expect(within(stepTable()).getAllByText("위치 미정")).toHaveLength(2);
+    const st2 = screen.getByRole("option", { name: /ST-002/ }) as HTMLOptionElement;
+    await user.selectOptions(screen.getByLabelText("다음 위치"), st2.value);
+    expect(within(stepTable()).getByText("ST-002")).toBeInTheDocument();
+  });
+
+  it("원자재·완제품 단위는 미정으로 시작하고 입력할 수 있다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    expect(screen.getAllByRole("radio", { name: "미정", checked: true }).length).toBeGreaterThanOrEqual(8);
+    await user.click(within(screen.getByRole("group", { name: "원자재 길이" })).getByRole("radio", { name: "값 있음" }));
+    await user.type(screen.getByLabelText("원자재 길이 값"), "3000");
+    expect(screen.getByText(/저장하지 않은 변경이 있습니다/)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText("원자재 길이 값"));
+    await user.type(screen.getByLabelText("원자재 길이 값"), "0");
+    expect(screen.getByLabelText("원자재 길이 값")).toBeInvalid();
   });
 
   it("미저장 변경이 있으면 프로젝트 전환 전에 확인한다", async () => {
@@ -233,9 +193,7 @@ describe("공정 표 편집 (초안 UI)", () => {
     const { router } = renderApp(url(DRAFT));
     await user.click(screen.getByRole("button", { name: "단계 추가" }));
     await user.click(screen.getByRole("button", { name: /프로젝트 전환/ }));
-    await user.click(
-      within(await screen.findByRole("menu")).getByRole("menuitemradio", { name: /예시 프로젝트 B/ }),
-    );
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitemradio", { name: /예시 프로젝트 B/ }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("저장하지 않은 변경이 있습니다");
     await user.click(screen.getByRole("button", { name: "변경을 버리고 이동" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/projects/aaaaaaaa-0000-4000-8000-000000000002/products"));
@@ -246,9 +204,17 @@ describe("공정 표 편집 (초안 UI)", () => {
     renderApp(url(APPROVED));
     expect(screen.queryByRole("button", { name: "단계 추가" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /삭제$/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/초안이 아닌 버전은 수정할 수 없습니다/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "예시 압출 보기" }));
     expect(await screen.findByText(/읽기 전용입니다/)).toBeInTheDocument();
     expect(screen.getByLabelText("공정명")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "저장 (정적 예시)" })).toBeDisabled();
+  });
+
+  it("정적 예시에서는 검토 요청·검증·새 초안을 보내지 않는다", () => {
+    renderApp(url(DRAFT));
+    expect(screen.getByRole("button", { name: "검토 요청" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "검증 실행" })).toBeDisabled();
   });
 
   it("단계가 없는 검토 중 버전은 빈 상태를 보여 준다", () => {
@@ -258,7 +224,7 @@ describe("공정 표 편집 (초안 UI)", () => {
   });
 
   it("다른 제품의 버전 ID를 붙이면 찾을 수 없음으로 표시한다", () => {
-    renderApp(`/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${EMPTY.productId}/processes/${DRAFT.id}`);
+    renderApp(`/projects/${PROJECT}/products/${EMPTY.productId}/processes/${DRAFT.id}`);
     expect(screen.getAllByText("공정을 찾을 수 없습니다").length).toBeGreaterThan(0);
   });
 
@@ -269,6 +235,6 @@ describe("공정 표 편집 (초안 UI)", () => {
     ["conflict", "다른 사용자가 먼저 수정했습니다"],
   ])("상태 미리보기 %s", (state, text) => {
     renderApp(url(DRAFT, `?state=${state}`));
-    expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.getAllByText(new RegExp(text)).length).toBeGreaterThan(0);
   });
 });

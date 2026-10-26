@@ -73,6 +73,7 @@ export function classifyError(e: unknown): ErrorKind {
       return "conflict";
     case "VERSION_IMMUTABLE":
     case "REVISION_DRAFT_EXISTS":
+    case "PROCESS_DRAFT_EXISTS":
     case "INVALID_STATE_TRANSITION":
       return "state";
     case "PROJECT_CODE_CONFLICT":

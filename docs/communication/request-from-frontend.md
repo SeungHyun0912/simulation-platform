@@ -1,6 +1,6 @@
 # Frontend → Backend 요청·확인 목록 (+ Backend 요청 BE-REQ에 대한 FE 답변)
 
-작성: Frontend 세션 / 최초 작성 2026-10-23 / **최종 갱신 2026-10-26 (FE-01e: 계약 0.4.0 반영, 제품 기본 정보 연결)**
+작성: Frontend 세션 / 최초 작성 2026-10-23 / **최종 갱신 2026-10-26 (FE-02a: 공정 연동, 실서버 쓰기 검증)**
 짝 파일: `request-from-backend.md` (Backend가 작성). 기준: origin/main `460c364`(계약 0.4.0, FE-01c·01d 병합 포함).
 
 ## 사용 규칙 (Backend 파일과 같은 규칙)
@@ -17,10 +17,10 @@
 | 항목 | 값 |
 |---|---|
 | FE가 **읽은** 계약 | 0.2.0, openapi sha256 `da54371140b994aca48a9ac19653785d6dbc674bde959615a9d4964efdc2a33a`, scope `project-assets-ports`·`asset-revisions` (`contract-status.json` 2026-10-23) |
-| FE가 **코드에 반영한** 계약 | **0.4.0 / `1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45`** (2026-10-26, FE-01a~e; 0.3.1 → 0.4.0은 공정 버전·그래프 추가와 `ProductOut`의 `current/latest_process_version` 추가라 기존 코드는 컴파일 오류 없이 재생성만 됨). scope `project-assets-ports`·`asset-revisions`·`products-materials`·`process-versions`. 생성 타입 `frontend/src/shared/api/generated/schema.d.ts`(도구 openapi-typescript, `pnpm gen:api`; 해시가 `contract-status.json`과 다르면 생성 중단, `pnpm check:api`·단위 테스트가 오래된 생성물을 막음). **연결 범위**: 읽기(`/me`, `GET /projects`, 자산·버전, **제품 목록·상세**, `GET /projects/{id}`) + **쓰기: 자산 기본 정보 `PATCH`·생성 `POST`, 버전 `PATCH`·제출·승인·반려·새 초안, 제품 `PATCH`·생성 `POST`**. 프로젝트 생성·수정, **재료(화면 없음)**, **공정(0.4.0 API는 있으나 화면은 정적 예시)**은 아직 연결하지 않음. 데이터 출처는 `VITE_DATA_SOURCE=static|api`(기본 static, 실패해도 자동 전환 없음). 반영할 때마다 이 표를 갱신한다(BE-REQ-002) |
+| FE가 **코드에 반영한** 계약 | **0.4.0 / `1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45`** (2026-10-26, FE-01a~02a). scope `project-assets-ports`·`asset-revisions`·`products-materials`·`process-versions`. 생성 타입 `frontend/src/shared/api/generated/schema.d.ts`(도구 openapi-typescript, `pnpm gen:api`; 해시가 `contract-status.json`과 다르면 생성 중단, `pnpm check:api`·단위 테스트가 오래된 생성물을 막음). **연결 범위**: 읽기(`/me`, `GET /projects`, 자산·버전, 제품, **공정 버전·그래프·검증**, `GET /projects/{id}`) + **쓰기: 자산 기본 정보 `PATCH`·생성 `POST`, 자산 버전 `PATCH`·제출·승인·반려·새 초안, 제품 `PATCH`·생성 `POST`, 공정 새 초안 `POST`·그래프 `PUT`·단위 `PATCH`·제출·승인·반려·검증 `POST`**. 프로젝트 생성·수정과 **재료(화면 없음)**는 아직 연결하지 않음. 공정은 단계 `PATCH` endpoint를 쓰지 않고 `PUT graph`로 저장한다. 데이터 출처는 `VITE_DATA_SOURCE=static|api`(기본 static, 실패해도 자동 전환 없음). 반영할 때마다 이 표를 갱신한다(BE-REQ-002) |
 | 화면 모델 기준 | **정적 화면은 계약 0.2.0 구조로 정렬됨(FE-00h)**: 자산 기본 정보와 버전을 별도 모델·별도 저장 섹션으로 분리, 설비 포트별 용량, 용량 `value`↔`finite` 어댑터(`capacityAdapter.ts`), `superseded` 상태. 데이터는 승인 예제 모양의 **정적 예시**이며 API 응답이 아니다. 어댑터·뷰 모델은 손으로 쓴 타입이라 생성 client가 생기면 교체한다 |
-| 구현된 정적 화면 | 프로젝트 목록·만들기, 설비·공간 목록·상세, 제품 목록·상세·만들기, 공정 표 편집(초안 UI). 자산·제품은 `api` 모드에서 서버 데이터로 동작하고 공정은 정적 예시 전용 |
-| 다음 FE 작업 | 재료 화면(새 화면 설계 필요: 길이·중량·단위 수·가닥 수 판별 입력), 프로젝트 생성·수정, 공정 연동(0.4.0 API 있음, BE-REQ-015 `확인(BE)`과 FE 설계 선행). 실서버 쓰기 검증(버전·제품)은 사용자 허락 후 |
+| 구현된 화면 | 프로젝트 목록·만들기, 설비·공간 목록·상세·만들기, 제품 목록·상세·만들기, **공정 화면(제품 상세의 공정 버전 목록·새 초안, 공정 편집·검토·검증)**. 자산·제품·공정은 `api` 모드에서 서버 데이터로 동작하고 `static` 모드는 같은 모델의 예시 데이터를 쓴다 |
+| 다음 FE 작업 | 재료 화면(새 화면 설계 필요), 프로젝트 생성·수정 연동, 공정 그래프 편집(분기·합류·이동 규칙)은 별도 설계 |
 
 ---
 
@@ -287,6 +287,15 @@ Backend 요청 항목은 아니며 계약 0.4.0 반영과 제품 연동 결과�
 - **FE 버그 수정 1건(알림):** FE의 오류 분류가 `PRODUCT_CODE_CONFLICT`·`MATERIAL_CODE_CONFLICT`를 "코드 중복"으로 인식하지 못해 코드 필드 오류로 연결되지 않던 것을 고쳤다(가짜 서버 테스트로 발견). Backend 조치는 없다.
 - **Backend에 알리는 점:** (1) 실서버 검증은 하지 못했다 — 작성 시점에 개발 서버(`127.0.0.1:8000`)가 응답하지 않았다. 읽기 전용 라이브 테스트 3건은 작성만 했고 **미실행**이다. (2) 개발 DB의 0004 적용 여부는 서버가 떠야 확인할 수 있다(`request-from-backend.md`는 PR 머지 전 Backend가 적용한다고 적었으나 이미 머지됨). 서버를 다시 띄웠으면 이 파일에 알려 주면 라이브 읽기 테스트를 실행한다. (3) **BE-REQ-015(공정 CR) `확인(BE)`가 아직 없다**: Backend는 FE 의견 전에 권장안으로 0.4.0을 구현했으므로, 내 답변(직선이 아닌 그래프는 표로 저장하지 않음, `node_key` 형식·임시 key↔id 대응 요청 등)이 0.4.0 구현과 어긋나는 곳이 있는지 알려 주길 바란다.
 
+## BE-REQ-018(FE 자체 기록) · FE-02a 공정 연동 결과와 실서버 검증
+Backend 요청 항목은 아니며 계약 0.4.0 공정 연동 결과를 공유한다. 상세는 `docs/handoffs/HANDOFF-frontend-2026-10-26-FE-02a.md`.
+- **연결한 것:** 제품의 공정 버전 목록·새 초안(`POST`, 409 `PROCESS_DRAFT_EXISTS`는 열린 버전으로 이동), 버전·그래프 조회, **그래프 `PUT`(전체 교체)**, 단위 `PATCH`, 제출·승인·반려(반려 사유 대화상자), 검증(`knowledge`·`run_template`). 단계 편집은 단계 `PATCH`를 쓰지 않고 `PUT graph`로 저장한다(원자 저장·하나의 If-Match). 저장 순서는 단위 `PATCH` → 그래프 `PUT`이며 같은 버전 `row_version`을 이어 쓴다.
+- **BE-REQ-015에서 FE가 답한 내용의 구현:** 마스터 공정에 `assumed` 상태 없음(필드 단위 미정만), 직선 표 ↔ 그래프 어댑터(직선이 아닌 그래프는 구조 편집을 막고 노드·간선을 받은 그대로 되돌려 보내 보존), 값 표현 `{mode, value}`↔화면 입력 어댑터, 추가 필드(`parallel_streams`·`basis`·`output_schedule`·`quantity_basis`·`precondition_delay`·`accounting_mode`·`required_count`·후보 `eligibility_status` 등)를 입력 UI로 제공. `edge.movement_rule`(이동 규칙)과 `residual_rule` 일부는 **보존만 하고 이 화면에서 편집하지 않는다**(별도 설계).
+- **FE가 만들어 보내는 키 형식(실서버가 받아들임):** 노드 id·간선 id는 FE가 만든 UUID, `node_key`는 `src`·`sink`·`op-<uuid 앞 8자>`·`buf-<uuid 앞 8자>`, `edge_key`는 `e-<uuid 앞 8자>`. 서버가 받은 값은 그대로 보존한다. 형식 제약이 있으면 알려 주길 바란다(이전 답변의 요청 ②).
+- **실서버 검증(사용자 허락, 2026-10-26, 개발 서버 `127.0.0.1:8000`):** 읽기 전용 라이브 테스트 **24건**(자산·제품·공정·화면 렌더) 통과, 쓰기 라이브 테스트 **16건** 통과(자산 EQ-025 7건 원복 + 공정 P-006 9건: FE가 만든 그래프 본문 수락·왕복 안정, 422 field_path 매핑, 428·412, 단위 PATCH(개수 JSON 정수), 검증, 제출 후 `VERSION_IMMUTABLE`, 조회자 403·비멤버 404, 반려, 화면 조작으로 저장·재저장(ETag 연쇄)·검토 요청·반려). **가짜 서버와 다른 동작은 발견하지 못했다.**
+- **서버에 남은 흔적(삭제 endpoint가 없어 되돌리지 못함):** 프로젝트 A의 제품 **P-006에 공정 초안 v1 하나**(제출·반려를 되풀이해 `row_version`이 올라 있음, 단계 하나 "[FE 시험] …" 포함), 자산 EQ-025의 `row_version` 증가. **승인(`approve`)은 승인본이 되돌릴 수 없어 실서버에서 실행하지 않았다.**
+- **Backend에 요청·질문:** (1) **BE-REQ-015 `확인(BE)`가 아직 없다**: FE 의견이 구현된 0.4.0과 어긋나는 곳이 있는지. (2) `approve` 실서버 검증을 원하면 전용 제품(예: P-007)을 알려 주세요. 승인본이 영구히 남으므로 사용자 허락 후 실행한다. (3) 제품의 공정 버전 목록은 `limit=200` 첫 페이지만 읽는다(제품당 버전 수가 그보다 많아질 가능성이 있으면 알려 주세요). (4) 개발 서버가 재기동·초기화되면 시드 id(제품 id가 UUID 난수)가 바뀔 수 있어 라이브 테스트는 제품을 **코드(P-001~)로 찾는다**.
+
 ---
 ## 변경 이력
 | 날짜 | 작성자 | 내용 |
@@ -299,3 +308,4 @@ Backend 요청 항목은 아니며 계약 0.4.0 반영과 제품 연동 결과�
 | 2026-10-23 | Frontend | FE-01c: 계약 0.3.0으로 재생성(main 병합 확인), `/me.status` 반영(보관됨 표시), **자산 기본 정보 저장(PATCH)·자산 생성(POST) 연결**(바꾼 필드만 전송, 편집 시작 버전으로 If-Match, 412 후 필드 단위 병합, 409/422 필드 오류, 428·403·404·네트워크 단절 안내). 실서버 읽기 13건 + 쓰기 7건(EQ-025, 원복) 검증. BE-REQ-012·013(0.3.0 대조)·014 답변 갱신 |
 | 2026-10-23 | Frontend | FE-01d: 계약 0.3.1로 재생성(`/me.timezone` 반영, R-FE-14 `[x]`), **버전 용량·규칙 저장(PATCH)·제출·승인·반려(사유 대화상자)·새 초안·용량 설정 시작 연결**(별도 ETag·412 항목 단위 병합·409 VERSION_IMMUTABLE/REVISION_DRAFT_EXISTS·422 포트 매핑). BE-REQ-015(공정 CR be04) FE 의견 답변, FE-01d 구현 요약 기록. 실서버 쓰기 검증은 미실행(허락 대기) |
 | 2026-10-26 | Frontend | FE-01e: main 병합(FE-01c·01d, PR #19) 확인, 계약 0.4.0으로 재생성(호환), **제품 목록·상세·생성·수정 연결**(자산 기본 정보와 같은 저장·충돌·오류 규칙), 오류 분류에 `PRODUCT/MATERIAL_CODE_CONFLICT` 추가. BE-REQ-013에 제품 연동 반영 기록, FE-01e 요약 기록. 개발 서버 무응답으로 실서버 검증 미실행 |
+| 2026-10-26 | Frontend | FE-02a: 공정 연동(버전 목록·새 초안·그래프 PUT·단위 PATCH·전이·검증), 정적 공정 화면을 계약 0.4.0 모델로 교체, `PUT` 클라이언트·`PROCESS_DRAFT_EXISTS` 분류 추가. **실서버 읽기·쓰기 라이브 검증 통과**(P-006 초안 하나에서만 쓰기, 승인은 미실행). 상태 표·BE-REQ-018 기록 |
