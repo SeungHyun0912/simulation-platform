@@ -1192,3 +1192,47 @@ def test_graph_save_audit_records_the_completion_node(client, db, ctx):
                       "action = 'process_version.graph' order by created_at desc limit 1",
                       e=uuid.UUID(version["id"]))
     assert after == graph["completion_node_id"]
+
+
+# --- 엔진 연결(C0): API가 돌려주는 공정을 그대로 snapshot으로 읽어 컴파일·실행한다 --------------------
+
+def test_api_process_graph_compiles_and_runs_in_the_engine(client, ctx):
+    from fractions import Fraction
+
+    from simulation_platform.simulation.compiler import (
+        ProcessSnapshot,
+        ScenarioAssumptions,
+        compile_snapshot,
+    )
+    from simulation_platform.simulation.runtime import Arrival, run_model
+
+    split = full_step(
+        ctx["equipment"], operation_type="split_length",
+        output_rule={"mode": "split_length", "unit_form": "보빈", "length_m": known("1000"),
+                     "unit_count": known(2), "quantity_basis": "per_input_unit",
+                     "schedule": "sequential_units", "accounting_mode": "physical"},
+        material_specs=[mspec("out", "output", state_code="절연 후", form="보빈",
+                              length_m=known("1000"), unit_count=known(2))])
+    src, wait = node("source", "src"), node("buffer", "wait", asset_id=ctx["storage"], display_order=1)
+    first = node("operation", "insulate", step=split, display_order=2)
+    done, sink = node("milestone", "complete", display_order=3), node("sink", "sink", display_order=4)
+    nodes = [src, wait, first, done, sink]
+    graph = {"nodes": nodes, "edges": [edge(a, b) for a, b in itertools.pairwise(nodes)],
+             "completion_node_id": done["id"]}
+    version = create_version(client, ctx)
+    assert put_graph(client, ctx, version, graph).status_code == 200
+    detail, saved = get_version(client, ctx, version["id"]), graph_of(client, ctx, version["id"])
+
+    snapshot = ProcessSnapshot.from_api(detail, saved)
+    assumptions = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True)
+    result = compile_snapshot(snapshot, assumptions, allow_unapproved=True)
+    assert result.ok, result.issues
+    model = result.require_model()
+    assert model.completion_key == "complete" and model.steps["insulate"].candidates == (ctx["equipment"],)
+    assert model.steps["insulate"].output.state_code == "절연 후"  # 단계 재료 spec의 상태가 산출 작업물에 붙는다
+    run = run_model(model, [Arrival("2000")])
+    assert run.state == "completed"
+    assert [e.sim_time for e in run.of_type("OUTPUT_UNIT_READY")] == [Fraction(100, 3), Fraction(200, 3)]
+    assert [e.reason for e in run.of_type("MILESTONE_REACHED")] == ["completion", "completion"]
+    # 승인되지 않은 버전은 기본적으로 실행할 수 없다
+    assert [i.rule_id for i in compile_snapshot(snapshot, assumptions).issues] == ["VERSION_NOT_APPROVED"]

@@ -15,6 +15,7 @@ dependencies = [
     "sqlalchemy",
     "alembic",
     "psycopg[binary]",
+    "simpy>=4,<5",  # 가상 시간 이벤트 엔진(exact 4.1.2는 requirements.lock, ADR-0002)
     "tzdata",  # Windows에서 zoneinfo(IANA 시간대) 검증에 필요
 ]
 
