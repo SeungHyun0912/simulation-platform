@@ -17,6 +17,7 @@ from simulation_platform.models.process import (
     ProcessVersion,
     RequirementCandidate,
     ResourceRequirement,
+    StepMaterialSpec,
 )
 from simulation_platform.models.revision import AssetRevision, PortPolicy
 
@@ -43,4 +44,5 @@ __all__ = [
     "RequirementCandidate",
     "ResourceRequirement",
     "SpaceDetail",
+    "StepMaterialSpec",
 ]

@@ -5,6 +5,18 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.6.0 — 2026-10-26 · scope `process-versions`(BE-04c) · sha256 `509a71f1…38ef` · 기준 commit `03f21ba`
+- **호환성: 0.5.0 클라이언트와 호환(추가 필드만, operation 변경 없음).** 요청 쪽 새 필드는 모두 선택·기본값이 있고, 응답은 필드가 늘어난다(그래프 응답의 `completion_node_id`·버전 응답의 `completion_node_id`는 항상 있으며 null 가능). **단, 그래프 PUT은 전체 교체이므로 아래 주의를 따라야 한다.**
+- **단계 재료 spec** `StepDto.material_specs[]`: `{spec_key, direction: input|output, material_definition_id, state_code, form, length_m, weight_kg, unit_count, strand_count, quantity_basis}`. 길이·중량·단위 수·가닥 수는 서로 섞지 않는 별개 값 객체(`{mode, value}`, 기본 unknown). "3.3t×11개 동시 투입"은 `weight_kg=3300`+`unit_count=11`, "12가닥 공급"은 `strand_count=12`. 단계 PATCH로도 통째 교체할 수 있다.
+- **간선 spec 연결** `GraphEdge.source_output_spec_key`·`target_input_spec_key`: `spec_key`로 from 단계의 output spec·to 단계의 input spec을 잇는다(버퍼를 낀 흐름에서는 operation에 붙은 간선에만). 소속·방향이 어긋나면 422(`VAL-SPEC-002~004`), 간선이 연결한 spec을 단계 PATCH로 제거하면 422 `VAL-SPEC-005`.
+- **완제품 지정** `completion_node_id`(그래프 PUT 최상위, 응답에도 포함): 같은 그래프의 milestone 노드 id. 미정이면 knowledge **경고** `VAL-GRAPH-014`(승인을 막지 않음), run_template에서는 **오류**. 문서가 완제품 시점을 정하지 않은 공정은 미정으로 둔다.
+- **새 검증 항목:** `VAL-SPEC-001`(spec 수량 모두 미정, 경고), `VAL-GRAPH-014`(경고→run 오류), 저장 오류 `VAL-SPEC-002~005`·`VAL-GRAPH-005`·`VAL-REF-006`(다른 프로젝트의 재료).
+- **비교·복제:** `diff`가 spec(`/material_specs/{spec_key}/…`)·간선 연결·완제품(`/completion_node_key`)을 포함하고, 새 초안 복제가 이를 새 id로 함께 복사한다.
+- **주의(FE 필독):** 그래프 PUT은 전체 교체다. 새 필드를 모르는 화면(0.5.0 이하)이 그래프를 다시 저장하면 spec·간선 연결·완제품 지정이 **지워진다.** 조회한 그래프를 그대로 수정해 보내고 응답에 있는 필드를 보존해야 한다.
+- **프런트가 해야 할 일(모두 선택):** ① 타입 재생성 ② 공정 화면을 만들 때 단계의 입력·출력 spec 표시(길이·중량·개수·가닥 구분), 간선 spec 연결, "완제품" milestone 지정 UI ③ 그래프 저장 시 모르는 필드 보존. 완제품 미정 경고 `VAL-GRAPH-014`를 검증 패널에 표시.
+- **아직 없는 것:** 값 구조가 정의되지 않은 `execution_rule`·`input_match_policy`·`condition_rule`·`parameter_override`, join 준비 조건·분할/합류 allocate 규칙, 사용자별 편집기 상태.
+- **상세:** [04 §4.1.2](04_api_contract.md), [CR be06](../docs/change-requests/CR-backend-20261026-be06-process-material-spec-completion.md), 예제 `examples/first-scope/process-graph.put-with-specs`·`process-step.patch-material-specs`·`error.spec-link-invalid`.
+
 ## 0.5.0 — 2026-10-26 · scope `process-versions`(BE-04b) · sha256 `62e3529c…f02d` · 기준 commit `c9de49a`
 - **호환성: 0.4.0 클라이언트와 호환(추가만).** 기존 operation의 응답·요청 필드는 그대로이고, 새 초안 생성(`POST …/process-versions`)에 **선택** 본문이 늘었다. 본문 없이 호출하면 0.4.0과 똑같이 동작한다.
 - **추가 operation 3개:** `GET …/process-versions/{v}/diff`(버전 비교), `GET·PUT …/process-versions/{v}/editor-state`(화면 좌표). 별도 `clone` endpoint는 없다.

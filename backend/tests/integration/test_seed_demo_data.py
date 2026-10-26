@@ -165,13 +165,15 @@ def test_process_version_samples_cover_states_and_validation_levels(client, seed
                        headers=headers(admin)).json()["data"][0]
     editor = client.get(f"{url}/process-versions/{first['id']}/editor-state",
                         headers=headers(admin)).json()["data"]
-    assert editor["row_version"] == 1 and len(editor["node_positions"]) == 5  # 승인본에도 좌표 저장
+    assert editor["row_version"] == 1 and len(editor["node_positions"]) == 6  # 승인본에도 좌표 저장(노드마다)
     approved = next(p for p in client.get(
         f"{url}/products/{products['P-001']['id']}/process-versions",
         headers=headers(admin)).json()["data"])
     graph = client.get(f"{url}/process-versions/{approved['id']}/graph",
                        headers=headers(admin)).json()["data"]
-    assert [n["kind"] for n in graph["nodes"]] == ["source", "operation", "buffer", "operation", "sink"]
+    assert [n["kind"] for n in graph["nodes"]] == [
+        "source", "operation", "buffer", "operation", "milestone", "sink"]
+    assert graph["completion_node_id"] == next(n["id"] for n in graph["nodes"] if n["kind"] == "milestone")
     run = client.post(f"{url}/process-versions/{approved['id']}/validate?scope=run_template",
                       headers=headers(admin)).json()["data"]
     assert run["error_count"] == 0  # 확정된 그래프는 실행 판정도 오류 없음(원자재 단위 미정은 경고)

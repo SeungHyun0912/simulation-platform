@@ -8,9 +8,17 @@
     "body": {
       "data": {
         "scope": "run_template",
-        "error_count": 2,
+        "error_count": 3,
         "warning_count": 2,
         "issues": [
+          {
+            "severity": "error",
+            "rule_id": "VAL-GRAPH-014",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/completion_node_id",
+            "message": "완제품 판정 시점(완제품 milestone)이 미정입니다.",
+            "resolution": "완제품으로 판정하는 milestone 노드를 지정하세요(실행 전 필수)."
+          },
           {
             "severity": "error",
             "rule_id": "VAL-TIME-004",

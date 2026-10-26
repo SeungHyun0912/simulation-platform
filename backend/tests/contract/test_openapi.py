@@ -202,7 +202,7 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials", "process-versions"]
-    assert status["contract_version"] == "0.5.0"
+    assert status["contract_version"] == "0.6.0"
 
 
 def test_process_0_5_0_additions_are_compatible_and_closed():
@@ -223,3 +223,24 @@ def test_process_0_5_0_additions_are_compatible_and_closed():
         assert schemas[name]["additionalProperties"] is False
     assert schemas["EditorStateOut"]["properties"]["row_version"]["type"] == "integer"
     assert set(schemas["DiffField"]["properties"]["change"]["enum"]) == {"added", "removed", "changed"}
+
+
+def test_process_0_6_0_additions_are_optional_and_closed():
+    """0.5.0 클라이언트와 호환: 요청 쪽 새 필드는 모두 선택, 새 스키마는 닫힌 객체."""
+    schemas = _schema()["components"]["schemas"]
+    spec = schemas["MaterialSpecDto"]
+    assert spec["additionalProperties"] is False and set(spec["required"]) == {"spec_key", "direction"}
+    assert spec["properties"]["direction"]["enum"] == ["input", "output"]
+    assert set(spec["properties"]["quantity_basis"]["enum"]) == {
+        "unknown", "per_operation", "per_input_unit", "per_lot", "total_plan"}
+    for field in ("length_m", "weight_kg", "unit_count", "strand_count"):  # 단위를 섞지 않는 별개 값 객체
+        assert field in spec["properties"]
+    assert "material_specs" in schemas["StepDto"]["properties"]
+    assert "material_specs" not in schemas["StepDto"].get("required", [])
+    assert "material_specs" in schemas["StepPatch"]["properties"]
+    for field in ("source_output_spec_key", "target_input_spec_key"):
+        assert field in schemas["GraphEdge"]["properties"] and field not in schemas["GraphEdge"]["required"]
+    assert "completion_node_id" in schemas["GraphIn"]["properties"]
+    assert "completion_node_id" not in schemas["GraphIn"].get("required", [])
+    assert "completion_node_id" in schemas["GraphOut"]["required"]  # 응답에는 항상 있다(null 가능)
+    assert "completion_node_id" in schemas["ProcessVersionOut"]["properties"]

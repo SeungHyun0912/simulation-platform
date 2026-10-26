@@ -313,7 +313,8 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "material_specs": []
             }
           },
           {
@@ -415,7 +416,8 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "material_specs": []
             }
           },
           {
@@ -441,7 +443,9 @@
                 "mode": "unknown",
                 "value": null
               }
-            }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": null
           },
           {
             "id": "00000000-0000-4000-8000-000000000025",
@@ -455,7 +459,9 @@
                 "mode": "unknown",
                 "value": null
               }
-            }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": null
           },
           {
             "id": "00000000-0000-4000-8000-000000000022",
@@ -469,7 +475,9 @@
                 "mode": "unknown",
                 "value": null
               }
-            }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": null
           },
           {
             "id": "00000000-0000-4000-8000-000000000024",
@@ -483,9 +491,12 @@
                 "mode": "unknown",
                 "value": null
               }
-            }
+            },
+            "source_output_spec_key": null,
+            "target_input_spec_key": null
           }
         ],
+        "completion_node_id": null,
         "issues": [
           {
             "severity": "warning",
@@ -502,6 +513,14 @@
             "field_path": "/finished_unit_spec",
             "message": "완제품 단위가 미정입니다.",
             "resolution": null
+          },
+          {
+            "severity": "warning",
+            "rule_id": "VAL-GRAPH-014",
+            "entity_id": "00000000-0000-4000-8000-000000000015",
+            "field_path": "/completion_node_id",
+            "message": "완제품 판정 시점(완제품 milestone)이 미정입니다.",
+            "resolution": "완제품으로 판정하는 milestone 노드를 지정하세요(실행 전 필수)."
           }
         ]
       }

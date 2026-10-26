@@ -8,7 +8,7 @@
 from typing import Any
 
 NODE_FIELDS = ("kind", "label", "asset_id", "display_order")
-HEADER_FIELDS = ("raw_unit_spec", "finished_unit_spec", "notes")
+HEADER_FIELDS = ("raw_unit_spec", "finished_unit_spec", "notes", "completion_node_key")
 
 
 def _pointer(parts: list[str]) -> str:
@@ -39,10 +39,12 @@ def _field(path: list[str], change: str, before: Any, after: Any) -> dict:
 
 
 def _step_view(step: dict | None) -> dict | None:
-    """자원 요구를 role_key, 후보를 asset_id로 키를 잡아 경로가 순서에 의존하지 않게 한다."""
+    """자원 요구를 role_key, 후보를 asset_id, 재료 spec을 spec_key로 키를 잡아 경로가 순서에 의존하지 않게 한다."""
     if step is None:
         return None
-    view = {k: v for k, v in step.items() if k != "resources"}
+    view = {k: v for k, v in step.items() if k not in ("resources", "material_specs")}
+    view["material_specs"] = {m["spec_key"]: {k: v for k, v in m.items() if k != "spec_key"}
+                              for m in step.get("material_specs", [])}
     view["resources"] = {
         r["role_key"]: {
             **{k: v for k, v in r.items() if k not in ("role_key", "candidates")},
@@ -82,7 +84,9 @@ def diff_versions(target: dict, against: dict) -> dict:
     def edge_view(edge: dict, key_of: dict) -> dict:
         return {"edge_kind": edge["edge_kind"], "movement_rule": edge["movement_rule"],
                 "from_node_key": key_of[edge["from_node_id"]],
-                "to_node_key": key_of[edge["to_node_id"]]}
+                "to_node_key": key_of[edge["to_node_id"]],
+                "source_output_spec_key": edge.get("source_output_spec_key"),
+                "target_input_spec_key": edge.get("target_input_spec_key")}
 
     edges_changed = []
     for key in sorted(t_edges.keys() & a_edges.keys()):

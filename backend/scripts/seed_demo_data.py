@@ -283,13 +283,16 @@ def _linear_graph(first_step: dict, second_step: dict, storage_id: str) -> dict:
          "asset_id": storage_id, "display_order": 2},
         {"id": str(uuid.uuid4()), "node_key": "step-2", "kind": "operation",
          "label": "[시험] 2단계", "display_order": 3, "step": second_step},
-        {"id": str(uuid.uuid4()), "node_key": "sink", "kind": "sink", "label": "[시험] 완제품",
-         "display_order": 4},
+        {"id": str(uuid.uuid4()), "node_key": "complete", "kind": "milestone",
+         "label": "[시험] 완제품 판정", "display_order": 4},
+        {"id": str(uuid.uuid4()), "node_key": "sink", "kind": "sink", "label": "[시험] 출고",
+         "display_order": 5},
     ]
     edges = [{"id": str(uuid.uuid4()), "edge_key": f"{a['node_key']}-{b['node_key']}",
               "from_node_id": a["id"], "to_node_id": b["id"], "edge_kind": "material"}
              for a, b in itertools.pairwise(nodes)]
-    return {"nodes": nodes, "edges": edges}
+    completion = next(n["id"] for n in nodes if n["kind"] == "milestone")
+    return {"nodes": nodes, "edges": edges, "completion_node_id": completion}
 
 
 def seed_process(seeder: Seeder, project_a: uuid.UUID) -> dict:

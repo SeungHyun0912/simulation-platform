@@ -60,6 +60,7 @@
           }
         },
         "notes": null,
+        "completion_node_id": null,
         "issues": [
           {
             "severity": "warning",

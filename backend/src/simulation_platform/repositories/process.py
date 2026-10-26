@@ -9,11 +9,13 @@ from simulation_platform.models import (
     Asset,
     FlowEdge,
     FlowNode,
+    MaterialDefinition,
     ProcessEditorState,
     ProcessStep,
     ProcessVersion,
     RequirementCandidate,
     ResourceRequirement,
+    StepMaterialSpec,
 )
 from simulation_platform.repositories.keyset import apply_keyset
 
@@ -109,6 +111,25 @@ def load_graph(session: Session, project_id: uuid.UUID, version_id: uuid.UUID):
         .order_by(Asset.code)):
         candidates.setdefault(cand.requirement_id, []).append((code, cand))
 
+    specs: dict[uuid.UUID, list[StepMaterialSpec]] = {}
+    spec_key_by_id: dict[uuid.UUID, str] = {}
+    for spec in session.scalars(
+        select(StepMaterialSpec).where(StepMaterialSpec.project_id == project_id,
+                                       StepMaterialSpec.process_version_id == version_id)
+        .order_by(StepMaterialSpec.direction, StepMaterialSpec.spec_key)):  # input이 output보다 먼저
+        specs.setdefault(spec.step_node_id, []).append(spec)
+        spec_key_by_id[spec.id] = spec.spec_key
+
+    def spec_dict(spec: StepMaterialSpec) -> dict:
+        return {
+            "spec_key": spec.spec_key, "direction": spec.direction,
+            "material_definition_id": (None if spec.material_definition_id is None
+                                       else str(spec.material_definition_id)),
+            "state_code": spec.state_code, "form": spec.form,
+            "length_m": spec.quantity["length_m"], "weight_kg": spec.quantity["weight_kg"],
+            "unit_count": spec.quantity["unit_count"], "strand_count": spec.quantity["strand_count"],
+            "quantity_basis": spec.quantity_basis}
+
     def step_dict(step: ProcessStep) -> dict:
         return {
             "operation_type": step.operation_type, "handler_version": step.handler_version,
@@ -123,6 +144,7 @@ def load_graph(session: Session, project_id: uuid.UUID, version_id: uuid.UUID):
                                 "eligibility_status": c.eligibility_status}
                                for _, c in candidates.get(r.id, [])],
             } for r in requirements.get(step.node_id, [])],
+            "material_specs": [spec_dict(m) for m in specs.get(step.node_id, [])],
         }
 
     node_dicts = [{
@@ -134,6 +156,8 @@ def load_graph(session: Session, project_id: uuid.UUID, version_id: uuid.UUID):
     edge_dicts = [{
         "id": str(e.id), "edge_key": e.edge_key, "from_node_id": str(e.from_node_id),
         "to_node_id": str(e.to_node_id), "edge_kind": e.edge_kind, "movement_rule": e.movement_rule,
+        "source_output_spec_key": spec_key_by_id.get(e.source_output_spec_id),
+        "target_input_spec_key": spec_key_by_id.get(e.target_input_spec_id),
     } for e in session.scalars(
         select(FlowEdge).where(FlowEdge.project_id == project_id,
                                FlowEdge.process_version_id == version_id)
@@ -143,7 +167,9 @@ def load_graph(session: Session, project_id: uuid.UUID, version_id: uuid.UUID):
 
 def delete_graph(session: Session, version_id: uuid.UUID) -> None:
     """버전의 그래프를 자식부터 모두 지운다(부모 버전이 draft일 때만 DB가 허용)."""
-    for model in (RequirementCandidate, ResourceRequirement, ProcessStep, FlowEdge, FlowNode):
+    # 간선이 spec을 참조하므로 간선 → spec → 단계 → 노드 순으로 지운다.
+    for model in (RequirementCandidate, ResourceRequirement, FlowEdge, StepMaterialSpec, ProcessStep,
+                  FlowNode):
         session.execute(delete(model).where(model.process_version_id == version_id))
 
 
@@ -170,3 +196,23 @@ def get_editor_state(session: Session, project_id: uuid.UUID, version_id: uuid.U
 def node_ids(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> set[uuid.UUID]:
     return set(session.scalars(select(FlowNode.id).where(
         FlowNode.project_id == project_id, FlowNode.process_version_id == version_id)))
+
+
+def material_ids(session: Session, project_id: uuid.UUID, ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """이 프로젝트에 있는 재료 id만 돌려준다(다른 프로젝트의 재료는 포함되지 않는다)."""
+    if not ids:
+        return set()
+    return set(session.scalars(select(MaterialDefinition.id).where(
+        MaterialDefinition.project_id == project_id, MaterialDefinition.id.in_(ids))))
+
+
+def step_specs(session: Session, version_id: uuid.UUID, node_id: uuid.UUID) -> list[StepMaterialSpec]:
+    return list(session.scalars(select(StepMaterialSpec).where(
+        StepMaterialSpec.process_version_id == version_id, StepMaterialSpec.step_node_id == node_id)))
+
+
+def referenced_spec_ids(session: Session, version_id: uuid.UUID) -> set[uuid.UUID]:
+    """간선이 연결하고 있는 spec id."""
+    rows = session.execute(select(FlowEdge.source_output_spec_id, FlowEdge.target_input_spec_id)
+                           .where(FlowEdge.process_version_id == version_id)).all()
+    return {i for row in rows for i in row if i is not None}

@@ -1271,6 +1271,34 @@
           "movement_rule": {
             "$ref": "#/components/schemas/MovementRule"
           },
+          "source_output_spec_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "from 노드(operation) 단계의 output spec_key. precedence 간선에는 쓸 수 없다.",
+            "title": "Source Output Spec Key"
+          },
+          "target_input_spec_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "to 노드(operation) 단계의 input spec_key. precedence 간선에는 쓸 수 없다.",
+            "title": "Target Input Spec Key"
+          },
           "to_node_id": {
             "format": "uuid",
             "title": "To Node Id",
@@ -1290,6 +1318,19 @@
         "additionalProperties": false,
         "description": "그래프 전체 교체(PUT). 보내지 않은 노드·간선은 삭제된다. 간선이 없는 노드를 가리키면 422.",
         "properties": {
+          "completion_node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "완제품으로 판정하는 milestone 노드 id(같은 요청의 노드). null=미정",
+            "title": "Completion Node Id"
+          },
           "edges": {
             "items": {
               "$ref": "#/components/schemas/GraphEdge"
@@ -1386,6 +1427,18 @@
       },
       "GraphOut": {
         "properties": {
+          "completion_node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Node Id"
+          },
           "edges": {
             "items": {
               "$ref": "#/components/schemas/GraphEdge"
@@ -1422,6 +1475,7 @@
           "row_version",
           "nodes",
           "edges",
+          "completion_node_id",
           "issues"
         ],
         "title": "GraphOut",
@@ -1904,6 +1958,94 @@
           }
         },
         "title": "MaterialPatch",
+        "type": "object"
+      },
+      "MaterialSpecDto": {
+        "additionalProperties": false,
+        "description": "operation 단계의 입력·출력 재료 spec(CR be06). 길이·중량·단위 수·가닥 수는 서로 환산하지 않는 별개 값이며\n재료 `default_spec`과 같은 값 객체다(기본 unknown). spec_key는 단계 안에서 입력·출력 공통으로 유일하다.",
+        "properties": {
+          "direction": {
+            "enum": [
+              "input",
+              "output"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "length_m": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          },
+          "material_definition_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Definition Id"
+          },
+          "quantity_basis": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "per_operation",
+              "per_input_unit",
+              "per_lot",
+              "total_plan"
+            ],
+            "title": "Quantity Basis",
+            "type": "string"
+          },
+          "spec_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Spec Key",
+            "type": "string"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "strand_count": {
+            "$ref": "#/components/schemas/CountMeasure"
+          },
+          "unit_count": {
+            "$ref": "#/components/schemas/CountMeasure"
+          },
+          "weight_kg": {
+            "$ref": "#/components/schemas/DecimalMeasure"
+          }
+        },
+        "required": [
+          "spec_key",
+          "direction"
+        ],
+        "title": "MaterialSpecDto",
         "type": "object"
       },
       "MeOrganization": {
@@ -2708,6 +2850,18 @@
             ],
             "title": "Base Version Id"
           },
+          "completion_node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Node Id"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -2846,6 +3000,7 @@
           "raw_unit_spec",
           "finished_unit_spec",
           "notes",
+          "completion_node_id",
           "issues",
           "submitted_by",
           "rejection_reason",
@@ -3893,6 +4048,14 @@
           "input_rule": {
             "$ref": "#/components/schemas/InputRule"
           },
+          "material_specs": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialSpecDto"
+            },
+            "maxItems": 20,
+            "title": "Material Specs",
+            "type": "array"
+          },
           "operation_type": {
             "anyOf": [
               {
@@ -4004,6 +4167,21 @@
               }
             ],
             "title": "Label"
+          },
+          "material_specs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MaterialSpecDto"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Specs"
           },
           "operation_type": {
             "anyOf": [

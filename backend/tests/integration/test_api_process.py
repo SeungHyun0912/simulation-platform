@@ -203,9 +203,10 @@ def test_put_graph_saves_atomically_and_roundtrips(client, ctx):
     assert [n["id"] for n in again["nodes"]] == [n["id"] for n in data["nodes"]]
 
 
-def test_fully_specified_graph_has_only_unit_spec_warnings(client, ready):
+def test_fully_specified_graph_has_only_unit_spec_and_completion_warnings(client, ready):
     version, _, _ = ready
-    assert {i["rule_id"] for i in version["issues"]} == {"VAL-VER-001", "VAL-VER-002"}
+    # 이 그래프에는 완제품 milestone이 없어 완제품 판정 시점(VAL-GRAPH-014)도 미정 경고다.
+    assert {i["rule_id"] for i in version["issues"]} == {"VAL-VER-001", "VAL-VER-002", "VAL-GRAPH-014"}
 
 
 def test_put_graph_replaces_everything_and_removed_parts_disappear(client, ctx, ready):
@@ -399,8 +400,10 @@ def test_validate_scopes_knowledge_vs_run_template(client, ctx, ready):
     knowledge = client.post(url, headers=ctx["viewer"]).json()["data"]
     assert knowledge["scope"] == "knowledge" and knowledge["error_count"] == 0
     run = client.post(f"{url}?scope=run_template", headers=ctx["viewer"]).json()["data"]
-    assert run["error_count"] == 0  # 확정된 그래프는 실행 가능 판정도 오류 없음(원자재 단위 미정은 경고)
-    assert {i["rule_id"] for i in run["issues"]} == {"VAL-VER-001", "VAL-VER-002"}
+    # 확정된 그래프라도 완제품 판정 시점이 미정이면 실행 가능 판정은 이것 하나만 오류다(원자재 단위 미정은 경고).
+    assert run["error_count"] == 1 and knowledge["warning_count"] == 3
+    assert {i["rule_id"] for i in run["issues"] if i["severity"] == "error"} == {"VAL-GRAPH-014"}
+    assert {i["rule_id"] for i in run["issues"]} == {"VAL-VER-001", "VAL-VER-002", "VAL-GRAPH-014"}
     assert client.post(f"{url}?scope=bogus", headers=ctx["viewer"]).status_code == 422
 
 
@@ -905,3 +908,287 @@ def test_step_url_helper_is_still_valid_for_cloned_versions(client, ctx, ready):
     assert [c["node_key"] for c in data["nodes"]["changed"]] == [
         graph_of(client, ctx, v2["id"])["nodes"][1]["node_key"]]
     assert data["nodes"]["changed"][0]["fields"][0]["field_path"] == "/label"
+
+
+# --- BE-04c: 재료 spec·간선 spec 연결·완제품 지정 (CR be06) ---------------------------------------
+
+def mspec(key, direction, **quantity):
+    return {"spec_key": key, "direction": direction, **quantity}
+
+
+def spec_step(equipment_id, *specs):
+    return full_step(equipment_id, material_specs=list(specs))
+
+
+def specs_graph(ctx, *, material=None):
+    """src → 1단계 → 버퍼 → 2단계 → 완제품 milestone → sink. spec·간선 연결·완제품 지정이 모두 있는 그래프."""
+    src = node("source", "src")
+    first = node("operation", "insulate", display_order=1, step=spec_step(
+        ctx["equipment"],
+        mspec("raw", "input", weight_kg=known("3300"), unit_count=known(11), form="보빈",
+              state_code="원자재", quantity_basis="per_operation", material_definition_id=material),
+        mspec("bobbin", "output", length_m=known("1000"), unit_count=known(3), form="보빈",
+              state_code="절연 후", quantity_basis="per_input_unit")))
+    buf = node("buffer", "wait", asset_id=ctx["storage"], display_order=2)
+    second = node("operation", "sheath", display_order=3, step=spec_step(
+        ctx["equipment2"],
+        mspec("in", "input", length_m=known("1000"), unit_count=known(1)),
+        mspec("strands", "output", strand_count=known(12), form="가닥")))
+    done = node("milestone", "complete", display_order=4)
+    sink = node("sink", "sink", display_order=5)
+    nodes = [src, first, buf, second, done, sink]
+    edges = [edge(src, first, target_input_spec_key="raw"), edge(first, buf, source_output_spec_key="bobbin"),
+             edge(buf, second, target_input_spec_key="in"),
+             edge(second, done, source_output_spec_key="strands"), edge(done, sink)]
+    return {"nodes": nodes, "edges": edges, "completion_node_id": done["id"]}, nodes
+
+
+def spec_version(client, ctx, *, material=None):
+    version = create_version(client, ctx)
+    graph, nodes = specs_graph(ctx, material=material)
+    r = put_graph(client, ctx, version, graph)
+    assert r.status_code == 200, r.text
+    return get_version(client, ctx, version["id"]), graph, nodes
+
+
+def by_key(client, ctx, version_id):
+    return {n["node_key"]: n for n in graph_of(client, ctx, version_id)["nodes"]}
+
+
+def test_graph_with_specs_links_and_completion_roundtrips(client, ctx):
+    version, graph, _nodes = spec_version(client, ctx)
+    saved = graph_of(client, ctx, version["id"])
+    assert saved["completion_node_id"] == graph["completion_node_id"] == version["completion_node_id"]
+    first = by_key(client, ctx, version["id"])["insulate"]["step"]["material_specs"]
+    assert [m["spec_key"] for m in first] == ["raw", "bobbin"]  # 입력이 출력보다 먼저
+    raw, bobbin = first
+    assert (raw["direction"], raw["weight_kg"], raw["unit_count"]) == (
+        "input", known("3300"), known(11))
+    assert raw["length_m"]["mode"] == "unknown" and raw["strand_count"]["mode"] == "unknown"  # 섞지 않는다
+    assert (raw["form"], raw["state_code"], raw["quantity_basis"]) == ("보빈", "원자재", "per_operation")
+    assert bobbin["length_m"] == known("1000") and bobbin["quantity_basis"] == "per_input_unit"
+    strands = by_key(client, ctx, version["id"])["sheath"]["step"]["material_specs"][1]
+    assert strands["strand_count"] == known(12) and strands["unit_count"]["mode"] == "unknown"
+    links = {e["edge_key"]: (e["source_output_spec_key"], e["target_input_spec_key"]) for e in saved["edges"]}
+    assert links == {"src-insulate": (None, "raw"), "insulate-wait": ("bobbin", None),
+                     "wait-sheath": (None, "in"), "sheath-complete": ("strands", None),
+                     "complete-sink": (None, None)}
+    run = client.post(f"{base(ctx)}/process-versions/{version['id']}/validate?scope=run_template",
+                      headers=ctx["viewer"]).json()["data"]
+    assert run["error_count"] == 0  # 완제품이 지정된 확정 그래프는 실행 가능 판정도 오류가 없다
+    assert {i["rule_id"] for i in run["issues"]} == {"VAL-VER-001", "VAL-VER-002"}
+
+
+def test_spec_defaults_are_unknown_and_unknown_quantities_warn(client, ctx):
+    version = create_version(client, ctx)
+    graph, nodes = linear_graph(ctx, step=None)
+    nodes[1]["step"]["material_specs"] = [mspec("in", "input"), mspec("out", "output", length_m=known("5"))]
+    assert put_graph(client, ctx, version, graph).status_code == 200
+    issues = get_version(client, ctx, version["id"])["issues"]
+    found = [i for i in issues if i["rule_id"] == "VAL-SPEC-001"]
+    assert [(i["severity"], i["field_path"], i["entity_id"]) for i in found] == [
+        ("warning", "/material_specs/0", nodes[1]["id"])]  # 모두 미정인 spec 하나만 경고
+    spec_in = by_key(client, ctx, version["id"])[nodes[1]["node_key"]]["step"]["material_specs"][0]
+    assert spec_in["quantity_basis"] == "unknown" and spec_in["material_definition_id"] is None
+
+
+@pytest.mark.parametrize("label", ["dup-key", "source-key", "target-key", "wrong-direction", "precedence",
+                                   "completion-not-milestone", "completion-unknown-node", "extra-field",
+                                   "string-count", "foreign-material"])
+def test_spec_errors_are_rejected_without_saving_anything(client, ctx, label):
+    version, _graph, nodes = spec_version(client, ctx)
+    before = graph_of(client, ctx, version["id"])
+    bad, nodes = specs_graph(ctx)
+    ops = {n["node_key"]: n for n in nodes}
+    other_project, _ = create_project(client, ctx["world"])
+    foreign = client.post(f"{API}/projects/{other_project}/materials", headers=ctx["admin"],
+                          json={"code": f"M-{uid()[:6]}", "name": "x", "form": "roll"}).json()["data"]["id"]
+    expected = None
+    if label == "dup-key":
+        ops["insulate"]["step"]["material_specs"].append(mspec("raw", "output"))
+    elif label == "source-key":
+        bad["edges"][1]["source_output_spec_key"] = "raw"  # input spec을 출력으로 연결
+        expected = ("VAL-SPEC-002", "/edges/1/source_output_spec_key")
+    elif label == "target-key":
+        bad["edges"][2]["target_input_spec_key"] = "nope"
+        expected = ("VAL-SPEC-003", "/edges/2/target_input_spec_key")
+    elif label == "wrong-direction":
+        bad["edges"][0]["target_input_spec_key"] = "raw"
+        bad["edges"][0]["source_output_spec_key"] = "raw"  # src는 단계가 아니라 spec이 없다
+        expected = ("VAL-SPEC-002", "/edges/0/source_output_spec_key")
+    elif label == "precedence":
+        bad["edges"][1]["edge_kind"] = "precedence"
+        expected = ("VAL-SPEC-004", "/edges/1/source_output_spec_key")
+    elif label == "completion-not-milestone":
+        bad["completion_node_id"] = ops["sink"]["id"]
+        expected = ("VAL-GRAPH-005", "/completion_node_id")
+    elif label == "completion-unknown-node":
+        bad["completion_node_id"] = uid()
+        expected = ("VAL-GRAPH-005", "/completion_node_id")
+    elif label == "extra-field":
+        ops["insulate"]["step"]["material_specs"][0]["extra"] = 1
+    elif label == "string-count":
+        ops["insulate"]["step"]["material_specs"][0]["unit_count"] = {"mode": "known", "value": "3"}
+    else:
+        ops["insulate"]["step"]["material_specs"][0]["material_definition_id"] = foreign
+        expected = ("VAL-REF-006", "/nodes/1/step/material_specs/0/material_definition_id")
+    current = get_version(client, ctx, version["id"])
+    r = put_graph(client, ctx, current, bad)
+    assert r.status_code == 422, r.text
+    if expected:
+        details = r.json()["error"]["details"]
+        assert (expected[0], expected[1]) in {(d["rule_id"], d["field_path"]) for d in details}, details
+    assert graph_of(client, ctx, version["id"]) == before  # 오류가 있으면 아무것도 바뀌지 않는다
+    assert get_version(client, ctx, version["id"])["row_version"] == current["row_version"]
+
+
+def test_material_of_the_same_project_can_be_referenced(client, ctx):
+    material = client.post(f"{base(ctx)}/materials", headers=ctx["admin"],
+                           json={"code": f"M-{uid()[:6]}", "name": "2t 롤", "form": "roll"}).json()["data"]["id"]
+    version, _, _ = spec_version(client, ctx, material=material)
+    raw = by_key(client, ctx, version["id"])["insulate"]["step"]["material_specs"][0]
+    assert raw["material_definition_id"] == material
+
+
+def test_put_without_the_new_fields_clears_them_because_put_replaces_everything(client, ctx):
+    """0.5.0 이하 화면이 새 필드를 모르고 저장하면 spec·간선 연결·완제품 지정이 지워진다(계약 문서의 주의)."""
+    version, graph, _ = spec_version(client, ctx)
+    old_style = {"nodes": [{**n, "step": None if n.get("step") is None else {
+        k: v for k, v in n["step"].items() if k != "material_specs"}} for n in graph["nodes"]],
+        "edges": [{k: v for k, v in e.items() if not k.endswith("_spec_key")} for e in graph["edges"]]}
+    current = get_version(client, ctx, version["id"])
+    assert put_graph(client, ctx, current, old_style).status_code == 200
+    saved = graph_of(client, ctx, version["id"])
+    assert saved["completion_node_id"] is None
+    assert all(not (n["step"] or {}).get("material_specs") for n in saved["nodes"])
+    assert all(e["source_output_spec_key"] is None and e["target_input_spec_key"] is None
+               for e in saved["edges"])
+
+
+def patch_specs(client, ctx, version_id, step_id, specs, who="editor"):
+    version = get_version(client, ctx, version_id)
+    return client.patch(step_url(ctx, version_id, step_id), json={"material_specs": specs},
+                        headers=with_version(ctx, who, version["row_version"]))
+
+
+def test_patch_step_replaces_specs_and_keeps_edge_links_by_key(client, ctx):
+    version, _, nodes = spec_version(client, ctx)
+    step = nodes[1]
+    before = {m["spec_key"]: m for m in step["step"]["material_specs"]}
+    new = [{**before["raw"], "weight_kg": known("3500")},  # 같은 key는 값만 바뀐다(연결 유지)
+           before["bobbin"], mspec("extra", "output", unit_count=known(2))]
+    r = patch_specs(client, ctx, version["id"], step["id"], new)
+    assert r.status_code == 200, r.text
+    specs = {m["spec_key"]: m for m in r.json()["data"]["step"]["material_specs"]}
+    assert set(specs) == {"raw", "bobbin", "extra"} and specs["raw"]["weight_kg"] == known("3500")
+    links = {e["edge_key"]: (e["source_output_spec_key"], e["target_input_spec_key"])
+             for e in graph_of(client, ctx, version["id"])["edges"]}
+    assert links["src-insulate"] == (None, "raw") and links["insulate-wait"] == ("bobbin", None)
+    # 다른 필드만 고치면 spec은 그대로다.
+    current = get_version(client, ctx, version["id"])
+    r = client.patch(step_url(ctx, version["id"], step["id"]), json={"label": "이름만"},
+                     headers=with_version(ctx, "editor", current["row_version"]))
+    assert r.status_code == 200 and len(r.json()["data"]["step"]["material_specs"]) == 3
+    # 연결되지 않은 spec은 지울 수 있다.
+    r = patch_specs(client, ctx, version["id"], step["id"], [new[0], new[1]])
+    assert r.status_code == 200 and len(r.json()["data"]["step"]["material_specs"]) == 2
+
+
+@pytest.mark.parametrize("change", ["remove-linked", "flip-direction", "clear-all"])
+def test_patch_step_cannot_break_an_edge_linked_spec(client, ctx, change):
+    version, _, nodes = spec_version(client, ctx)
+    step = nodes[1]
+    raw, bobbin = step["step"]["material_specs"]
+    new = {"remove-linked": [raw], "flip-direction": [{**raw, "direction": "output"}, bobbin],
+           "clear-all": []}[change]
+    before = graph_of(client, ctx, version["id"])
+    r = patch_specs(client, ctx, version["id"], step["id"], new)
+    assert r.status_code == 422, r.text
+    detail = r.json()["error"]["details"][0]
+    assert detail["rule_id"] == "VAL-SPEC-005" and detail["field_path"] == "/material_specs"
+    assert graph_of(client, ctx, version["id"]) == before
+
+
+def test_patch_step_rejects_foreign_material_and_unknown_fields(client, ctx):
+    version, _, nodes = spec_version(client, ctx)
+    step = nodes[1]
+    other_project, _ = create_project(client, ctx["world"])
+    foreign = client.post(f"{API}/projects/{other_project}/materials", headers=ctx["admin"],
+                          json={"code": f"M-{uid()[:6]}", "name": "x", "form": "roll"}).json()["data"]["id"]
+    raw, bobbin = step["step"]["material_specs"]
+    r = patch_specs(client, ctx, version["id"], step["id"],
+                    [{**raw, "material_definition_id": foreign}, bobbin])
+    assert r.status_code == 422
+    assert r.json()["error"]["details"][0]["rule_id"] == "VAL-REF-006"
+    assert r.json()["error"]["details"][0]["field_path"] == "/material_specs/0/material_definition_id"
+    assert patch_specs(client, ctx, version["id"], step["id"], [{**raw, "x": 1}, bobbin]).status_code == 422
+
+
+def test_specs_and_completion_are_frozen_after_submit_and_viewers_cannot_edit(client, ctx):
+    version, graph, nodes = spec_version(client, ctx)
+    step = nodes[1]
+    assert patch_specs(client, ctx, version["id"], step["id"], [], who="viewer").status_code == 403
+    submitted = advance(client, ctx, get_version(client, ctx, version["id"]), [("submit", "editor")])
+    r = patch_specs(client, ctx, version["id"], step["id"], step["step"]["material_specs"])
+    assert r.status_code == 409 and r.json()["error"]["code"] == "VERSION_IMMUTABLE"
+    r = put_graph(client, ctx, submitted, {**graph, "completion_node_id": None})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "VERSION_IMMUTABLE"
+    assert graph_of(client, ctx, version["id"])["completion_node_id"] == graph["completion_node_id"]
+
+
+def test_new_draft_copies_specs_links_and_completion_with_new_ids(client, ctx):
+    version, graph, _ = spec_version(client, ctx)
+    first = advance(client, ctx, version, [("submit", "editor"), ("approve", "admin")])
+    second = create_version(client, ctx)
+    old, new = graph_of(client, ctx, first["id"]), graph_of(client, ctx, second["id"])
+    assert second["completion_node_id"] == new["completion_node_id"] != old["completion_node_id"]
+    new_keys = {n["id"]: n["node_key"] for n in new["nodes"]}
+    old_keys = {n["id"]: n["node_key"] for n in old["nodes"]}
+    assert new_keys[new["completion_node_id"]] == old_keys[old["completion_node_id"]] == "complete"
+    assert [n["step"] for n in new["nodes"]] == [n["step"] for n in old["nodes"]]  # spec 내용 동일
+    assert {e["edge_key"]: (e["source_output_spec_key"], e["target_input_spec_key"]) for e in new["edges"]} \
+        == {e["edge_key"]: (e["source_output_spec_key"], e["target_input_spec_key"]) for e in old["edges"]}
+    # 복사본의 spec을 고쳐도 원본은 그대로다.
+    insulate = next(n for n in new["nodes"] if n["node_key"] == "insulate")
+    r = patch_specs(client, ctx, second["id"], insulate["id"],
+                    [{**insulate["step"]["material_specs"][0], "weight_kg": known("1")},
+                     insulate["step"]["material_specs"][1]])
+    assert r.status_code == 200
+    assert by_key(client, ctx, first["id"])["insulate"]["step"]["material_specs"][0]["weight_kg"] == known("3300")
+    assert graph["completion_node_id"] in {n["id"] for n in old["nodes"]}
+
+
+def test_diff_reports_spec_link_and_completion_changes(client, ctx):
+    version, _, _ = spec_version(client, ctx)
+    first = advance(client, ctx, version, [("submit", "editor"), ("approve", "admin")])
+    second = create_version(client, ctx)
+    assert client.get(f"{base(ctx)}/process-versions/{second['id']}/diff",
+                      headers=ctx["viewer"]).json()["data"]["summary"]["identical"] is True
+    insulate = by_key(client, ctx, second["id"])["insulate"]
+    specs = insulate["step"]["material_specs"]
+    assert patch_specs(client, ctx, second["id"], insulate["id"],
+                       [specs[0], {**specs[1], "length_m": known("1200")}]).status_code == 200
+    saved = graph_of(client, ctx, second["id"])
+    cleared = {"nodes": saved["nodes"], "completion_node_id": None,
+               "edges": [{**e, "target_input_spec_key": None} if e["edge_key"] == "src-insulate" else e
+                         for e in saved["edges"]]}
+    assert put_graph(client, ctx, get_version(client, ctx, second["id"]), cleared).status_code == 200
+    data = client.get(f"{base(ctx)}/process-versions/{second['id']}/diff?against={first['id']}",
+                      headers=ctx["viewer"]).json()["data"]
+    header = {f["field_path"]: (f["change"], f["before"], f["after"]) for f in data["header"]}
+    assert header == {"/completion_node_key": ("changed", "complete", None)}  # id가 아니라 node_key로 비교
+    (step_change,) = data["steps"]["changed"]
+    fields = {f["field_path"]: (f["before"], f["after"]) for f in step_change["fields"]}
+    assert fields == {"/material_specs/bobbin/length_m/value": ("1000", "1200")}
+    (edge_change,) = data["edges"]["changed"]
+    assert edge_change["edge_key"] == "src-insulate"
+    assert edge_change["fields"] == [{"field_path": "/target_input_spec_key", "change": "changed",
+                                      "before": "raw", "after": None}]
+
+
+def test_graph_save_audit_records_the_completion_node(client, db, ctx):
+    version, graph, _ = spec_version(client, ctx)
+    after = db.scalar("select after->>'completion_node_id' from audit_log where entity_id = :e and "
+                      "action = 'process_version.graph' order by created_at desc limit 1",
+                      e=uuid.UUID(version["id"]))
+    assert after == graph["completion_node_id"]

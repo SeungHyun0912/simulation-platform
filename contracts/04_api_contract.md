@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -259,13 +259,13 @@ PUT graph 규칙:
 6. new row_version·validation summary 반환.
 7. 위키 갱신 outbox 생성. 승인 정보 공개는 승인 이벤트 때만.
 
-### 4.1 승인 scope `process-versions` — BE-04a (contract 0.4.0), BE-04b (contract 0.5.0)
+### 4.1 승인 scope `process-versions` — BE-04a (contract 0.4.0), BE-04b (0.5.0), BE-04c (0.6.0)
 
 위 표 중 **승인된 operation은 14개**다: 0.4.0의 11개(제품의 공정 버전 목록/생성, 버전 조회·수정, 그래프 조회/PUT, 단계 PATCH, validate, submit·reject·approve)와
 0.5.0의 3개(`diff`, `editor-state` GET·PUT)이며 0.5.0은 새 초안 생성의 **선택 본문**(`base_version_id`)도 더했다. 별도 `clone` endpoint는 두지 않는다.
-단계 입출력 재료 spec·join/supply 간선 spec 연결·completion milestone(BE-04c)과 `execution_rule`·`input_match_policy`·`condition_rule`·후보 `parameter_override`(값 구조 미정의)는 **PROPOSED**다.
+0.6.0(BE-04c)은 **operation을 늘리지 않고** 단계의 재료 spec·간선의 spec 연결·완제품 milestone 지정 필드를 더했다(§4.1.2). `execution_rule`·`input_match_policy`·`condition_rule`·후보 `parameter_override`(값 구조 미정의)와 join 준비 조건·분할/합류 allocate 규칙은 **PROPOSED**다.
 정본은 [openapi.json](openapi.json), 예제는 [examples/first-scope](examples/first-scope/)의 `process-*`·`product.get`·`error.graph-invalid`·`error.process-draft-exists`.
-근거 CR: [CR-backend-20261023-be04-process-versions](../docs/change-requests/CR-backend-20261023-be04-process-versions.md)(0.4.0), [CR-backend-20261026-be05-process-clone-diff-editor-state](../docs/change-requests/CR-backend-20261026-be05-process-clone-diff-editor-state.md)(0.5.0).
+근거 CR: [CR-backend-20261023-be04-process-versions](../docs/change-requests/CR-backend-20261023-be04-process-versions.md)(0.4.0), [CR-backend-20261026-be05-process-clone-diff-editor-state](../docs/change-requests/CR-backend-20261026-be05-process-clone-diff-editor-state.md)(0.5.0), [CR-backend-20261026-be06-process-material-spec-completion](../docs/change-requests/CR-backend-20261026-be06-process-material-spec-completion.md)(0.6.0).
 
 **상태·권한(자산 버전과 같은 방식, 잠정)**: `draft → in_review → approved → superseded`, 반려는 `in_review → draft`(사유 필수).
 제품당 열린 버전(draft/in_review)은 하나, 승인본도 하나(새 승인이 나면 이전 승인본은 자동 `superseded`).
@@ -278,7 +278,7 @@ PUT graph 규칙:
 **새 초안**(`POST …/process-versions`)은 승인본이 있으면 그래프를 **새 id로 복사**하고 `base_version_id`를 기록하며, 없으면 빈 그래프·미정 단위로 시작한다. 열린 버전이 있으면 409 `PROCESS_DRAFT_EXISTS`.
 0.5.0부터 본문 `{base_version_id}`로 복사할 버전을 고를 수 있다(아래 §4.1.1).
 
-**그래프**: `GET`은 `{process_version_id, row_version, nodes[], edges[], issues[]}`(노드는 `display_order`, `node_key` 순), `PUT`은 `{nodes[], edges[]}`로 **전체 교체**한다.
+**그래프**: `GET`은 `{process_version_id, row_version, nodes[], edges[], completion_node_id|null, issues[]}`(노드는 `display_order`, `node_key` 순), `PUT`은 `{nodes[], edges[], completion_node_id?}`로 **전체 교체**한다(0.6.0의 새 필드는 모두 선택이지만 전체 교체이므로 §4.1.2의 주의를 따른다).
 - 노드 `{id, node_key, kind: source|buffer|operation|join|milestone|sink, label, asset_id|null, display_order, step|null}`. `id`는 **클라이언트가 만든 UUID**이고 다른 버전이 쓰는 id는 422(`VAL-REF-003`). `node_key`는 버전 안에서 유일.
   `operation`만 `step`을 가지며 그 `step`의 id는 노드 id와 같다. `asset_id`는 source·buffer·sink에만 둘 수 있고 **저장·도킹 공간**만 가능하다(`null` = 위치 미정). operation 노드에 설비를 직접 박지 않는다.
 - 간선 `{id, edge_key, from_node_id, to_node_id, edge_kind: material|precedence|supply, movement_rule}`. 없는 노드를 가리키거나 자기 자신을 가리키면 422(`VAL-GRAPH-001`·`003`), material 간선이 sink에서 나가거나 source로 들어가면 422(`VAL-GRAPH-004`).
@@ -299,7 +299,7 @@ buffer 같은 비 operation 노드의 id나 다른 버전의 단계 id는 404.
 **검증**(`POST …/validate?scope=knowledge|run_template`, 오류가 있어도 정상 수행이면 200, 버전 조회·그래프 응답의 `issues`는 knowledge 범위): 항목은 `{severity, rule_id, entity_id, field_path, message, resolution?}`이며
 `entity_id`는 단계·노드·간선(또는 버전 자체) id, `field_path`는 **그 엔티티 내부** JSON Pointer(예 `/timing_rule/processing`)다. 순서 번호는 쓰지 않는다.
 규칙 id: `VAL-TIME-001~005`(처리 방식·값·산출 방식·준비·공급 대기 미정), `VAL-OUT-001~004`(산출), `VAL-INPUT-001`·`VAL-HANDOFF-001`, `VAL-HANDLER-001`(operation_type 미정), `VAL-RES-001`(후보 수 오류)·`002~004`(자원 요구·후보·eligibility 미정),
-`VAL-GRAPH-001~004`(구조 오류)·`010~013`(단계 없음·순환·고립 단계·위치 미정 buffer), `VAL-VER-001·002`(원자재·완제품 단위 미정), `VAL-REF-001~003`(저장 시 참조 오류), `VAL-REF-004`(비교 대상 오류)·`005`(편집기 상태의 없는 노드).
+`VAL-GRAPH-001~004`(구조 오류)·`010~013`(단계 없음·순환·고립 단계·위치 미정 buffer), `VAL-VER-001·002`(원자재·완제품 단위 미정), `VAL-REF-001~003`(저장 시 참조 오류), `VAL-REF-004`(비교 대상 오류)·`005`(편집기 상태의 없는 노드)·`006`(spec이 참조한 재료가 이 프로젝트의 것이 아님), `VAL-GRAPH-005`(완제품 지정 노드 오류)·`014`(완제품 판정 시점 미정, 경고), `VAL-SPEC-001`(spec 수량 모두 미정, 경고)·`002~005`(간선 spec 연결·교체 오류).
 **knowledge**에서는 구조 오류만 오류이고 미정은 모두 경고다. **run_template**에서는 실행에 필요한 미정(`VAL-TIME-*`, `VAL-OUT-001~003`, `VAL-RES-002~004`, `VAL-INPUT-001`, `VAL-HANDOFF-001`, `VAL-HANDLER-001`, `VAL-GRAPH-011`)이 오류로 승격되고,
 엔진이 지원하지 않는 handler는 `UNSUPPORTED_HANDLER`(rule_id) 오류가 된다. 지원 handler(07 §2): `pass_through_length`, `split_length`, `output_units_by_time`, `configured_yield`, `supply_delay`, `inspection`, `transport_manual`(handler_version `1`).
 등록(저장)은 handler 지원 여부와 무관하며 실행 가능 여부만 막는다(03 §12).
@@ -323,6 +323,31 @@ buffer 같은 비 operation 노드의 id나 다른 버전의 단계 id는 404.
 - **PoC 결정: 버전당 공용 하나**다(사용자별 저장은 이후 변경으로 도입, DB는 그것을 받을 수 있게 준비됨). 좌표는 JSON 숫자(문자열 거부, 절댓값 1,000,000 이하 유한수), `zoom`은 0 초과, 키는 **그 버전의 노드 id**여야 하며 아니면 422 `VAL-REF-005`(`/node_positions/{id}`). 노드 수 상한(500)이 곧 좌표 수 상한이다.
 - **버전 상태와 무관하게 저장할 수 있다**(검토 중·승인본·superseded 포함). 화면 좌표는 공정 내용도 물리 위치도 아니며 **공정 버전의 `row_version`·상태·승인에 영향이 없고 감사 로그도 남기지 않는다**. 저장은 admin·editor, 조회는 모든 멤버.
 - **자체 ETag**(이 상태의 `row_version`)를 쓴다: 저장 전 `GET`은 빈 좌표·`row_version: 0`(200, ETag `"0"`)이고 `PUT`은 `If-Match`가 필수(없으면 428, 어긋나면 412 `EDIT_CONFLICT`)이며 첫 저장은 `If-Match: "0"`이다. 전체 교체이므로 보내지 않은 노드의 좌표는 사라진다.
+
+#### 4.1.2 단계 재료 spec·간선 spec 연결·완제품 지정 (contract 0.6.0, 0.5.0과 호환)
+
+**단계 재료 spec** — `StepDto.material_specs[]`(그래프 PUT·단계 PATCH·그래프 조회, 기본 `[]`):
+`{spec_key, direction: input|output, material_definition_id|null, state_code|null, form|null, length_m, weight_kg, unit_count, strand_count, quantity_basis}`.
+- `spec_key`는 단계 안에서 입력·출력 공통으로 유일(1~64자). 길이·중량은 decimal 문자열(0 초과, 소수 6자리까지), 단위 수·가닥 수는 JSON 정수(1 이상)이며 **서로 환산하거나 섞지 않는다**: 값은 재료 `default_spec`과 같은 `{mode: unknown|known|not_applicable, value}`이고 기본은 모두 `unknown`(0이 아님).
+  예) "3.3t×11개 동시 투입"은 `weight_kg=3300`, `unit_count=11`이고 "12가닥 공급"은 `strand_count=12`(보빈 수가 아님).
+- `quantity_basis`: `unknown|per_operation|per_input_unit|per_lot|total_plan`(`output_rule`과 같은 어휘). 작업 한 번의 수량과 총 계획 수량을 구분한다.
+- `material_definition_id`는 같은 프로젝트의 재료(아니면 422 `VAL-REF-006`), `state_code`("1차 조사 후")·`form`("보빈")은 자유 텍스트(enum 아님).
+- `output_rule`(산출 방식 규칙)과 별개의 기록이다: `output_rule`은 handler가 산출을 계산하는 규칙, spec은 단계가 받고 내보내는 재료의 상태·수량이다. 서로 자동으로 맞추거나 검증하지 않는다(물량 보존 판정은 이 범위 밖).
+- 단계 PATCH `material_specs`는 보내면 **통째 교체**(`spec_key`로 맞추므로 같은 key는 id가 유지되어 간선 연결이 끊기지 않음), 보내지 않으면 그대로. **간선이 연결한 spec을 제거하거나 방향을 바꾸면 422 `VAL-SPEC-005`**(그래프 PUT으로 간선 연결을 먼저 풀어야 한다).
+
+**간선 spec 연결** — `GraphEdge.source_output_spec_key`, `target_input_spec_key`(둘 다 선택, 기본 `null`): spec id를 따로 만들지 않고 `spec_key`로 연결한다.
+`source_output_spec_key`는 **from 노드(operation) 단계의 `output` spec**, `target_input_spec_key`는 **to 노드 단계의 `input` spec**이어야 하며 아니면 422(`VAL-SPEC-002`·`003`, 요청 본문 `field_path` 예 `/edges/1/source_output_spec_key`). `precedence` 간선에는 쓸 수 없다(`VAL-SPEC-004`).
+DB도 같은 규칙(단계 소속·방향)을 복합 FK로 강제한다. 버퍼를 사이에 둔 흐름(operation → buffer → operation)에서는 operation에 붙은 간선에만 연결한다. 입력 spec이 둘인 단계(예: 선행 가공 직결 + 공급)는 간선마다 `target_input_spec_key`로 구분한다.
+
+**완제품 지정** — `GraphIn/GraphOut.completion_node_id`, `ProcessVersionOut.completion_node_id`(선택·null 가능): 같은 요청의 **`kind=milestone` 노드 id**(아니면 422 `VAL-GRAPH-005`)이며 그래프와 원자적으로 교체된다. 미지정은 "완제품 판정 시점 미정"이다.
+- **knowledge에서는 경고** `VAL-GRAPH-014`(승인을 막지 않음), **run_template에서는 오류**(엔진이 완제품 시점을 알아야 한다). 단계가 하나도 없는 그래프에는 이 경고가 없다.
+- `completion_node_id`는 초안에서만 바뀐다(검토 중·승인본은 동결, DB 트리거).
+
+**주의(전체 교체):** 그래프 `PUT`은 항상 전체 교체이므로 0.5.0 이하 화면이 새 필드를 모르고 그래프를 다시 저장하면 `material_specs`·간선 spec 연결·`completion_node_id`가 **지워진다**.
+FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필드 보존) 응답에 없는 필드를 새로 만들어 보내지 않는다.
+
+**비교·복제:** `diff`는 단계의 `/material_specs/{spec_key}/…`(spec_key로 맞춤), 간선의 `/source_output_spec_key`·`/target_input_spec_key`, 헤더의 `/completion_node_key`(id가 아니라 완제품 노드의 `node_key`)를 포함한다. 새 초안 복제는 spec·간선 연결·완제품 지정을 새 id로 함께 복사한다.
+예제: `examples/first-scope/process-graph.put-with-specs`·`process-step.patch-material-specs`·`error.spec-link-invalid`.
 
 ## 5. 시나리오·실행 API
 
