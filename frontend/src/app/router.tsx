@@ -4,6 +4,9 @@ import { AssetCreatePage } from "../features/assets/AssetCreatePage";
 import { AssetDetailPage } from "../features/assets/AssetDetailPage";
 import { AssetListPage } from "../features/assets/AssetListPage";
 import { ProcessEditorPage } from "../features/processes/ProcessEditorPage";
+import { MaterialCreatePage } from "../features/materials/MaterialCreatePage";
+import { MaterialDetailPage } from "../features/materials/MaterialDetailPage";
+import { MaterialListPage } from "../features/materials/MaterialListPage";
 import { ProductCreatePage } from "../features/products/ProductCreatePage";
 import { ProductDetailPage } from "../features/products/ProductDetailPage";
 import { ProductListPage } from "../features/products/ProductListPage";
@@ -19,6 +22,9 @@ export const routes = [
       { path: "/projects/:projectId/assets", element: <AssetListPage /> },
       { path: "/projects/:projectId/assets/new", element: <AssetCreatePage /> },
       { path: "/projects/:projectId/assets/:assetId", element: <AssetDetailPage /> },
+      { path: "/projects/:projectId/materials", element: <MaterialListPage /> },
+      { path: "/projects/:projectId/materials/new", element: <MaterialCreatePage /> },
+      { path: "/projects/:projectId/materials/:materialId", element: <MaterialDetailPage /> },
       { path: "/projects/:projectId/products", element: <ProductListPage /> },
       { path: "/projects/:projectId/products/new", element: <ProductCreatePage /> },
       { path: "/projects/:projectId/products/:productId", element: <ProductDetailPage /> },
