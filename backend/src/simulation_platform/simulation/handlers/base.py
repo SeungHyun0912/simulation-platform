@@ -32,6 +32,7 @@ class OperationPlan:
     relation: str  # split(부모를 소비하고 자식을 만든다) | transform(같은 작업물의 상태·위치만 바뀐다)
     outputs: tuple[PlannedOutput, ...]
     residual_m: Fraction = Fraction(0)
+    carried_in_m: Fraction = Fraction(0)  # 잔량 풀에서 이어 받은 길이(길이 풀, 물리 접속 아님)
 
     @property
     def finish_offset(self) -> Fraction:
@@ -42,7 +43,7 @@ class OperationPlan:
 class HandlerDef:
     name: str
     version: str
-    plan: Callable[[StepModel, WorkItem], OperationPlan]
+    plan: Callable[[StepModel, WorkItem, Fraction], OperationPlan]  # (단계, 투입, 이월받은 길이)
     output_modes: frozenset[str]  # 허용하는 output_rule.mode
     timing_kinds: frozenset[str]  # 허용하는 처리 시간 종류
     needs_output_length: bool = False

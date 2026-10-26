@@ -9,6 +9,8 @@ from fractions import Fraction
 
 HOLD_FOR_OPERATION = "hold_for_operation"  # 07 §13: 모든 산출이 끝날 때까지 설비를 점유한다
 SUPPORTED_EQUIPMENT_HOLD = frozenset({HOLD_FOR_OPERATION})
+# 잔량을 모아 두는 범위(03 §6): 설비별·제품별·단계별·lot별
+RESIDUAL_SCOPES = frozenset({"machine", "product", "operation", "lot"})
 
 
 @dataclass(frozen=True)
@@ -19,3 +21,5 @@ class ScenarioAssumptions:
     unbounded_buffers: bool = False
     # 수동 운반 단계(node_key)별 명시 이동 시간(분). 0분은 이 가정으로 명시했을 때만 가능하다.
     manual_transport_minutes: Mapping[str, Fraction] = field(default_factory=dict)
+    # 잔량 이월 단계(node_key)별 잔량 범위. 공정에 scope가 미정일 때만 쓰며 사용자가 승인한 가정이어야 한다.
+    residual_scope: Mapping[str, str] = field(default_factory=dict)

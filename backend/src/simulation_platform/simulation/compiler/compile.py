@@ -11,6 +11,7 @@ from simulation_platform.domain import process as rules
 from simulation_platform.simulation import SUPPORTED_SCHEMA_VERSIONS
 from simulation_platform.simulation.compiler.assumptions import (
     HOLD_FOR_OPERATION,
+    RESIDUAL_SCOPES,
     SUPPORTED_EQUIPMENT_HOLD,
     ScenarioAssumptions,
 )
@@ -20,6 +21,7 @@ from simulation_platform.simulation.compiler.model import (
     CompileResult,
     NodeModel,
     OutputModel,
+    ResidualModel,
     RuntimeModel,
     StepModel,
     TimingModel,
@@ -182,6 +184,7 @@ class _Compiler:
         output = self._output(key, step, handler)
         candidates, allocation, worker_unlimited = self._resources(key, step, handler)
         self._check_hold_policy(key, handler, output, candidates)
+        residual = self._residual(key, step, handler, candidates)
         handoff = step["handoff_rule"]["mode"]
         if handoff not in ("per_output_unit", "total_batch"):
             handoff = "per_output_unit"  # 미정이면 도메인 검증이 이미 막았다(수동 운반은 한 개 산출)
@@ -192,7 +195,7 @@ class _Compiler:
             handler_version=handler.version, candidates=candidates, allocation=allocation,
             worker_unlimited=worker_unlimited, setup_minutes=setup, timing=timing, output=output,
             handoff=handoff, residual_mode=step["residual_rule"]["mode"],
-            transport_minutes=transport_minutes)
+            transport_minutes=transport_minutes, residual=residual)
 
     def _transport_minutes(self, key: str, handler: HandlerDef) -> Fraction | None:
         if handler.name != TRANSPORT:
@@ -303,6 +306,39 @@ class _Compiler:
                            f"{key}: 후보 설비 {len(candidates)}대 중 선택 규칙({allocation})이 없습니다. fifo·first_available를 "
                            "명시해야 합니다(자동 선택하지 않음).", key)
         return candidates, allocation, any(w["capacity_mode"] == "unlimited" for w in workers)
+
+    def _residual(self, key: str, step: dict, handler: HandlerDef,
+                  candidates: tuple[str, ...]) -> ResidualModel:
+        """잔량 이월(03 §6). 이월은 잔량을 모아 둘 범위와 '물리 접속이 아닌 길이 풀'이라는 표시가 있어야 한다.
+        제품 전환·실행 종료 때의 처리 정책은 그 상황이 실제로 생길 때 runtime이 확인한다(미리 막지 않는다)."""
+        rule = step["residual_rule"]
+        model = ResidualModel(rule["mode"], rule["on_product_change"], rule["on_run_end"],
+                              None if rule["scope"] == "unknown" else rule["scope"],
+                              rule["physical_join_mode"])
+        if rule["mode"] != "carry_same_product" or handler.name != "split_length":
+            return model
+        scope = model.scope
+        if scope is None:
+            scope = self.assumptions.residual_scope.get(key)
+            if scope is None:
+                self.issue("RESIDUAL_SCOPE_UNKNOWN",
+                           f"{key}: 잔량을 이월하지만 잔량을 모아 둘 범위(scope)가 미정입니다. 시나리오가 `residual_scope`로 "
+                           "machine·product·operation·lot 중 하나를 명시해야 합니다.", key)
+                return model
+            self.used.append(AssumptionUse("RESIDUAL_SCOPE", f"{key}: 잔량 범위 {scope}(시나리오 가정)", key))
+        if scope not in RESIDUAL_SCOPES:
+            self.issue("RESIDUAL_SCOPE_INVALID", f"{key}: 잔량 범위 {scope}은(는) 알 수 없는 값입니다.", key)
+            return model
+        if scope == "machine" and not candidates:
+            self.issue("RESIDUAL_SCOPE_INVALID", f"{key}: 설비가 없는 단계는 설비별 잔량 범위를 쓸 수 없습니다.", key)
+            return model
+        if model.physical_join_mode != "abstract_length_pool":
+            self.issue("RESIDUAL_JOIN_MODE_UNKNOWN",
+                       f"{key}: 잔량을 다음 투입에 잇는 방식이 미정입니다. 실제 접속 방식이 확인되지 않았다면 "
+                       "abstract_length_pool(길이 풀)로 표시해야 합니다(03 §6).", key)
+            return model
+        return ResidualModel(model.mode, model.on_product_change, model.on_run_end, scope,
+                             model.physical_join_mode)
 
     def _check_hold_policy(self, key: str, handler: HandlerDef, output: OutputModel | None,
                            candidates: tuple[str, ...]) -> None:

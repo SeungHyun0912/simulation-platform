@@ -55,6 +55,8 @@ class RunResult:
     engine_version: str
     seed: int
     process_version_ids: tuple[str, ...] = ()
+    # 실행 끝에 남은 잔량 풀: {pool, length_m, process_version_id, disposition(discarded|carried|unknown|open)}
+    residuals: tuple[dict, ...] = ()
 
     def of_type(self, event_type: str) -> list[Event]:
         return [e for e in self.events if e.event_type == event_type]
@@ -105,6 +107,20 @@ def run_models(lanes: list[Lane] | tuple[Lane, ...], *, horizon=None, seed: int 
     return _Run(list(lanes), horizon, seed, event_limit).execute()
 
 
+def _carries(step: StepModel) -> bool:
+    return (step.residual is not None and step.residual.mode == "carry_same_product"
+            and step.handler == "split_length")
+
+
+@dataclass
+class _PoolEntry:
+    """잔량 풀의 한 덩어리. 어느 공정에서 나왔고 실행 종료 때 어떻게 처리할지를 함께 기억한다."""
+
+    length_m: Fraction
+    version: str
+    on_run_end: str
+
+
 class _Lane:
     def __init__(self, env: simpy.Environment, lane: Lane) -> None:
         self.model, self.arrivals = lane.model, lane.arrivals
@@ -143,6 +159,8 @@ class _Run:
         self.came_from: dict[str, str] = {}  # 작업물 key → 대기하던 buffer key
         self.last_version: dict[str, str] = {}  # 설비 → 직전에 처리한 공정 버전(제품 전환 판단 기록용)
         self.in_progress = 0  # 시작했지만 끝나지 않은 작업 수(부모는 소비됐고 산출은 아직 없는 상태도 WIP이다)
+        self.pools: dict[str, list[_PoolEntry]] = {}  # 잔량 풀(범위 key → 덩어리, 들어온 순서)
+        self._residual_report: list[dict] = []
 
     def random_stream(self, name: str) -> random.Random:
         """확률 요소마다 독립된 stream(전역 random 금지, 07 §12). 이번 범위의 handler는 확률 요소가 없다."""
@@ -172,7 +190,9 @@ class _Run:
         except EventLimitReached:
             state, reason = LIMIT_REACHED, "EVENT_LIMIT"
         else:
+            residuals = self._settle_residuals(state)
             self.emit(ev.RUN_TERMINATED, reason=reason, quantities={
+                "residual_pools": len(residuals),
                 "state": state, "wip_items": sum(1 for i in self.items if i.status == "active"),
                 "operations_in_progress": self.in_progress})
         return RunResult(
@@ -181,7 +201,8 @@ class _Run:
             items=tuple(replace(i) for i in self.items),
             assumptions=tuple(a for lane in self.lanes for a in lane.model.assumptions),
             engine_version=ENGINE_VERSION, seed=self.seed,
-            process_version_ids=tuple(lane.version for lane in self.lanes))
+            process_version_ids=tuple(lane.version for lane in self.lanes),
+            residuals=tuple(self._residual_report))
 
     def _final_state(self) -> tuple[str, str | None]:
         wip = sum(1 for i in self.items if i.status == "active") + self.in_progress
@@ -250,27 +271,26 @@ class _Run:
             self.env.process(self._operate(lane, step, item))
 
     def _operate(self, lane: _Lane, step: StepModel, item: WorkItem):
-        handler = get_handler(step.handler, step.handler_version)
         lane.op_count[step.key] += 1
         op_id = f"{step.key}#{lane.op_count[step.key]}"
         self.in_progress += 1
         source = self.came_from.pop(item.key, step.key)
         self.emit_for(lane, ev.INPUT_RESERVED, step_key=step.key, operation_id=op_id, item_key=item.key,
                       source=source, quantities={"length_m": item.length_m})
-        try:
-            plan = handler.plan(step, item)
-        except PlanError as error:
-            raise RunFailure(error.reason, str(error), step.key, lane.version) from error
-        if plan.residual_m > 0:
-            # 잔량 처리(이월·폐기·scope)는 별도 단계(C0-06)에서 구현한다. 모르는 채로 성공으로 덮지 않는다.
-            reason = {"none": "RESIDUAL_UNEXPECTED", "carry_same_product": "RESIDUAL_CARRY_NOT_IMPLEMENTED"}.get(
-                step.residual_mode, "RESIDUAL_POLICY_UNKNOWN")
-            raise RunFailure(reason, f"{step.key}: 잔량 {plan.residual_m}m가 남지만 잔량 정책({step.residual_mode})을 "
-                                     "이번 엔진 범위에서 처리할 수 없습니다.", step.key, lane.version)
+        carry = _carries(step)
+        plan = None
+        if not carry:  # 이월이 없으면 설비를 쥐기 전에 계획해 맞지 않는 입력을 일찍 실패시킨다
+            plan = self._plan(lane, step, item, Fraction(0))
+            self._reject_unhandled_residual(lane, step, plan)
         asset = None
         if step.candidates:
             asset = yield self.allocator.acquire(step.candidates)
             self._asset_state(lane, step, op_id, asset, ev.RESERVED)
+        pool_key = None
+        if carry:  # 이월은 실제 시작 시점의 잔량 풀로 계획한다(기다리는 동안 풀이 바뀔 수 있다)
+            pool_key = self._pool_key(lane, step, item, asset)
+            carried = self._take_pool(lane, step, op_id, pool_key)
+            plan = self._plan(lane, step, item, carried)
         if source != step.key:
             self.emit_for(lane, ev.BUFFER_LEFT, item_key=item.key, source=source,
                           asset_key=lane.model.nodes[source].asset_id)
@@ -305,7 +325,13 @@ class _Run:
             operation_id=op_id, step_key=step.key, relation=plan.relation, parent_key=item.key,
             child_keys=tuple(c.key for c in children), parent_length_m=item.length_m,
             child_lengths_m=tuple(c.length_m for c in children), residual_length_m=plan.residual_m,
-            process_version_id=lane.version))
+            process_version_id=lane.version, carried_in_m=plan.carried_in_m))
+        if carry and plan.residual_m > 0:
+            self.pools.setdefault(pool_key, []).append(
+                _PoolEntry(plan.residual_m, lane.version, step.residual.on_run_end))
+            self.emit_for(lane, ev.RESIDUAL_CREATED, step_key=step.key, operation_id=op_id,
+                          destination=pool_key, quantities={"length_m": plan.residual_m,
+                                                            "scope": step.residual.scope})
         if asset is not None:
             self._asset_state(lane, step, op_id, asset, ev.IDLE)
             self.last_version[asset] = lane.version
@@ -313,6 +339,68 @@ class _Run:
         for child in held:
             self._advance(lane, child, step.key)
         self.in_progress -= 1
+
+    # --- 잔량(03 §6, 07 §3 ResidualPool) ----------------------------------------------------------
+    def _plan(self, lane: _Lane, step: StepModel, item: WorkItem, carried: Fraction):
+        try:
+            return get_handler(step.handler, step.handler_version).plan(step, item, carried)
+        except PlanError as error:
+            raise RunFailure(error.reason, str(error), step.key, lane.version) from error
+
+    def _reject_unhandled_residual(self, lane: _Lane, step: StepModel, plan) -> None:
+        """이월하지 않는 단계에서 잔량이 생기면 성공으로 덮지 않는다."""
+        if plan.residual_m <= 0:
+            return
+        reason = "RESIDUAL_UNEXPECTED" if step.residual_mode == "none" else "RESIDUAL_POLICY_UNKNOWN"
+        raise RunFailure(reason, f"{step.key}: 잔량 {plan.residual_m}m가 남지만 잔량 정책({step.residual_mode})으로 "
+                                 "처리할 수 없습니다(이월은 carry_same_product만).", step.key, lane.version)
+
+    def _pool_key(self, lane: _Lane, step: StepModel, item: WorkItem, asset: str | None) -> str:
+        scope = step.residual.scope
+        if scope == "machine":
+            return f"machine:{asset}"
+        if scope == "product":
+            return f"product:{lane.version}"
+        if scope == "operation":
+            return f"operation:{lane.version}/{step.key}"
+        if item.lot is None:
+            raise RunFailure("RESIDUAL_LOT_UNKNOWN", f"{step.key}: lot별 잔량 범위인데 작업물에 lot이 없습니다.",
+                             step.key, lane.version)
+        return f"lot:{item.lot}"
+
+    def _take_pool(self, lane: _Lane, step: StepModel, op_id: str, key: str) -> Fraction:
+        """풀의 잔량을 이 작업에 잇는다. 다른 제품의 잔량이면 on_product_change 정책을 따른다."""
+        carried = Fraction(0)
+        for entry in self.pools.pop(key, []):
+            if entry.version != lane.version:
+                policy = step.residual.on_product_change
+                if policy == "discard":
+                    self.emit_for(lane, ev.RESIDUAL_DISCARDED, step_key=step.key, operation_id=op_id, source=key,
+                                  reason="PRODUCT_CHANGE",
+                                  quantities={"length_m": entry.length_m, "from_process_version_id": entry.version})
+                    continue
+                if policy != "carry":
+                    raise RunFailure("RESIDUAL_PRODUCT_CHANGE_POLICY_UNKNOWN",
+                                     f"{step.key}: 다른 제품의 잔량 {entry.length_m}m가 풀에 있는데 제품 전환 시 처리 정책이 "
+                                     "미정입니다.", step.key, lane.version)
+            carried += entry.length_m
+            self.emit_for(lane, ev.RESIDUAL_CARRIED, step_key=step.key, operation_id=op_id, source=key,
+                          quantities={"length_m": entry.length_m, "from_process_version_id": entry.version})
+        return carried
+
+    def _settle_residuals(self, state: str) -> list[dict]:
+        """실행 끝에 남은 잔량. 완료된 실행에만 on_run_end를 적용하고(관측 중단·정체는 open) 결과에 보고한다."""
+        for key, entries in self.pools.items():
+            for entry in entries:
+                disposition = "open"
+                if state == COMPLETED:
+                    disposition = {"discard": "discarded", "carry": "carried"}.get(entry.on_run_end, "unknown")
+                    if disposition == "discarded":
+                        self.emit(ev.RESIDUAL_DISCARDED, source=key, reason="RUN_END",
+                                  process_version_id=entry.version, quantities={"length_m": entry.length_m})
+                self._residual_report.append({"pool": key, "length_m": entry.length_m,
+                                              "process_version_id": entry.version, "disposition": disposition})
+        return self._residual_report
 
     def _make_output(self, lane: _Lane, step: StepModel, parent: WorkItem, relation: str,
                      length_m: Fraction) -> WorkItem:

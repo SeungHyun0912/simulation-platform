@@ -235,8 +235,7 @@ def test_input_that_does_not_fit_the_step_fails_instead_of_being_hidden():
 
 
 @pytest.mark.parametrize("residual,reason", [("none", "RESIDUAL_UNEXPECTED"),
-                                              ("unknown", "RESIDUAL_POLICY_UNKNOWN"),
-                                              ("carry_same_product", "RESIDUAL_CARRY_NOT_IMPLEMENTED")])
+                                              ("unknown", "RESIDUAL_POLICY_UNKNOWN")])
 def test_leftover_length_is_never_silently_dropped(residual, reason):
     snap = single_insulation(count=None, residual=residual)  # 개수를 정하지 않으면 floor(2500/1000)=2, 500m 남음
     result = run_model(model_of(snap), [Arrival("2500")])

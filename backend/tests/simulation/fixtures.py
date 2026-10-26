@@ -59,7 +59,7 @@ WORKER = {"role_key": "inspector", "resource_kind": "worker", "selection_mode": 
 
 def step(handler, *, processing, output, assets=(), allocation="unknown", setup=SETUP_NONE,
          delay=DELAY_NONE, handoff="per_output_unit", residual="none", worker=False, state=None,
-         resources=None, specs=None):
+         resources=None, specs=None, residual_rule=None):
     resources = resources if resources is not None else (
         ([resource(assets, allocation)] if assets else []) + ([copy.deepcopy(WORKER)] if worker else []))
     material_specs = specs if specs is not None else (
@@ -71,8 +71,9 @@ def step(handler, *, processing, output, assets=(), allocation="unknown", setup=
             "timing_rule": {"processing": processing, "setup": setup, "precondition_delay": delay},
             "input_rule": {"acquire_scope": "per_operation", "consume_policy": "consume"},
             "output_rule": output, "handoff_rule": {"mode": handoff},
-            "residual_rule": {"mode": residual, "on_product_change": "unknown", "on_run_end": "unknown",
-                              "scope": "unknown", "physical_join_mode": "unknown"},
+            "residual_rule": residual_rule or {"mode": residual, "on_product_change": "unknown",
+                                               "on_run_end": "unknown", "scope": "unknown",
+                                               "physical_join_mode": "unknown"},
             "resources": resources, "material_specs": material_specs}
 
 
@@ -112,15 +113,16 @@ EQUIPMENT_1, EQUIPMENT_2, EQUIPMENT_3 = uid(), uid(), uid()
 
 
 def single_insulation(*, speed_value="30", unit=1000, count=2, assets=(EQUIPMENT_1,), handoff="per_output_unit",
-                      allocation="unknown", setup=SETUP_NONE, residual="none", **snapshot_args):
+                      allocation="unknown", setup=SETUP_NONE, residual="none", residual_rule=None,
+                      basis="per_input_unit", **snapshot_args):
     """원자재 1개(2,000m)를 한 설비에서 1,000m 단위 둘로 나누는 단일 단계(제품6 절연의 시험 전용 입력)."""
     g = Graph()
     g.node("src", "source")
     g.node("wait_in", "buffer", asset_id=STORAGE_A)
     g.node("insulate", "operation", step("split_length", processing=speed(speed_value),
-                                         output=out_split(unit, count), assets=assets, handoff=handoff,
+                                         output=out_split(unit, count, basis), assets=assets, handoff=handoff,
                                          allocation=allocation, setup=setup, residual=residual,
-                                         state="절연 후"))
+                                         residual_rule=residual_rule, state="절연 후"))
     g.node("wait_out", "buffer", asset_id=STORAGE_B)
     g.node("complete", "milestone")
     g.node("sink", "sink")

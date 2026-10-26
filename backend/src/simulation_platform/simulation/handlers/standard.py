@@ -33,31 +33,33 @@ def _offsets(step: StepModel, unit_length: Fraction, count: int) -> list[Fractio
     return [unit * k for k in range(1, count + 1)]
 
 
-def plan_split_length(step: StepModel, item: WorkItem) -> OperationPlan:
+def plan_split_length(step: StepModel, item: WorkItem, carried: Fraction = Fraction(0)) -> OperationPlan:
+    """이월받은 잔량(carried)은 투입 길이에 더해 같은 길이 풀로 다룬다(abstract_length_pool, 03 §6)."""
     unit = step.output.unit_length_m
+    available = item.length_m + carried
     target = step.output.unit_count if step.output.quantity_basis == "per_input_unit" else None
-    count = target if target is not None else int(item.length_m // unit)
-    if count < 1 or unit * count > item.length_m:
+    count = target if target is not None else int(available // unit)
+    if count < 1 or unit * count > available:
         raise PlanError(
             "INPUT_LENGTH_INCOMPATIBLE",
-            f"입력 {item.length_m}m로 {unit}m 단위를 {max(count, 1)}개 만들 수 없습니다.")
+            f"투입 {available}m로 {unit}m 단위를 {max(count, 1)}개 만들 수 없습니다.")
     outputs = tuple(PlannedOutput(k, offset, unit) for k, offset in
                     enumerate(_offsets(step, unit, count), start=1))
-    return OperationPlan("split", outputs, residual_m=item.length_m - unit * count)
+    return OperationPlan("split", outputs, residual_m=available - unit * count, carried_in_m=carried)
 
 
-def plan_pass_through_length(step: StepModel, item: WorkItem) -> OperationPlan:
+def plan_pass_through_length(step: StepModel, item: WorkItem, carried: Fraction = Fraction(0)) -> OperationPlan:
     # 선속은 입력 전체 길이가 지나가는 시간이다(길이 변화 없음). 단위당 시간이면 한 단위의 시간이다.
     offset = _offsets(step, item.length_m, 1)[0]
     return OperationPlan("transform", (PlannedOutput(1, offset, item.length_m),))
 
 
-def plan_inspection(step: StepModel, item: WorkItem) -> OperationPlan:
+def plan_inspection(step: StepModel, item: WorkItem, carried: Fraction = Fraction(0)) -> OperationPlan:
     return OperationPlan("transform",
                          (PlannedOutput(1, step.timing.unit_minutes, item.length_m),))
 
 
-def plan_transport_manual(step: StepModel, item: WorkItem) -> OperationPlan:
+def plan_transport_manual(step: StepModel, item: WorkItem, carried: Fraction = Fraction(0)) -> OperationPlan:
     return OperationPlan("transform", (PlannedOutput(1, step.transport_minutes, item.length_m),))
 
 

@@ -16,6 +16,8 @@
 
 9. **여러 공정이 한 실행에서 설비를 공유한다(C0-04).** `run_models([Lane(model, arrivals), …])`: 같은 프로젝트의 서로 다른 공정 버전을 한 SimPy 환경에서 실행하고 같은 asset_id는 실행에 한 번만 생성된 하나의 자원으로 경쟁한다(ADR-015). 같은 시각 동순위는 lane 순서, 대기는 전역 FIFO. 서로 다른 프로젝트·같은 공정 버전 중복은 거부한다. 설비의 직전 작업 공정을 이벤트(`previous_process_version_id`)로 기록하되 교체 시간은 입력이 없으므로 더하지 않는다(07 §13).
 
+10. **잔량은 범위별 길이 풀로 다룬다(C0-06).** `carry_same_product`는 `abstract_length_pool` 표시와 범위(scope: machine·product·operation·lot)가 있어야 컴파일되며, scope가 미정이면 시나리오 가정 `residual_scope`로만 정한다. 제품 전환·실행 종료 정책(`on_product_change`·`on_run_end`)이 미정이면 그 상황이 실제로 생겼을 때만 실패하거나 미정으로 보고한다. 실행 종료 정책은 정상 완료된 실행에만 적용한다. 계보는 이월받은 길이까지 포함해 물량 보존을 검증한다.
+
 ## 이번에 하지 않는 것
 합류·분기·공급 간선(C0-07), 잔량 이월·폐기(C0-06), IN/OUT 용량·blocking(C0-05), 여러 설비 동시 확보·예약 allocator, 병렬 스트림 산출, 네트워크 운반, 지표 엔진, 시나리오·job queue·worker. 값 구조가 도메인 문서에 없는 `input_match_policy`·`condition_rule`·`execution_rule`·`parameter_override`도 구현하지 않는다.
 
