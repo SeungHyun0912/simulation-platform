@@ -20,6 +20,12 @@ from simulation_platform.models.process import (
     StepMaterialSpec,
 )
 from simulation_platform.models.revision import AssetRevision, PortPolicy
+from simulation_platform.models.scenario import (
+    Scenario,
+    ScenarioAsset,
+    ScenarioProduct,
+    ScenarioVersion,
+)
 
 __all__ = [
     "AppUser",
@@ -43,6 +49,10 @@ __all__ = [
     "ProjectMember",
     "RequirementCandidate",
     "ResourceRequirement",
+    "Scenario",
+    "ScenarioAsset",
+    "ScenarioProduct",
+    "ScenarioVersion",
     "SpaceDetail",
     "StepMaterialSpec",
 ]

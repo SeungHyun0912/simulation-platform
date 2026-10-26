@@ -44,6 +44,8 @@ class ProcessVersion(IdMixin, MutableMixin, Base):
     __table_args__ = (
         UniqueConstraint("product_id", "version_no", name="uq_process_version_product_no"),
         UniqueConstraint("project_id", "id", name="uq_process_version_project_id"),
+        # 시나리오가 "그 제품의 공정 버전"만 고르게 하는 복합 FK 대상(0007)
+        UniqueConstraint("project_id", "product_id", "id", name="uq_process_version_project_product_id"),
         ForeignKeyConstraint(
             ["project_id", "product_id"], ["product.project_id", "product.id"],
             name="fk_process_version_product", ondelete="RESTRICT"),
