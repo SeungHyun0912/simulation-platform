@@ -49,7 +49,8 @@ describe.skipIf(!LIVE)("실제 서버 데이터로 그린 공정 화면 (읽기 
     await screen.findByRole("heading", { level: 1, name: /P-004 공정 v2/ }, slow);
     await waitFor(() => expect(screen.getByText(/내 역할: 관리자/)).toBeInTheDocument(), slow);
     expect(await screen.findByText(/기준 버전: v1/, {}, slow)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "단계 추가" })).toBeInTheDocument();
+    // 직선이면 표의 "단계 추가", 완료 기준(milestone) 노드가 있으면(계약 0.6.0 시드) 그래프 구성의 "노드 추가"로 구조를 편집한다.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "단계 추가" }) ?? screen.queryByRole("button", { name: "노드 추가" })).not.toBeNull(), slow);
     expect(screen.getByRole("button", { name: /^저장/ })).toBeDisabled(); // 변경 전에는 저장할 수 없다
   });
 

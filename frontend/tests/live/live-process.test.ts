@@ -72,7 +72,7 @@ describe.skipIf(!LIVE)("실제 API: 공정 (읽기 전용, 시험 데이터 P-00
     expect((await versionsOf((await productByCode("P-005")).id))).toEqual([]); // 공정이 없는 제품
   });
 
-  it("승인본 그래프는 직선이고 단계 DTO·ETag·issues가 어댑터를 통과한다", async () => {
+  it("승인본 그래프의 단계 DTO·ETag·issues가 어댑터를 통과한다(완료 기준 노드가 있으면 표 구조 편집 대상이 아니다)", async () => {
     const p1 = await productByCode("P-001");
     const id = p1.current_process_version!.id;
     const v = await admin.get<Schemas["Single_ProcessVersionOut_"]>(`/projects/${PROJECT_A}/process-versions/${id}`);
@@ -82,7 +82,11 @@ describe.skipIf(!LIVE)("실제 API: 공정 (읽기 전용, 시험 데이터 P-00
     const graph = toGraphView(g.body.data);
     expect(version.status).toBe("approved");
     expect(graph.rowVersion).toBe(version.rowVersion);
-    expect(parseLinear(graph.doc)).not.toBeNull();
+    // 계약 0.6.0 이후 시드는 완료 기준(milestone) 노드와 완제품 지정을 가진다 → parseLinear는 null이 정상이다.
+    // milestone이 없는 구버전 시드라면 직선이다. 어느 쪽이든 표 순서(operationsInOrder)는 단계를 모두 돌려준다.
+    const hasMilestone = graph.doc.nodes.some((n) => n.kind === "milestone");
+    expect(parseLinear(graph.doc) === null).toBe(hasMilestone);
+    if (hasMilestone) expect(graph.doc.completion_node_id).not.toBeNull();
     const ops = operationsInOrder(graph.doc);
     expect(ops.length).toBeGreaterThanOrEqual(2);
     // 값은 판별 객체이고 서버가 모든 필드를 채워 준다(왕복 손실 없음)
