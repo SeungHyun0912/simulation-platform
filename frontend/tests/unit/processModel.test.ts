@@ -310,7 +310,7 @@ describe("저장 초안과 3-way 병합", () => {
     expect(draftChanged(base, structuredClone(base))).toBe(false);
     expect(docChanged(base.doc, rename(base, base.doc.nodes[1]!.id, "새 이름").doc)).toBe(true);
     expect(draftChanged(base, { ...base, raw: { ...base.raw, lengthM: { mode: "value", value: "5", unit: "m" } } })).toBe(true);
-    expect(toGraphIn(base.doc)).toEqual({ nodes: base.doc.nodes, edges: base.doc.edges });
+    expect(toGraphIn(base.doc)).toEqual({ nodes: base.doc.nodes, edges: base.doc.edges, completion_node_id: null });
   });
 
   it("내가 안 바꾼 단계는 서버 값, 바꾼 단계는 내 값", () => {

@@ -10,7 +10,7 @@ import type { FakeRequest, FakeResponse, FakeState } from "./fakeApi";
  * 승인·반려는 admin만, 새 초안은 승인본이 있으면 그래프를 새 id로 복사.
  */
 type Version = Schemas["ProcessVersionOut"];
-type Graph = { nodes: Schemas["GraphNode"][]; edges: Schemas["GraphEdge"][] };
+type Graph = { nodes: Schemas["GraphNode"][]; edges: Schemas["GraphEdge"][]; completion_node_id?: string | null };
 export type ProcessState = { versions: Version[]; graphs: Record<string, Graph> };
 
 export type Helpers = {
@@ -71,6 +71,18 @@ function fullStep(s: any = {}): Schemas["StepDto"] {
       scope: s.residual_rule?.scope ?? "unknown",
       physical_join_mode: s.residual_rule?.physical_join_mode ?? "unknown",
     },
+    material_specs: (s.material_specs ?? []).map((m: any) => ({
+      spec_key: m.spec_key,
+      direction: m.direction,
+      material_definition_id: m.material_definition_id ?? null,
+      state_code: m.state_code ?? null,
+      form: m.form ?? null,
+      length_m: measure(m.length_m),
+      weight_kg: measure(m.weight_kg),
+      unit_count: measure(m.unit_count),
+      strand_count: measure(m.strand_count),
+      quantity_basis: m.quantity_basis ?? "unknown",
+    })),
     resources: (s.resources ?? []).map((r: any) => ({
       role_key: r.role_key,
       resource_kind: r.resource_kind ?? "equipment",
@@ -134,6 +146,7 @@ const baseVersion = (n: number, productNo: number, no: number, status: Version["
   created_at: "2026-10-20T00:00:00Z",
   updated_at: null,
   row_version: 1,
+  completion_node_id: null,
   ...extra,
 });
 
@@ -159,8 +172,28 @@ export function seedProcesses(): ProcessState {
     ],
     edges: [edge(301, 301, 302), edge(302, 301, 303), edge(303, 302, 304), edge(304, 303, 304), edge(305, 304, 305)],
   };
+  const spec = (key: string, direction: "input" | "output", extra: any = {}) => ({ spec_key: key, direction, ...extra });
+  const withSpecs = (n: Schemas["GraphNode"], specs: any[]): Schemas["GraphNode"] => ({ ...n, step: fullStep({ ...n.step, material_specs: specs }) });
+  /** 원자재 → 가닥 A(출력 spec) → 가닥 B(입력 spec, 간선이 연결) → 완제품 판정(milestone, 완제품 지정) → 완제품 */
+  const specGraph = (): Graph => ({
+    nodes: [
+      node(401, "source", "src", "원자재", 0),
+      withSpecs({ ...extrude(402, "가닥 A", 1), display_order: 1 }, [spec("out-1", "output", { form: "보빈", length_m: { mode: "known", value: "1000" }, unit_count: { mode: "known", value: 2 }, quantity_basis: "per_operation" })]),
+      withSpecs({ ...extrude(403, "가닥 B", 2), display_order: 2 }, [spec("in-1", "input", { state_code: "1차 가공 후", strand_count: { mode: "known", value: 12 } })]),
+      node(404, "milestone", "done", "완제품 판정", 3),
+      node(405, "sink", "sink", "완제품", 4),
+    ],
+    edges: [
+      edge(401, 401, 402),
+      { ...edge(402, 402, 403), source_output_spec_key: "out-1", target_input_spec_key: "in-1" },
+      edge(403, 403, 404),
+      edge(404, 404, 405),
+    ],
+    completion_node_id: nodeId(404),
+  });
   return {
     versions: [
+      baseVersion(5, 5, 1, "draft", { row_version: 2, completion_node_id: nodeId(404) }),
       baseVersion(1, 1, 1, "approved", { row_version: 2 }),
       baseVersion(2, 1, 2, "draft", { base_version_id: processVersionId(1), row_version: 3 }),
       baseVersion(3, 3, 1, "draft"),
@@ -171,6 +204,7 @@ export function seedProcesses(): ProcessState {
       [processVersionId(2)]: linear(100),
       [processVersionId(3)]: { nodes: [], edges: [] },
       [processVersionId(4)]: branching,
+      [processVersionId(5)]: specGraph(),
     },
   };
 }
@@ -192,6 +226,8 @@ function issuesOf(state: FakeState, v: Version): Schemas["IssueDto"][] {
     }
     if (n.kind === "buffer" && !n.asset_id) w("VAL-GRAPH-013", n.id, "/asset_id", `${n.label}: 대기 공간의 위치가 미정입니다.`);
   }
+  // 단계가 하나라도 있는데 완제품 판정 시점이 지정되지 않으면 경고(승인을 막지 않는다)
+  if ((g?.nodes ?? []).some((n) => n.kind === "operation") && !g?.completion_node_id) w("VAL-GRAPH-014", v.id, "/completion_node_id", "완제품 판정 시점이 미정입니다.");
   return out;
 }
 
@@ -279,7 +315,24 @@ function graphError(state: FakeState, versionId: string, body: any): FakeRespons
         if ((r.selection_mode ?? "one_of") === "one_of" && cands.length > 0 && (r.required_count ?? 1) > cands.length)
           return { status: 422, body: errorEnv(`${base}/required_count`, "후보 수보다 많은 수량을 고를 수 없습니다.", { rule_id: "VAL-RES-001" }) };
       }
+      const seen = new Set<string>();
+      for (const [j, m] of (s.material_specs ?? []).entries()) {
+        const base = `/nodes/${i}/step/material_specs/${j}`;
+        if (typeof m.spec_key !== "string" || m.spec_key.trim() === "" || seen.has(m.spec_key)) return { status: 422, body: errorEnv(`${base}/spec_key`, "spec_key는 단계 안에서 유일해야 합니다.", { rule_id: "VAL-SPEC-001" }) };
+        seen.add(m.spec_key);
+        if (!["input", "output"].includes(m.direction)) return { status: 422, body: errorEnv(`${base}/direction`, "방향이 올바르지 않습니다.", { rule_id: "VAL-SPEC-001" }) };
+        if (m.material_definition_id && !state.materials.some((x) => x.id === m.material_definition_id))
+          return { status: 422, body: errorEnv(`${base}/material_definition_id`, "이 프로젝트의 재료가 아닙니다.", { rule_id: "VAL-REF-006" }) };
+        for (const [k, kind] of [["length_m", "decimal"], ["weight_kg", "decimal"], ["unit_count", "count"], ["strand_count", "count"]] as const) {
+          const e = measureError(m[k], `${base}/${k}`, kind);
+          if (e) return e;
+        }
+      }
     } else if (n.step) return { status: 422, body: errorEnv(`/nodes/${i}/step`, "operation만 step을 가질 수 있습니다.", { rule_id: "VAL-REF-001" }) };
+  }
+  if (body?.completion_node_id) {
+    const target = nodes.find((n) => n.id === body.completion_node_id);
+    if (!target || target.kind !== "milestone") return { status: 422, body: errorEnv("/completion_node_id", "완제품 지정은 같은 요청의 milestone 노드여야 합니다.", { rule_id: "VAL-GRAPH-005" }) };
   }
   for (const [i, e] of edges.entries()) {
     if (!ids.has(e.from_node_id)) return { status: 422, body: errorEnv(`/edges/${i}/from_node_id`, "간선이 그래프에 없는 노드를 가리킵니다.", { rule_id: "VAL-GRAPH-001" }) };
@@ -291,6 +344,12 @@ function graphError(state: FakeState, versionId: string, body: any): FakeRespons
     const to = nodes.find((n) => n.id === e.to_node_id);
     if (kind === "material" && from?.kind === "sink") return { status: 422, body: errorEnv(`/edges/${i}/from_node_id`, "물류 간선은 끝 노드에서 나갈 수 없습니다.", { rule_id: "VAL-GRAPH-004" }) };
     if (kind === "material" && to?.kind === "source") return { status: 422, body: errorEnv(`/edges/${i}/to_node_id`, "물류 간선은 시작 노드로 들어올 수 없습니다.", { rule_id: "VAL-GRAPH-004" }) };
+    const specOf = (n: any, key: string, direction: "input" | "output") => (n?.step?.material_specs ?? []).some((m: any) => m.spec_key === key && m.direction === direction);
+    if (e.source_output_spec_key || e.target_input_spec_key) {
+      if (kind === "precedence") return { status: 422, body: errorEnv(`/edges/${i}/${e.source_output_spec_key ? "source_output_spec_key" : "target_input_spec_key"}`, "선후 관계 간선에는 spec을 연결할 수 없습니다.", { rule_id: "VAL-SPEC-004" }) };
+      if (e.source_output_spec_key && !specOf(from, e.source_output_spec_key, "output")) return { status: 422, body: errorEnv(`/edges/${i}/source_output_spec_key`, "시작 단계의 출력 spec이어야 합니다.", { rule_id: "VAL-SPEC-002" }) };
+      if (e.target_input_spec_key && !specOf(to, e.target_input_spec_key, "input")) return { status: 422, body: errorEnv(`/edges/${i}/target_input_spec_key`, "끝 단계의 입력 spec이어야 합니다.", { rule_id: "VAL-SPEC-003" }) };
+    }
     const mv = e.movement_rule;
     if (mv) {
       if (mv.mode !== undefined && !["unknown", "manual_duration", "network_route", "direct_feed"].includes(mv.mode)) return { status: 422, body: errorEnv(`/edges/${i}/movement_rule/mode`, "알 수 없는 이동 방식입니다.", { rule_id: "VAL-REF-001" }) };
@@ -318,8 +377,11 @@ function normalizeGraph(body: any): Graph {
       from_node_id: e.from_node_id,
       to_node_id: e.to_node_id,
       edge_kind: e.edge_kind ?? "material",
+      source_output_spec_key: e.source_output_spec_key ?? null,
+      target_input_spec_key: e.target_input_spec_key ?? null,
       movement_rule: { mode: e.movement_rule?.mode ?? "unknown", duration_min: { mode: e.movement_rule?.duration_min?.mode ?? "unknown", value: e.movement_rule?.duration_min?.value ?? null } },
     })),
+    completion_node_id: body.completion_node_id ?? null,
   };
 }
 
@@ -374,7 +436,9 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
       P.graphs[v.id] = {
         nodes: src.nodes.map((x) => ({ ...clone(x), id: map.get(x.id)! })),
         edges: src.edges.map((e, i) => ({ ...clone(e), id: id(6000 + n * 100 + i, "e"), from_node_id: map.get(e.from_node_id)!, to_node_id: map.get(e.to_node_id)! })),
+        completion_node_id: src.completion_node_id ? (map.get(src.completion_node_id) ?? null) : null,
       };
+      v.completion_node_id = P.graphs[v.id]!.completion_node_id ?? null;
       P.versions.push(closeVersion(state, v));
       return { status: 201, headers: { ...h.etag(1), Location: `/api/v1/projects/${h.project}/process-versions/${v.id}` }, body: { data: v } };
     }
@@ -429,7 +493,7 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
 
   if (sub === "graph" && method === "GET") {
     const g = P.graphs[version.id]!;
-    return { status: 200, headers: h.etag(version.row_version), body: { data: { process_version_id: version.id, row_version: version.row_version, nodes: g.nodes, edges: g.edges, issues: closeVersion(state, version).issues } } };
+    return { status: 200, headers: h.etag(version.row_version), body: { data: { process_version_id: version.id, row_version: version.row_version, nodes: g.nodes, edges: g.edges, completion_node_id: g.completion_node_id ?? null, issues: closeVersion(state, version).issues } } };
   }
 
   if (sub === "graph" && method === "PUT") {
@@ -440,9 +504,10 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
     const bad = graphError(state, version.id, req.body);
     if (bad) return bad;
     P.graphs[version.id] = normalizeGraph(req.body);
+    version.completion_node_id = P.graphs[version.id]!.completion_node_id ?? null;
     done();
     const out = P.graphs[version.id]!;
-    return { status: 200, headers: h.etag(version.row_version), body: { data: { process_version_id: version.id, row_version: version.row_version, nodes: out.nodes, edges: out.edges, issues: version.issues } } };
+    return { status: 200, headers: h.etag(version.row_version), body: { data: { process_version_id: version.id, row_version: version.row_version, nodes: out.nodes, edges: out.edges, completion_node_id: out.completion_node_id ?? null, issues: version.issues } } };
   }
 
   if (sub === "validate" && method === "POST") {

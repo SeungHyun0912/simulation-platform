@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.4.0, openapi_sha256 1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45
+// 기준 계약: version 0.6.0, openapi_sha256 509a71f15a7ed1ab1516f0ced5e107a55df56f3a553d9331b1f209a341c138ef
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions
 
 export interface paths {
@@ -340,6 +340,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Process Version
+         * @description 이 버전(after)을 기준 버전(before)과 비교한다. 노드·간선은 node_key·edge_key로 맞춘다(읽기 전용).
+         */
+        get: operations["diff_process_version_api_v1_projects__project_id__process_versions__version_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/editor-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Editor State
+         * @description 화면 좌표(버전 공용). 저장 전에는 빈 좌표와 row_version 0을 돌려준다. ETag는 이 상태의 row_version이다.
+         */
+        get: operations["get_editor_state_api_v1_projects__project_id__process_versions__version_id__editor_state_get"];
+        /**
+         * Put Editor State
+         * @description 화면 좌표를 통째로 교체한다. 버전 상태와 무관하게 저장되며(승인본 포함) 공정 버전의 ETag·승인에
+         *     영향이 없다. If-Match는 이 상태의 row_version(저장 전 0)이다.
+         */
+        put: operations["put_editor_state_api_v1_projects__project_id__process_versions__version_id__editor_state_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/process-versions/{version_id}/graph": {
         parameters: {
             query?: never;
@@ -500,7 +545,8 @@ export interface paths {
         put?: never;
         /**
          * Create Process Version
-         * @description 새 초안. 승인본이 있으면 그래프까지 새 id로 복사하고, 없으면 빈 그래프·미정 단위로 시작한다.
+         * @description 새 초안. 본문의 `base_version_id`(같은 제품의 모든 상태) 또는 승인본의 그래프를 새 id로 복사하고,
+         *     둘 다 없으면 빈 그래프·미정 단위로 시작한다. 본문은 선택이다(없으면 승인본 복사).
          *
          *     제품당 열린 버전(draft/in_review)은 하나뿐이다(409 PROCESS_DRAFT_EXISTS).
          */
@@ -744,6 +790,32 @@ export interface components {
             unit_count?: components["schemas"]["CountMeasure"] | null;
             weight_kg?: components["schemas"]["DecimalMeasure"] | null;
         };
+        /**
+         * DiffField
+         * @description 엔티티 안의 JSON Pointer 경로와 before(against)·after(target) 값. 없는 쪽은 null이다.
+         */
+        DiffField: {
+            after: components["schemas"]["JsonValue"];
+            before: components["schemas"]["JsonValue"];
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed";
+            /** Field Path */
+            field_path: string;
+        };
+        /** DiffSummary */
+        DiffSummary: {
+            /** Added */
+            added: number;
+            /** Changed */
+            changed: number;
+            /** Identical */
+            identical: boolean;
+            /** Removed */
+            removed: number;
+        };
         /** DispatchUnknown */
         DispatchUnknown: {
             /**
@@ -783,6 +855,55 @@ export interface components {
             mode: "unknown" | "known" | "not_applicable";
             /** Value */
             value?: string | null;
+        };
+        /** EdgeChange */
+        EdgeChange: {
+            /** Edge Key */
+            edge_key: string;
+            /** Fields */
+            fields: components["schemas"]["DiffField"][];
+        };
+        /** EdgeDiff */
+        EdgeDiff: {
+            /** Added */
+            added: components["schemas"]["GraphEdge"][];
+            /** Changed */
+            changed: components["schemas"]["EdgeChange"][];
+            /** Removed */
+            removed: components["schemas"]["GraphEdge"][];
+        };
+        /**
+         * EditorStateIn
+         * @description 화면 좌표 전체 교체. 키는 이 버전의 노드 id여야 한다(노드 수 상한 500과 같다).
+         */
+        EditorStateIn: {
+            /** Node Positions */
+            node_positions: {
+                [key: string]: components["schemas"]["NodePosition"];
+            };
+            viewport?: components["schemas"]["Viewport"] | null;
+        };
+        /** EditorStateOut */
+        EditorStateOut: {
+            /** Node Positions */
+            node_positions: {
+                [key: string]: components["schemas"]["NodePosition"];
+            };
+            /**
+             * Process Version Id
+             * Format: uuid
+             */
+            process_version_id: string;
+            /**
+             * Row Version
+             * @description 저장 전에는 0. 공정 버전의 row_version과 별개다.
+             */
+            row_version: number;
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            viewport: components["schemas"]["Viewport"] | null;
         };
         /** EquipmentIn */
         EquipmentIn: {
@@ -860,6 +981,16 @@ export interface components {
             id: string;
             movement_rule?: components["schemas"]["MovementRule"];
             /**
+             * Source Output Spec Key
+             * @description from 노드(operation) 단계의 output spec_key. precedence 간선에는 쓸 수 없다.
+             */
+            source_output_spec_key?: string | null;
+            /**
+             * Target Input Spec Key
+             * @description to 노드(operation) 단계의 input spec_key. precedence 간선에는 쓸 수 없다.
+             */
+            target_input_spec_key?: string | null;
+            /**
              * To Node Id
              * Format: uuid
              */
@@ -870,6 +1001,11 @@ export interface components {
          * @description 그래프 전체 교체(PUT). 보내지 않은 노드·간선은 삭제된다. 간선이 없는 노드를 가리키면 422.
          */
         GraphIn: {
+            /**
+             * Completion Node Id
+             * @description 완제품으로 판정하는 milestone 노드 id(같은 요청의 노드). null=미정
+             */
+            completion_node_id?: string | null;
             /** Edges */
             edges?: components["schemas"]["GraphEdge"][];
             /** Nodes */
@@ -902,6 +1038,8 @@ export interface components {
         };
         /** GraphOut */
         GraphOut: {
+            /** Completion Node Id */
+            completion_node_id: string | null;
             /** Edges */
             edges: components["schemas"]["GraphEdge"][];
             /** Issues */
@@ -993,6 +1131,7 @@ export interface components {
              */
             severity: "error" | "warning";
         };
+        JsonValue: unknown;
         /** ListOut[AssetOut] */
         ListOut_AssetOut_: {
             /** Data */
@@ -1083,6 +1222,36 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /**
+         * MaterialSpecDto
+         * @description operation 단계의 입력·출력 재료 spec(CR be06). 길이·중량·단위 수·가닥 수는 서로 환산하지 않는 별개 값이며
+         *     재료 `default_spec`과 같은 값 객체다(기본 unknown). spec_key는 단계 안에서 입력·출력 공통으로 유일하다.
+         */
+        MaterialSpecDto: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "input" | "output";
+            /** Form */
+            form?: string | null;
+            length_m?: components["schemas"]["DecimalMeasure"];
+            /** Material Definition Id */
+            material_definition_id?: string | null;
+            /**
+             * Quantity Basis
+             * @default unknown
+             * @enum {string}
+             */
+            quantity_basis: "unknown" | "per_operation" | "per_input_unit" | "per_lot" | "total_plan";
+            /** Spec Key */
+            spec_key: string;
+            /** State Code */
+            state_code?: string | null;
+            strand_count?: components["schemas"]["CountMeasure"];
+            unit_count?: components["schemas"]["CountMeasure"];
+            weight_kg?: components["schemas"]["DecimalMeasure"];
+        };
         /** MeOrganization */
         MeOrganization: {
             /** Code */
@@ -1147,6 +1316,29 @@ export interface components {
              * @enum {string}
              */
             mode: "unknown" | "manual_duration" | "network_route" | "direct_feed";
+        };
+        /** NodeChange */
+        NodeChange: {
+            /** Fields */
+            fields: components["schemas"]["DiffField"][];
+            /** Node Key */
+            node_key: string;
+        };
+        /** NodeDiff */
+        NodeDiff: {
+            /** Added */
+            added: components["schemas"]["GraphNode"][];
+            /** Changed */
+            changed: components["schemas"]["NodeChange"][];
+            /** Removed */
+            removed: components["schemas"]["GraphNode"][];
+        };
+        /** NodePosition */
+        NodePosition: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
         };
         /**
          * OutputRule
@@ -1324,6 +1516,17 @@ export interface components {
              */
             trigger: "unknown" | "not_applicable" | "per_operation" | "per_input_replacement" | "per_output_replacement" | "on_product_change" | "on_shift_start" | "once_per_run";
         };
+        /**
+         * ProcessVersionCreate
+         * @description 새 초안 생성 본문(선택). 생략·null이면 현재 승인본을 복사한다(0.4.0 동작).
+         */
+        ProcessVersionCreate: {
+            /**
+             * Base Version Id
+             * @description 복사할 같은 제품의 공정 버전(모든 상태 가능). 복사본은 항상 draft.
+             */
+            base_version_id?: string | null;
+        };
         /** ProcessVersionListItem */
         ProcessVersionListItem: {
             /** Approved At */
@@ -1369,6 +1572,8 @@ export interface components {
             approved_by: string | null;
             /** Base Version Id */
             base_version_id: string | null;
+            /** Completion Node Id */
+            completion_node_id: string | null;
             /** Created At */
             created_at: string;
             finished_unit_spec: components["schemas"]["DefaultSpec"];
@@ -1709,6 +1914,10 @@ export interface components {
         Single_AssetRevisionOut_: {
             data: components["schemas"]["AssetRevisionOut"];
         };
+        /** Single[EditorStateOut] */
+        Single_EditorStateOut_: {
+            data: components["schemas"]["EditorStateOut"];
+        };
         /** Single[GraphOut] */
         Single_GraphOut_: {
             data: components["schemas"]["GraphOut"];
@@ -1741,6 +1950,10 @@ export interface components {
         Single_ValidationOut_: {
             data: components["schemas"]["ValidationOut"];
         };
+        /** Single[VersionDiffOut] */
+        Single_VersionDiffOut_: {
+            data: components["schemas"]["VersionDiffOut"];
+        };
         /** Single[list[PortOut]] */
         Single_list_PortOut__: {
             /** Data */
@@ -1761,6 +1974,11 @@ export interface components {
             /** Space Type */
             space_type?: string | null;
         };
+        /** StepDiff */
+        StepDiff: {
+            /** Changed */
+            changed: components["schemas"]["NodeChange"][];
+        };
         /**
          * StepDto
          * @description operation 노드의 단계. 단계 id는 노드 id와 같다.
@@ -1770,6 +1988,8 @@ export interface components {
             handler_version?: string | null;
             handoff_rule?: components["schemas"]["HandoffRule"];
             input_rule?: components["schemas"]["InputRule"];
+            /** Material Specs */
+            material_specs?: components["schemas"]["MaterialSpecDto"][];
             /** Operation Type */
             operation_type?: string | null;
             output_rule?: components["schemas"]["OutputRule"];
@@ -1802,6 +2022,8 @@ export interface components {
             input_rule?: components["schemas"]["InputRule"] | null;
             /** Label */
             label?: string | null;
+            /** Material Specs */
+            material_specs?: components["schemas"]["MaterialSpecDto"][] | null;
             /** Operation Type */
             operation_type?: string | null;
             output_rule?: components["schemas"]["OutputRule"] | null;
@@ -1843,6 +2065,34 @@ export interface components {
             scope: "knowledge" | "run_template";
             /** Warning Count */
             warning_count: number;
+        };
+        /** VersionDiffOut */
+        VersionDiffOut: {
+            /**
+             * Against Version Id
+             * Format: uuid
+             */
+            against_version_id: string;
+            edges: components["schemas"]["EdgeDiff"];
+            /** Header */
+            header: components["schemas"]["DiffField"][];
+            nodes: components["schemas"]["NodeDiff"];
+            steps: components["schemas"]["StepDiff"];
+            summary: components["schemas"]["DiffSummary"];
+            /**
+             * Target Version Id
+             * Format: uuid
+             */
+            target_version_id: string;
+        };
+        /** Viewport */
+        Viewport: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Zoom */
+            zoom: number;
         };
     };
     responses: never;
@@ -3534,6 +3784,202 @@ export interface operations {
             };
         };
     };
+    diff_process_version_api_v1_projects__project_id__process_versions__version_id__diff_get: {
+        parameters: {
+            query?: {
+                /** @description 비교 기준 버전. 생략하면 이 버전의 base_version_id, 없으면 현재 승인본 */
+                against?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_VersionDiffOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_editor_state_api_v1_projects__project_id__process_versions__version_id__editor_state_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_EditorStateOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_editor_state_api_v1_projects__project_id__process_versions__version_id__editor_state_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorStateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_EditorStateOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_graph_api_v1_projects__project_id__process_versions__version_id__graph_get: {
         parameters: {
             query?: never;
@@ -4344,7 +4790,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProcessVersionCreate"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

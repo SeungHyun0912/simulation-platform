@@ -253,7 +253,7 @@ export function toProcessVersionView(v: Schemas["ProcessVersionOut"]): ProcessVe
 export function toGraphView(g: Schemas["GraphOut"]): ProcessGraphView {
   return {
     rowVersion: g.row_version,
-    doc: { nodes: g.nodes, edges: g.edges },
+    doc: { nodes: g.nodes, edges: g.edges, completion_node_id: g.completion_node_id ?? null },
     issues: g.issues.map(toIssue),
   };
 }

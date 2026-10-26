@@ -26,7 +26,16 @@ export type FullStep = Omit<StepDto, "timing_rule" | "input_rule" | "output_rule
   resources: RequirementDto[];
 };
 
-export type GraphDoc = { nodes: GraphNode[]; edges: GraphEdge[] };
+/**
+ * 그래프 문서. 서버 응답의 최상위 필드를 모두 담는다: 그래프 `PUT`은 **전체 교체**라서 화면이 모르는 필드를 빼고 보내면
+ * 서버에서 지워진다(0.6.0의 `completion_node_id`·단계 `material_specs`·간선 spec 연결). 조회한 문서를 그대로 고쳐 보낸다.
+ */
+export type GraphDoc = {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /** 완제품 판정 시점(`kind=milestone` 노드 id). null/없음은 미정(서버가 경고 VAL-GRAPH-014) */
+  completion_node_id?: string | null;
+};
 
 export type DecimalMeasure = Schemas["DecimalMeasure"];
 export type DurationMeasure = Schemas["DurationMeasure"];
@@ -241,7 +250,7 @@ export function buildLinear(chain: Chain, previous: GraphDoc, newId: () => strin
       edges.push({ id, edge_key: `e-${shortId(id)}`, from_node_id: a.id, to_node_id: b.id, edge_kind: "material" });
     }
   }
-  return { nodes, edges };
+  return { ...previous, nodes, edges };
 }
 
 function newNode(kind: GraphNode["kind"], label: string, id: string, key: string): GraphNode {
@@ -383,8 +392,11 @@ export function connectedEdges(doc: GraphDoc, nodeId: string): GraphEdge[] {
  */
 export function removeNode(doc: GraphDoc, nodeId: string): GraphDoc {
   return {
+    ...doc,
     nodes: doc.nodes.filter((n) => n.id !== nodeId),
     edges: doc.edges.filter((e) => e.from_node_id !== nodeId && e.to_node_id !== nodeId),
+    // 완제품으로 지정한 노드를 지우면 지정도 푼다(없는 노드를 가리키면 서버가 422)
+    ...(doc.completion_node_id === nodeId ? { completion_node_id: null } : {}),
   };
 }
 
@@ -422,7 +434,21 @@ export function patchEdge(
   id: string,
   patch: { from_node_id?: string; to_node_id?: string; edge_kind?: EdgeKind; movement_rule?: MovementRule },
 ): GraphDoc {
-  return { ...doc, edges: doc.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) };
+  return {
+    ...doc,
+    edges: doc.edges.map((e) => {
+      if (e.id !== id) return e;
+      const next = { ...e, ...patch };
+      // spec 연결은 끝점 단계의 spec을 가리킨다. 끝점이 바뀌면 낡은 연결을 풀고, 선후 관계 간선에는 연결할 수 없다(VAL-SPEC-004).
+      if (patch.from_node_id !== undefined && patch.from_node_id !== e.from_node_id) next.source_output_spec_key = null;
+      if (patch.to_node_id !== undefined && patch.to_node_id !== e.to_node_id) next.target_input_spec_key = null;
+      if (patch.edge_kind === "precedence") {
+        next.source_output_spec_key = null;
+        next.target_input_spec_key = null;
+      }
+      return next;
+    }),
+  };
 }
 
 export function removeEdge(doc: GraphDoc, edgeId: string): GraphDoc {
