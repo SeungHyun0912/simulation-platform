@@ -2,7 +2,7 @@
 - 상태: 검토 요청
 - 역할 / 작업 ID / 관련 로드맵 ID: Frontend / FE-03a(재료 목록·상세·생성·수정 연동) + 공정 `approve` 실서버 검증 / A-01
 - workspace 버전: 1.1.0
-- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 81aef41(FE-02b 종료) / (커밋 후 기록)
+- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 81aef41(FE-02b 종료) / 061caa6
 - 계약 버전 / OpenAPI hash / 승인 scope: **0.4.0 / `1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45` / `products-materials`(재료 API) 포함 4개 scope** (변경 없음)
 - 수정 파일: `frontend/**`, `docs/communication/request-from-frontend.md`, 이 문서. 계약·backend·`request-from-backend.md`는 수정하지 않았다.
 
