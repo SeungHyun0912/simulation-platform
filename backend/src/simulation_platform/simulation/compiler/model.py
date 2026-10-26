@@ -23,6 +23,27 @@ class OutputModel:
 
 
 @dataclass(frozen=True)
+class InputModel:
+    """작업 한 번이 한 입력에서 한꺼번에 확보하는 작업물 수(07 §5: 작업 단위 원자 확보, 일부만 소비하지 않음).
+
+    pool은 앞 노드 key다. 저장공간이 여러 단계로 갈라지면 그 단계들이 같은 pool(공간)에서 들어온 순서대로 가져간다.
+    """
+
+    pool: str
+    count: int
+    spec_key: str | None = None
+
+
+@dataclass(frozen=True)
+class DelayModel:
+    """준비 대기(precondition_delay, 03 §4.4). occupancy: occupies_machine이면 설비를 쥔 채, releases_machine이면
+    설비를 쥐기 전에 기다린다. 이번 범위의 발생 시점은 작업마다(per_operation)만."""
+
+    minutes: Fraction
+    occupancy: str
+
+
+@dataclass(frozen=True)
 class OutPolicy:
     """설비 OUT 배출 정책(DEC-006: 자산 버전 0.2.0의 release_rule이 정본).
 
@@ -63,6 +84,9 @@ class StepModel:
     transport_minutes: Fraction | None = None
     residual: ResidualModel | None = None
     out_policies: dict[str, OutPolicy] = field(default_factory=dict)  # 하류가 막힐 수 있을 때만 채운다
+    inputs: tuple[InputModel, ...] = ()  # 입력별 확보 수(합류 단계는 여럿)
+    consume_policy: str = "consume"  # consume(시작 때 소비) | transfer(작업 동안 쓰고 끝날 때 소비·공급은 그대로 전달)
+    delay: DelayModel | None = None
 
 
 @dataclass(frozen=True)
@@ -72,7 +96,8 @@ class NodeModel:
     kind: str  # source | buffer | operation | milestone | sink
     label: str
     asset_id: str | None
-    next_key: str | None
+    next_key: str | None  # 다음 노드가 하나일 때만(저장공간이 여러 단계로 갈라지면 None)
+    next_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -99,7 +124,7 @@ class RuntimeModel:
     project_id: str | None
     source_key: str
     completion_key: str | None
-    route: tuple[str, ...]  # source → sink 순서의 node_key
+    route: tuple[str, ...]  # source에서 sink까지 위상 순서의 node_key(선형이면 흐름 순서)
     nodes: dict[str, NodeModel]
     steps: dict[str, StepModel]
     assumptions: tuple[AssumptionUse, ...] = ()

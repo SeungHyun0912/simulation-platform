@@ -140,10 +140,11 @@ def test_parallel_streams_are_never_auto_selected():
 
 
 def test_registered_but_unimplemented_handler_is_reported_as_engine_gap():
-    snap = edit(single_insulation(), "insulate", lambda n: n["step"].update(operation_type="configured_yield"))
+    snap = edit(single_insulation(), "insulate", lambda n: n["step"].update(operation_type="output_units_by_time"))
     result = compile_snapshot(snap, OK)
     assert "ENGINE_HANDLER_NOT_AVAILABLE" in rules_of(result)
-    assert "configured_yield" in next(i for i in result.issues if i.rule_id == "ENGINE_HANDLER_NOT_AVAILABLE").message
+    assert "output_units_by_time" in next(
+        i for i in result.issues if i.rule_id == "ENGINE_HANDLER_NOT_AVAILABLE").message
 
 
 def test_unknown_handler_name_is_blocked_by_domain_validation():
@@ -165,10 +166,15 @@ def test_setup_only_per_operation_or_zero_is_supported():
     assert compile_snapshot(zero, OK).require_model().steps["insulate"].setup_minutes == 0
 
 
-def test_precondition_delay_needs_the_supply_delay_handler():
-    snap = edit(single_insulation(), "insulate", lambda n: n["step"]["timing_rule"].update(
-        precondition_delay={"duration_min": known("120"), "trigger": "per_operation", "occupancy": "occupies_machine"}))
-    assert rules_of(compile_snapshot(snap, OK)) == {"PRECONDITION_DELAY_UNSUPPORTED"}
+def test_precondition_delay_runs_per_operation_with_its_stated_occupancy():
+    """C0-07: 준비 대기는 어느 handler에서나 작업마다(per_operation) 실행한다. 다른 발생 시점은 막는다."""
+    def delayed(trigger):
+        return edit(single_insulation(), "insulate", lambda n: n["step"]["timing_rule"].update(
+            precondition_delay={"duration_min": known("120"), "trigger": trigger, "occupancy": "occupies_machine"}))
+
+    delay = compile_snapshot(delayed("per_operation"), OK).require_model().steps["insulate"].delay
+    assert (delay.minutes, delay.occupancy) == (Fraction(120), "occupies_machine")
+    assert rules_of(compile_snapshot(delayed("on_shift_start"), OK)) == {"PRECONDITION_DELAY_UNSUPPORTED"}
 
 
 # --- 후보 설비 선택 ------------------------------------------------------------------------
