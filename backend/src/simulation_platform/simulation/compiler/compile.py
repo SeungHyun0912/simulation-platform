@@ -1,0 +1,322 @@
+"""snapshot → RuntimeModel 컴파일러(07 §2). 컴파일이 통과해야만 실행할 수 있다.
+
+순서: schema_version·상태 확인 → 도메인 실행 검증(run_template) → 경로 해석 → handler 선택·단계 모델 구성 →
+시나리오 가정 요구 확인. 오류는 첫 번째에서 멈추지 않고 모아서 보고한다(미정을 한꺼번에 알려 주기 위해).
+엔진이 지원하지 않는 구조·값은 조용히 무시하거나 자동 선택하지 않고 이유와 함께 컴파일 오류로 막는다.
+"""
+
+from fractions import Fraction
+
+from simulation_platform.domain import process as rules
+from simulation_platform.simulation import SUPPORTED_SCHEMA_VERSIONS
+from simulation_platform.simulation.compiler.assumptions import (
+    HOLD_FOR_OPERATION,
+    SUPPORTED_EQUIPMENT_HOLD,
+    ScenarioAssumptions,
+)
+from simulation_platform.simulation.compiler.model import (
+    AssumptionUse,
+    CompileIssue,
+    CompileResult,
+    NodeModel,
+    OutputModel,
+    RuntimeModel,
+    StepModel,
+    TimingModel,
+)
+from simulation_platform.simulation.compiler.snapshot import ProcessSnapshot
+from simulation_platform.simulation.handlers import get_handler
+from simulation_platform.simulation.handlers.base import HandlerDef
+from simulation_platform.simulation.numbers import to_fraction
+
+TRANSPORT = "transport_manual"
+
+
+def compile_snapshot(snapshot: ProcessSnapshot, assumptions: ScenarioAssumptions | None = None,
+                     *, allow_unapproved: bool = False) -> CompileResult:
+    return _Compiler(snapshot, assumptions or ScenarioAssumptions(), allow_unapproved).run()
+
+
+class _Compiler:
+    def __init__(self, snapshot: ProcessSnapshot, assumptions: ScenarioAssumptions,
+                 allow_unapproved: bool) -> None:
+        self.snapshot, self.assumptions, self.allow_unapproved = snapshot, assumptions, allow_unapproved
+        self.nodes = list(snapshot.nodes)
+        self.edges = list(snapshot.edges)
+        self.key_of = {n["id"]: n["node_key"] for n in self.nodes}
+        self.issues: list[CompileIssue] = []
+        self.waived: list[CompileIssue] = []
+        self.used: list[AssumptionUse] = []
+
+    def issue(self, rule_id: str, message: str, node_key: str | None = None,
+              field_path: str | None = None) -> None:
+        self.issues.append(CompileIssue(rule_id, message, node_key, field_path))
+
+    # --- 진입 -------------------------------------------------------------------------------
+    def run(self) -> CompileResult:
+        self._check_header()
+        self._check_run_validation()
+        route, next_of = self._route()
+        nodes: dict[str, NodeModel] = {}
+        steps: dict[str, StepModel] = {}
+        by_key = {n["node_key"]: n for n in self.nodes}
+        buffers = [k for k in route if by_key[k]["kind"] == "buffer"]
+        self._check_buffers(buffers)
+        for key in route:
+            node = by_key[key]
+            nodes[key] = NodeModel(key, node["id"], node["kind"], node["label"], node["asset_id"],
+                                   next_of.get(key))
+            if node["kind"] == "operation":
+                step = self._build_step(node)
+                if step is not None:
+                    steps[key] = step
+        if self.issues:
+            return CompileResult(None, tuple(self.issues), tuple(self.used), tuple(self.waived))
+        completion = self.snapshot.completion_node_id
+        model = RuntimeModel(
+            schema_version=self.snapshot.schema_version, version_id=self.snapshot.version_id,
+            project_id=self.snapshot.project_id, source_key=route[0],
+            completion_key=None if completion is None else self.key_of.get(completion),
+            route=tuple(route), nodes=nodes, steps=steps, assumptions=tuple(self.used))
+        return CompileResult(model, (), tuple(self.used), tuple(self.waived))
+
+    # --- 1. 버전·schema ---------------------------------------------------------------------
+    def _check_header(self) -> None:
+        if self.snapshot.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+            self.issue("UNSUPPORTED_SCHEMA_VERSION",
+                       f"지원하지 않는 schema_version {self.snapshot.schema_version}입니다.")
+        if self.snapshot.status != "approved" and not self.allow_unapproved:
+            self.issue("VERSION_NOT_APPROVED",
+                       f"승인된 공정 버전만 실행할 수 있습니다(현재 {self.snapshot.status}).")
+
+    # --- 2. 도메인 실행 검증 -----------------------------------------------------------------
+    def _check_run_validation(self) -> None:
+        snap = self.snapshot
+        base = rules.graph_issues(snap.version_id, snap.raw_unit_spec, snap.finished_unit_spec,
+                                  self.nodes, self.edges, snap.completion_node_id)
+        waivable = {n["id"] for n in self.nodes
+                    if (n["step"] or {}).get("operation_type") == TRANSPORT
+                    and n["node_key"] in self.assumptions.manual_transport_minutes}
+        for found in rules.for_run_template(base, self.nodes):
+            if found.severity != "error":
+                continue
+            item = CompileIssue(found.rule_id, found.message, self.key_of.get(found.entity_id),
+                                found.field_path)
+            # 수동 운반은 시나리오가 이동 시간을 명시하면 단계의 미정 값(운반 자원·처리 규칙)을 이 가정으로 대체한다.
+            if found.entity_id in waivable and found.rule_id != "UNSUPPORTED_HANDLER":
+                self.waived.append(item)
+            else:
+                self.issues.append(item)
+
+    # --- 3. 경로(이번 범위: 단일 선형 흐름) ----------------------------------------------------
+    def _route(self) -> tuple[list[str], dict[str, str]]:
+        by_id = {n["id"]: n for n in self.nodes}
+        sources = [n for n in self.nodes if n["kind"] == "source"]
+        if len(sources) != 1:
+            self.issue("ROUTE_SOURCE", f"source 노드는 정확히 하나여야 합니다(현재 {len(sources)}개).")
+            return [], {}
+        next_of: dict[str, str] = {}
+        indegree: dict[str, int] = {}
+        outdegree: dict[str, int] = {}
+        for edge in self.edges:
+            if edge["edge_kind"] != "material":
+                self.issue("NONLINEAR_EDGE_UNSUPPORTED",
+                           f"{edge['edge_key']}: {edge['edge_kind']} 간선(합류·공급·완료 의존)은 아직 실행하지 않습니다.",
+                           field_path=f"/edges/{edge['edge_key']}")
+                continue
+            a, b = by_id[edge["from_node_id"]]["node_key"], by_id[edge["to_node_id"]]["node_key"]
+            next_of[a] = b
+            outdegree[a] = outdegree.get(a, 0) + 1
+            indegree[b] = indegree.get(b, 0) + 1
+        for key, degree in outdegree.items():
+            if degree > 1:
+                self.issue("BRANCH_UNSUPPORTED", f"{key}: 물류 간선이 여러 개로 갈라지는 흐름은 아직 실행하지 않습니다.", key)
+        for key, degree in indegree.items():
+            if degree > 1:
+                self.issue("JOIN_UNSUPPORTED", f"{key}: 입력이 여러 개 합류하는 흐름은 아직 실행하지 않습니다.", key)
+        for node in self.nodes:
+            if node["kind"] == "join":
+                self.issue("JOIN_UNSUPPORTED", f"{node['node_key']}: join 노드는 아직 실행하지 않습니다.",
+                           node["node_key"])
+        route, seen = [], set()
+        key = sources[0]["node_key"]
+        while key is not None and key not in seen:
+            route.append(key)
+            seen.add(key)
+            key = next_of.get(key)
+        kind_of = {n["node_key"]: n["kind"] for n in self.nodes}
+        if kind_of[route[-1]] != "sink":
+            self.issue("ROUTE_NO_SINK", f"경로가 sink 노드로 끝나지 않습니다(마지막 노드 {route[-1]}).", route[-1])
+        for node in self.nodes:
+            if node["node_key"] not in seen:
+                self.issue("UNREACHABLE_NODE", f"{node['node_key']}: source에서 이어지지 않은 노드입니다.",
+                           node["node_key"])
+        return route, next_of
+
+    def _check_buffers(self, buffers: list[str]) -> None:
+        if not buffers:
+            return
+        if not self.assumptions.unbounded_buffers:
+            self.issue("BUFFER_POLICY_UNKNOWN",
+                       f"저장·대기 공간 {len(buffers)}곳의 용량이 snapshot에 없습니다. 용량을 모르는 값을 무제한으로 "
+                       "가정하지 않으므로 시나리오가 `unbounded_buffers`를 명시해야 합니다.", buffers[0])
+        else:
+            self.used.append(AssumptionUse(
+                "UNBOUNDED_BUFFERS", f"저장·대기 공간 {len(buffers)}곳을 용량 제한 없이 대기하는 것으로 가정"))
+
+    # --- 4. 단계 모델 -----------------------------------------------------------------------
+    def _build_step(self, node: dict) -> StepModel | None:
+        key, step = node["node_key"], node["step"]
+        name, version = step["operation_type"], step["handler_version"] or "1"
+        handler = get_handler(name, version)
+        if handler is None:
+            if name in rules.SUPPORTED_HANDLERS and version in rules.SUPPORTED_HANDLER_VERSIONS:
+                self.issue("ENGINE_HANDLER_NOT_AVAILABLE",
+                           f"{key}: handler {name} v{version}은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.", key)
+            return None  # 이름이 없거나 지원 목록 밖이면 도메인 검증(VAL-HANDLER-001·UNSUPPORTED_HANDLER)이 이미 막았다.
+        transport_minutes = self._transport_minutes(key, handler)
+        timing = TimingModel("none") if handler.name == TRANSPORT else self._timing(key, step, handler)
+        setup = Fraction(0) if handler.name == TRANSPORT else self._setup(key, step)
+        if handler.name != TRANSPORT:
+            self._check_delay(key, step)
+        output = self._output(key, step, handler)
+        candidates, allocation, worker_unlimited = self._resources(key, step, handler)
+        self._check_hold_policy(key, handler, output, candidates)
+        handoff = step["handoff_rule"]["mode"]
+        if handoff not in ("per_output_unit", "total_batch"):
+            handoff = "per_output_unit"  # 미정이면 도메인 검증이 이미 막았다(수동 운반은 한 개 산출)
+        if timing is None or setup is None or output is None:
+            return None
+        return StepModel(
+            key=key, node_id=node["id"], label=node["label"], handler=handler.name,
+            handler_version=handler.version, candidates=candidates, allocation=allocation,
+            worker_unlimited=worker_unlimited, setup_minutes=setup, timing=timing, output=output,
+            handoff=handoff, residual_mode=step["residual_rule"]["mode"],
+            transport_minutes=transport_minutes)
+
+    def _transport_minutes(self, key: str, handler: HandlerDef) -> Fraction | None:
+        if handler.name != TRANSPORT:
+            return None
+        minutes = self.assumptions.manual_transport_minutes.get(key)
+        if minutes is None:
+            self.issue("TRANSPORT_DURATION_UNKNOWN",
+                       f"{key}: 수동 운반의 이동 시간이 미정입니다. 시나리오가 명시 가정으로 정해야 합니다(0분도 명시해야 함).", key)
+            return None
+        if minutes < 0:
+            self.issue("TRANSPORT_DURATION_INVALID", f"{key}: 이동 시간은 0 이상이어야 합니다.", key)
+            return None
+        self.used.append(AssumptionUse("MANUAL_TRANSPORT_MINUTES",
+                                       f"{key}: 수동 운반 {minutes}분(시나리오 가정, 운반 자원은 무제한이 아니라 미모형)", key))
+        return Fraction(minutes)
+
+    def _timing(self, key: str, step: dict, handler: HandlerDef) -> TimingModel | None:
+        proc = step["timing_rule"]["processing"]
+        kind = proc["kind"]
+        timing = None
+        if kind == "output_speed":
+            speed, streams = proc["speed_m_per_min"], proc["parallel_streams"]
+            if proc["basis"] != "per_stream" or streams["mode"] != "known" or streams["value"] != 1 \
+                    or proc["output_schedule"] != "sequential_units":
+                self.issue("TIMING_UNSUPPORTED",
+                           f"{key}: 병렬 스트림·합계 기준 산출은 아직 실행하지 않습니다(스트림 1·스트림별·순차만 지원).", key)
+                return None
+            if speed["mode"] == "known":
+                timing = TimingModel("speed", speed_m_per_min=to_fraction(speed["value"]))
+        elif kind == "per_output_unit":
+            if proc["output_schedule"] != "sequential_units":
+                self.issue("TIMING_UNSUPPORTED", f"{key}: 산출 스케줄이 sequential_units가 아니면 아직 실행하지 않습니다.", key)
+                return None
+            if proc["duration_min"]["mode"] == "known":
+                timing = TimingModel("per_unit", unit_minutes=to_fraction(proc["duration_min"]["value"]))
+        elif kind == "none":
+            timing = TimingModel("none")
+        else:
+            self.issue("TIMING_UNSUPPORTED", f"{key}: 처리 방식 {kind}은(는) 아직 실행하지 않습니다.", key)
+            return None
+        if timing is not None and timing.kind not in handler.timing_kinds:
+            self.issue("HANDLER_TIMING_MISMATCH",
+                       f"{key}: handler {handler.name}은(는) 처리 시간 종류 {timing.kind}을(를) 쓸 수 없습니다.", key)
+            return None
+        return timing
+
+    def _setup(self, key: str, step: dict) -> Fraction | None:
+        setup = step["timing_rule"]["setup"]
+        duration = setup["duration_min"]
+        if setup["trigger"] == "not_applicable":
+            return Fraction(0)
+        if duration["mode"] == "known" and to_fraction(duration["value"]) == 0:
+            return Fraction(0)
+        if setup["trigger"] == "per_operation" and duration["mode"] == "known":
+            return to_fraction(duration["value"])
+        self.issue("SETUP_TRIGGER_UNSUPPORTED",
+                   f"{key}: 준비 시점 {setup['trigger']}은(는) 아직 실행하지 않습니다(per_operation과 0분만 지원).", key)
+        return None
+
+    def _check_delay(self, key: str, step: dict) -> None:
+        if step["timing_rule"]["precondition_delay"]["trigger"] != "not_applicable":
+            self.issue("PRECONDITION_DELAY_UNSUPPORTED",
+                       f"{key}: 공급 대기(precondition_delay)는 supply_delay handler가 필요하며 아직 실행하지 않습니다.", key)
+
+    def _output(self, key: str, step: dict, handler: HandlerDef) -> OutputModel | None:
+        out = step["output_rule"]
+        if handler.name == TRANSPORT:
+            return OutputModel("pass_through")
+        if out["mode"] not in handler.output_modes:
+            self.issue("OUTPUT_MODE_MISMATCH",
+                       f"{key}: handler {handler.name}에는 output_rule.mode {sorted(handler.output_modes)}이(가) 필요합니다"
+                       f"(현재 {out['mode']}).", key)
+            return None
+        length = out["length_m"]
+        if handler.needs_output_length and length["mode"] != "known":
+            return None  # VAL-OUT-002가 이미 막았다
+        count = out["unit_count"]
+        spec = next((m for m in step.get("material_specs", []) if m["direction"] == "output"), None)
+        return OutputModel(
+            mode=out["mode"],
+            unit_length_m=to_fraction(length["value"]) if length["mode"] == "known" else None,
+            unit_count=count["value"] if count["mode"] == "known" else None,
+            quantity_basis=out["quantity_basis"], accounting_mode=out["accounting_mode"],
+            state_code=None if spec is None else spec["state_code"], form=None if spec is None else spec["form"])
+
+    def _resources(self, key: str, step: dict, handler: HandlerDef) -> tuple[tuple[str, ...], str, bool]:
+        equipment = [r for r in step["resources"] if r["resource_kind"] == "equipment"]
+        workers = [r for r in step["resources"] if r["resource_kind"] == "worker"]
+        for worker in workers:
+            if worker["capacity_mode"] != "unlimited":
+                self.issue("WORKER_CAPACITY_UNSUPPORTED", f"{key}: 유한 작업자 자원은 아직 실행하지 않습니다.", key)
+        if len(equipment) > 1:
+            self.issue("RESOURCE_ROLES_UNSUPPORTED", f"{key}: 설비 자원 요구가 둘 이상인 단계는 아직 실행하지 않습니다.", key)
+            return (), "none", False
+        if not equipment:
+            return (), "none", any(w["capacity_mode"] == "unlimited" for w in workers)
+        req = equipment[0]
+        if req["selection_mode"] != "one_of" or req["required_count"] != 1:
+            self.issue("RESOURCE_REQUIREMENT_UNSUPPORTED",
+                       f"{key}: 설비를 동시에 여러 대 확보하는 단계는 allocator가 필요해 아직 실행하지 않습니다.", key)
+            return (), "none", False
+        candidates = tuple(c["asset_id"] for c in req["candidates"])
+        allocation = "single"
+        if len(candidates) > 1:
+            allocation = req["allocation_rule"]["mode"]
+            if allocation not in ("fifo", "first_available"):
+                self.issue("ALLOCATION_RULE_UNKNOWN",
+                           f"{key}: 후보 설비 {len(candidates)}대 중 선택 규칙({allocation})이 없습니다. fifo·first_available를 "
+                           "명시해야 합니다(자동 선택하지 않음).", key)
+        return candidates, allocation, any(w["capacity_mode"] == "unlimited" for w in workers)
+
+    def _check_hold_policy(self, key: str, handler: HandlerDef, output: OutputModel | None,
+                           candidates: tuple[str, ...]) -> None:
+        if not (handler.multiple_outputs and candidates and output is not None):
+            return
+        if output.unit_count is not None and output.unit_count <= 1:
+            return  # 산출이 하나면 점유 정책이 결과를 바꾸지 않는다
+        policy = self.assumptions.equipment_hold
+        if policy is None:
+            self.issue("EQUIPMENT_HOLD_POLICY_REQUIRED",
+                       f"{key}: 한 작업이 여러 산출을 내는데 설비 점유 정책이 미정입니다. 시나리오가 "
+                       f"`equipment_hold`({HOLD_FOR_OPERATION})를 명시해야 합니다(\"보빈별 인계\"는 설비 재배정 정책이 아님).", key)
+        elif policy not in SUPPORTED_EQUIPMENT_HOLD:
+            self.issue("EQUIPMENT_HOLD_UNSUPPORTED", f"{key}: 설비 점유 정책 {policy}은(는) 아직 실행하지 않습니다.", key)
+        else:
+            self.used.append(AssumptionUse(
+                "EQUIPMENT_HOLD_FOR_OPERATION", f"{key}: 모든 산출이 끝날 때까지 설비를 점유(시나리오 가정)", key))

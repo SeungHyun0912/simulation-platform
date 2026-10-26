@@ -1,0 +1,47 @@
+"""작업물(WorkItem)과 계보(lineage). 작업물은 m당 객체가 아니라 보빈·롤 같은 단위다(07 §3)."""
+
+from dataclasses import dataclass
+from fractions import Fraction
+
+
+@dataclass
+class WorkItem:
+    key: str
+    length_m: Fraction
+    form: str | None = None
+    state: str | None = None  # 재료 상태(예: 단계 출력 spec의 state_code)
+    location: str | None = None  # 현재 노드 key
+    status: str = "active"  # active | consumed(분할로 소비됨) | completed(경로 끝 도달)
+    parent_key: str | None = None
+    lot: str | None = None
+    created_at: Fraction = Fraction(0)
+
+
+@dataclass(frozen=True)
+class LineageRecord:
+    """한 작업(operation)이 부모 작업물을 어떻게 바꿨는지. 길이 합계가 맞는지 검증할 수 있다."""
+
+    operation_id: str
+    step_key: str
+    relation: str  # split | transform
+    parent_key: str
+    child_keys: tuple[str, ...]
+    parent_length_m: Fraction
+    child_lengths_m: tuple[Fraction, ...]
+    residual_length_m: Fraction = Fraction(0)
+
+    @property
+    def balanced(self) -> bool:
+        """자식 길이 합 + 잔량 = 부모 길이(물량 보존). abstract_yield 같은 예외는 별도 handler 책임이다."""
+        return sum(self.child_lengths_m, Fraction(0)) + self.residual_length_m == self.parent_length_m
+
+
+class ItemFactory:
+    """안정적인 작업물 key를 순서대로 만든다(같은 입력이면 같은 key)."""
+
+    def __init__(self) -> None:
+        self._count = 0
+
+    def new(self, **fields) -> WorkItem:
+        self._count += 1
+        return WorkItem(key=f"item-{self._count:04d}", **fields)
