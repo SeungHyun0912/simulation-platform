@@ -102,7 +102,7 @@ export function AssetListPage() {
   else if (preview === "empty")
     body = (
       <StateNotice kind="empty" title="등록된 설비·공간이 없습니다">
-        자산 생성은 아직 연결되지 않았습니다.
+        {source === "api" ? "자산 추가로 첫 자산을 만들 수 있습니다." : "정적 예시 화면에서는 자산을 만들 수 없습니다."}
       </StateNotice>
     );
   else if (result.status === "error")
@@ -117,7 +117,7 @@ export function AssetListPage() {
         </StateNotice>
       ) : (
         <StateNotice kind="empty" title="등록된 설비·공간이 없습니다">
-          자산 생성은 아직 연결되지 않았습니다.
+          {source === "api" ? "자산 추가로 첫 자산을 만들 수 있습니다." : "정적 예시 화면에서는 자산을 만들 수 없습니다."}
         </StateNotice>
       );
     else

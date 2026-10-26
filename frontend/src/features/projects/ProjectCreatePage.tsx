@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
+import { ApiError, classifyError } from "../../shared/api/errors";
 import { Button } from "../../shared/components/Button";
+import { SaveErrorNotice } from "../../shared/components/SaveErrorNotice";
 import { SelectField, TextAreaField, TextField } from "../../shared/components/Fields";
 import {
   Block,
@@ -24,6 +26,7 @@ import {
 } from "./projectView";
 import { useMe } from "./queries";
 import type { OrganizationView } from "./projectView";
+import { buildProjectCreate, mapProjectErrors, useProjectWriter } from "./writer";
 
 function makeInitial(orgs: OrganizationView[]): ProjectDraft {
   return {
@@ -76,12 +79,26 @@ function ProjectCreateForm({ orgs }: { orgs: OrganizationView[] }) {
   const [draft, setDraft] = useState<ProjectDraft>(INITIAL);
   // 사용자가 건드린 필드만 오류를 보여 준다. 빈 새 폼에 오류가 가득 보이지 않게 한다.
   const [touched, setTouched] = useState<Set<keyof ProjectDraft>>(new Set());
+  const writer = useProjectWriter();
+  const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
+  const [created, setCreated] = useState<string | null>(null);
+  const [serverFields, setServerFields] = useState<ProjectFieldErrors>({});
+  const [general, setGeneral] = useState<ValidationIssue[]>([]);
+  const [error, setError] = useState<unknown>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(INITIAL);
-  const guard = useUnsavedChangesGuard(dirty);
+  // 생성이 끝나 이동할 때는 미저장 확인을 띄우지 않는다.
+  const guard = useUnsavedChangesGuard(dirty && created === null);
+
+  useEffect(() => {
+    if (created) navigate(`/projects/${created}/assets`);
+  }, [created, navigate]);
 
   const errors = validateProjectDraft(draft);
   const shown: ProjectFieldErrors = {};
   for (const key of touched) if (errors[key]) shown[key] = errors[key];
+  for (const [key, v] of Object.entries(serverFields)) if (v) shown[key as keyof ProjectDraft] = v;
+  const canSubmit = source === "api" && Object.keys(errors).length === 0 && !submitting && created === null;
 
   const issues: ValidationIssue[] = (Object.keys(shown) as (keyof ProjectDraft)[]).map((key) => ({
     severity: "error",
@@ -92,7 +109,30 @@ function ProjectCreateForm({ orgs }: { orgs: OrganizationView[] }) {
   function update<K extends keyof ProjectDraft>(key: K, value: ProjectDraft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
     setTouched((t) => new Set(t).add(key));
+    setServerFields((cur) => (key in cur ? { ...cur, [key]: undefined } : cur));
   }
+
+  async function submit() {
+    if (!canSubmit) return; // 저장 중 중복 전송 방지
+    setSubmitting(true);
+    setServerFields({});
+    setGeneral([]);
+    setError(null);
+    try {
+      setCreated((await writer.create(buildProjectCreate(draft))).id);
+    } catch (e) {
+      const k = classifyError(e);
+      if ((k === "duplicate" || k === "validation") && e instanceof ApiError) {
+        const mapped = mapProjectErrors(e);
+        setServerFields(mapped.fields);
+        setGeneral(mapped.general);
+        if (Object.keys(mapped.fields).length + mapped.general.length === 0) setError(e);
+      } else setError(e);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  const networkUncertain = !!error && classifyError(error) === "network";
 
   if (orgs.length === 0)
     return (
@@ -116,20 +156,27 @@ function ProjectCreateForm({ orgs }: { orgs: OrganizationView[] }) {
         breadcrumbs={[{ label: "프로젝트", to: "/" }, { label: "만들기" }]}
         renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
         actions={
-          <Button variant="primary" disabled title="생성은 API 연동 후 사용할 수 있습니다 (계약 필요)">
-            만들기 (계약 필요)
+          <Button variant="primary" disabled={!canSubmit} onClick={() => void submit()}>
+            {submitting ? "만드는 중…" : "프로젝트 만들기"}
           </Button>
         }
       />
-      <SampleDataNotice>
-        {source === "static"
-          ? "입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다. 조직 목록은 예시입니다."
-          : "입력은 이 화면에서만 유지됩니다. 프로젝트 생성은 아직 연결되지 않았습니다."}
-      </SampleDataNotice>
-      {dirty && <DirtyIndicator />}
-      {issues.length > 0 && (
+      {source === "static" && (
+        <SampleDataNotice>입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다. 조직 목록은 예시입니다.</SampleDataNotice>
+      )}
+      {dirty && created === null && <DirtyIndicator />}
+      <SaveErrorNotice error={error} />
+      {networkUncertain && (
         <Block>
-          <ValidationPanel issues={issues} />
+          <Note>
+            요청이 처리되었는지 알 수 없습니다. 같은 코드로 다시 만들면 중복 오류가 날 수 있으니, 먼저 <Link to="/">프로젝트 목록</Link>에서 이미
+            만들어졌는지 확인하세요.
+          </Note>
+        </Block>
+      )}
+      {(issues.length > 0 || general.length > 0) && (
+        <Block>
+          <ValidationPanel issues={[...issues, ...general]} />
         </Block>
       )}
 

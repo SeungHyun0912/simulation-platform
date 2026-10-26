@@ -9,7 +9,8 @@ import { api as defaultClient, type ApiClient } from "./client";
 export type DataSource = "static" | "api";
 
 export function defaultDataSource(): DataSource {
-  return import.meta.env?.VITE_DATA_SOURCE === "api" ? "api" : "static";
+  // 기본은 실제 API다. 정적 예시는 `VITE_DATA_SOURCE=static`으로 명시했을 때만 쓴다(자동 전환 없음).
+  return import.meta.env?.VITE_DATA_SOURCE === "static" ? "static" : "api";
 }
 
 type Value = { source: DataSource; client: ApiClient };
