@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0, 패치 0.6.1)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -300,7 +300,7 @@ buffer 같은 비 operation 노드의 id나 다른 버전의 단계 id는 404.
 `entity_id`는 단계·노드·간선(또는 버전 자체) id, `field_path`는 **그 엔티티 내부** JSON Pointer(예 `/timing_rule/processing`)다. 순서 번호는 쓰지 않는다.
 규칙 id: `VAL-TIME-001~005`(처리 방식·값·산출 방식·준비·공급 대기 미정), `VAL-OUT-001~004`(산출), `VAL-INPUT-001`·`VAL-HANDOFF-001`, `VAL-HANDLER-001`(operation_type 미정), `VAL-RES-001`(후보 수 오류)·`002~004`(자원 요구·후보·eligibility 미정),
 `VAL-GRAPH-001~004`(구조 오류)·`010~013`(단계 없음·순환·고립 단계·위치 미정 buffer), `VAL-VER-001·002`(원자재·완제품 단위 미정), `VAL-REF-001~003`(저장 시 참조 오류), `VAL-REF-004`(비교 대상 오류)·`005`(편집기 상태의 없는 노드)·`006`(spec이 참조한 재료가 이 프로젝트의 것이 아님), `VAL-GRAPH-005`(완제품 지정 노드 오류)·`014`(완제품 판정 시점 미정, 경고), `VAL-SPEC-001`(spec 수량 모두 미정, 경고)·`002~005`(간선 spec 연결·교체 오류).
-**knowledge**에서는 구조 오류만 오류이고 미정은 모두 경고다. **run_template**에서는 실행에 필요한 미정(`VAL-TIME-*`, `VAL-OUT-001~003`, `VAL-RES-002~004`, `VAL-INPUT-001`, `VAL-HANDOFF-001`, `VAL-HANDLER-001`, `VAL-GRAPH-011`)이 오류로 승격되고,
+**knowledge**에서는 구조 오류만 오류이고 미정은 모두 경고다. **run_template**에서는 실행에 필요한 미정(`VAL-TIME-*`, `VAL-OUT-001~003`, `VAL-RES-002~004`, `VAL-INPUT-001`, `VAL-HANDOFF-001`, `VAL-HANDLER-001`, `VAL-GRAPH-011`)과 **단계가 없는 공정(`VAL-GRAPH-010`, 0.6.1, 보드 DEC-005)** 이 오류로 승격되고,
 엔진이 지원하지 않는 handler는 `UNSUPPORTED_HANDLER`(rule_id) 오류가 된다. 지원 handler(07 §2): `pass_through_length`, `split_length`, `output_units_by_time`, `configured_yield`, `supply_delay`, `inspection`, `transport_manual`(handler_version `1`).
 등록(저장)은 handler 지원 여부와 무관하며 실행 가능 여부만 막는다(03 §12).
 
