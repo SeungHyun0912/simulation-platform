@@ -16,7 +16,7 @@
 - 추가·변경 API / 예제 / 재생성 필요 여부: 신규 3개 + 생성 본문(선택). 예제 4개(`process-version.create-from-base`·`process-version.diff`·`process-editor-state.get|put`, 총 44개). FE는 타입 재생성 시 변경을 반영하면 되며 필수 변경은 없다(CHANGELOG 0.5.0).
 - 채택 결정과 근거: CR be05 + 사용자 결정(CR §7). 편집기 상태는 PoC로 공용, 사용자별 전환은 이후 계약 변경.
 - 미정 또는 임시 가정: 사용자별 편집기 상태로 전환 시점, 편집기 상태 동시 저장 UX(마지막 저장 이김이 아니라 ETag 412), `execution_rule`·`input_match_policy`·`condition_rule`·`parameter_override`의 값 구조(도메인 결정 필요), 역할 정책(TECH-006), 운영 인증(TECH-002).
-- 상대 담당자에게 필요한 조치: **FE** — BE-REQ-017(필요 없으면 "불필요"), CHANGELOG 0.5.0의 선택 작업. **사용자/조정자** — "저장 시 바로 승인" 해석 확인, PR 머지, 다음 범위(04c 또는 이월 규칙 필드의 도메인 결정) 지시.
+- 상대 담당자에게 필요한 조치: **FE** — BE-REQ-018(필요 없으면 "불필요"), CHANGELOG 0.5.0의 선택 작업. **사용자/조정자** — "저장 시 바로 승인" 해석 확인, PR 머지, 다음 범위(04c 또는 이월 규칙 필드의 도메인 결정) 지시.
 - 환경 메모: 이 작업 중 개발 DB 컨테이너(`simulation-platform-postgres`)가 WSL 재시작으로 `exited`였고 `docker start`로 되살렸다(볼륨 유지, 데이터 변경 없음).
 
 ## 실행 증거
