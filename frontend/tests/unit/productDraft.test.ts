@@ -23,7 +23,7 @@ describe("toProductView·toProductDraft: null을 값으로 바꾸지 않는다",
     expect(withSpec).toMatchObject({ specUnknown: false, specification: "규격 1" });
     expect(unknownSpec).toMatchObject({ specUnknown: true, specification: "" });
   });
-  it("공정 요약·보관·row_version을 그대로 옮기고 서버 데이터에는 정적 versions를 쓰지 않는다", () => {
+  it("공정 요약·보관·row_version을 그대로 옮긴다", () => {
     const v = toProductView(PRODUCTS[0]!);
     expect(v.latestProcessVersion).toEqual({
       id: PRODUCTS[0]!.latest_process_version!.id,
@@ -31,8 +31,7 @@ describe("toProductView·toProductDraft: null을 값으로 바꾸지 않는다",
       status: "draft",
       approvedAt: null,
     });
-    expect(v.currentProcessVersion).toBeNull();
-    expect(v.versions).toEqual([]);
+    expect(v.currentProcessVersion).toMatchObject({ versionNo: 1, status: "approved" });
     expect(toProductView(PRODUCTS[8]!).archivedAt).not.toBeNull();
     expect(v.rowVersion).toBe(1);
   });

@@ -121,6 +121,7 @@ export function createApiClient(config: ApiClientConfig = {}) {
     get: <B>(path: string, opts?: Omit<RequestOptions, "body" | "ifMatch">) => request<B>("GET", path, opts),
     post: <B>(path: string, opts?: RequestOptions) => request<B>("POST", path, opts),
     patch: <B>(path: string, opts?: RequestOptions) => request<B>("PATCH", path, opts),
+    put: <B>(path: string, opts?: RequestOptions) => request<B>("PUT", path, opts),
   };
 }
 

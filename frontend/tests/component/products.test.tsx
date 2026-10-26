@@ -1,12 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { latestVersion, specificationText } from "../../src/features/products/productView";
+import { specificationText } from "../../src/features/products/productView";
 import { SAMPLE_PRODUCTS } from "../../src/features/products/sampleProducts";
 import { renderApp } from "../renderApp";
 
-const WITH_SPEC = SAMPLE_PRODUCTS.find((p) => p.specification !== null && p.versions.length > 1)!;
+const WITH_SPEC = SAMPLE_PRODUCTS.find((p) => p.specification !== null && p.latestProcessVersion?.versionNo === 2)!;
 const UNKNOWN_SPEC = SAMPLE_PRODUCTS.find((p) => p.specification === null)!;
-const NO_VERSION = SAMPLE_PRODUCTS.find((p) => p.versions.length === 0)!;
+const NO_VERSION = SAMPLE_PRODUCTS.find((p) => p.latestProcessVersion === null)!;
 
 describe("productView", () => {
   it("규격 미정은 빈 문자열과 다르게 표시한다", () => {
@@ -14,9 +14,10 @@ describe("productView", () => {
     expect(specificationText("")).toBe("(비어 있음)");
     expect(specificationText("A")).toBe("A");
   });
-  it("가장 높은 버전 번호를 최신으로 본다", () => {
-    expect(latestVersion(WITH_SPEC)?.versionNo).toBe(2);
-    expect(latestVersion(NO_VERSION)).toBeNull();
+  it("공정 요약은 최신 버전과 현재 승인본을 따로 가진다", () => {
+    expect(WITH_SPEC.latestProcessVersion).toMatchObject({ versionNo: 2, status: "draft" });
+    expect(WITH_SPEC.currentProcessVersion).toMatchObject({ versionNo: 1, status: "approved" });
+    expect(NO_VERSION.latestProcessVersion).toBeNull();
   });
 });
 
@@ -58,7 +59,7 @@ describe("제품 목록", () => {
 });
 
 describe("제품 상세·편집", () => {
-  it("공정 버전을 최신순으로 보여 주고 초안 UI 링크로 연결한다", () => {
+  it("공정 버전을 최신순으로 보여 주고 공정 화면 링크로 연결한다", () => {
     renderApp(`/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${WITH_SPEC.id}`);
     const table = screen.getByRole("table", { name: `${WITH_SPEC.code} 공정 버전` });
     const rows = within(table).getAllByRole("row");
@@ -67,10 +68,10 @@ describe("제품 상세·편집", () => {
     const edit = within(table).getByRole("link", { name: "v2 공정 편집" });
     expect(edit).toHaveAttribute(
       "href",
-      `/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${WITH_SPEC.id}/processes/${WITH_SPEC.versions[1]!.id}`,
+      `/projects/aaaaaaaa-0000-4000-8000-000000000001/products/${WITH_SPEC.id}/processes/${WITH_SPEC.latestProcessVersion!.id}`,
     );
     expect(within(table).getByRole("link", { name: "v1 공정 보기" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /새 초안 만들기/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /새 초안 만들기/ })).toBeDisabled(); // 정적 예시는 만들지 않는다
   });
 
   it("공정이 없는 제품은 빈 상태를 보여 준다", () => {

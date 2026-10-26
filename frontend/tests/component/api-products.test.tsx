@@ -341,13 +341,17 @@ describe("제품 역할·공정 요약", () => {
     expect(server.writes()).toHaveLength(0);
   });
 
-  it("공정 버전은 서버 요약만 보이고 정적 공정 화면 링크를 열지 않는다", async () => {
-    open(detailPath(P_ONE.id));
+  it("공정 버전은 서버 목록을 최신순으로 보여 주고 공정 화면으로 연결하며 열린 버전이 있으면 새 초안은 비활성이다", async () => {
+    const { server } = open(detailPath(P_ONE.id));
     await ready();
-    expect(screen.getByText(/최신 버전: v2/)).toBeInTheDocument();
-    expect(screen.getByText(/현재 승인본: 없음/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /공정 편집|공정 보기/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: /공정 버전/ })).not.toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "P-001 공정 버전" }, slow);
+    const rows = within(table).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("v2");
+    expect(rows[2]).toHaveTextContent("v1");
+    expect(within(table).getByRole("link", { name: "v2 공정 편집" })).toHaveAttribute("href", expect.stringContaining(`/products/${P_ONE.id}/processes/`));
+    expect(within(table).getByRole("link", { name: "v1 공정 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "새 초안 만들기" })).toBeDisabled();
+    expect(server.writes()).toHaveLength(0);
   });
 
   it("공정이 없는 제품은 빈 상태를 보여 준다", async () => {

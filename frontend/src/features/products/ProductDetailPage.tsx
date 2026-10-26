@@ -3,7 +3,6 @@ import { useDataSource } from "../../shared/api/ApiContext";
 import { classifyError } from "../../shared/api/errors";
 import { Button } from "../../shared/components/Button";
 import { ConflictNotice } from "../../shared/components/ConflictNotice";
-import { DataTable, type Column } from "../../shared/components/DataTable";
 import { CheckboxField, TextAreaField, TextField } from "../../shared/components/Fields";
 import {
   Block,
@@ -19,17 +18,12 @@ import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
 import { SaveErrorNotice } from "../../shared/components/SaveErrorNotice";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { ValidationPanel, type ValidationIssue } from "../../shared/components/ValidationPanel";
-import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
 import { usePreviewState } from "../../shared/hooks/usePreviewState";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { canEdit, projectRoleLabel } from "../projects/projectView";
 import { useCurrentProject } from "../projects/useCurrentProject";
-import {
-  validateProductDraft,
-  type ProcessVersionView,
-  type ProductField,
-  type ProductView,
-} from "./productView";
+import { ProcessVersionsSection } from "../processes/ProcessVersionsSection";
+import { validateProductDraft, type ProductField, type ProductView } from "./productView";
 import { useProductDetail } from "./queries";
 import { useProductEditor } from "./useProductEditor";
 
@@ -152,23 +146,6 @@ function ProductForm({
     });
   issues.push(...editor.general);
 
-  const versionColumns: Column<ProcessVersionView>[] = [
-    { key: "no", header: "버전", render: (v) => `v${v.versionNo}` },
-    { key: "status", header: "상태", render: (v) => <VersionStatusBadge status={v.status} /> },
-    {
-      key: "edit",
-      header: "작업",
-      render: (v) => (
-        <Link
-          to={`/projects/${projectId}/products/${base.id}/processes/${v.id}`}
-          aria-label={`v${v.versionNo} ${v.status === "draft" ? "공정 편집" : "공정 보기"}`}
-        >
-          {v.status === "draft" ? "공정 편집 (초안 UI)" : "공정 보기 (초안 UI)"}
-        </Link>
-      ),
-    },
-  ];
-  const versions = [...base.versions].sort((a, b) => b.versionNo - a.versionNo);
   const hintEntries = (Object.entries(editor.hints) as [ProductField, string | undefined][]).filter(
     ([, v]) => v !== undefined,
   );
@@ -212,7 +189,7 @@ function ProductForm({
       <SampleDataNotice>
         {source === "static"
           ? "예시 데이터입니다. 입력은 이 화면에서만 유지되며 서버에 저장되지 않습니다."
-          : "서버에서 불러온 데이터입니다. 저장하면 서버에 반영됩니다. 공정 화면은 아직 정적 예시라 연결되어 있지 않습니다."}
+          : "서버에서 불러온 데이터입니다. 저장하면 서버에 반영됩니다."}
       </SampleDataNotice>
       <Block>
         <Note>
@@ -290,56 +267,7 @@ function ProductForm({
         )}
       </Section>
 
-      <Section id="sec-versions" title="공정 버전">
-        {source === "static" ? (
-          <>
-            <Note>
-              승인된 버전은 수정할 수 없고, 변경하려면 복사하여 새 초안을 만듭니다. 공정 화면은 계약 승인 전의 초안
-              UI이며, 새 초안 생성은 연결되어 있지 않습니다.
-            </Note>
-            {versions.length === 0 ? (
-              <StateNotice kind="empty" title="공정 버전이 없습니다">
-                이 제품에는 아직 공정이 없습니다.
-              </StateNotice>
-            ) : (
-              <DataTable
-                caption={`${base.code} 공정 버전`}
-                columns={versionColumns}
-                rows={versions}
-                getRowKey={(v) => v.id}
-              />
-            )}
-            <div>
-              <Button disabled title="정적 예시 화면에서는 만들지 않습니다">
-                새 초안 만들기 (연동 전)
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <Note>
-              아래는 서버가 알려 주는 요약입니다. 공정 편집 화면은 아직 정적 예시이며 서버 데이터와 연결되어 있지 않아
-              여기서 열지 않습니다.
-            </Note>
-            {base.latestProcessVersion ? (
-              <ul>
-                <li>
-                  최신 버전: v{base.latestProcessVersion.versionNo}{" "}
-                  <VersionStatusBadge status={base.latestProcessVersion.status} />
-                </li>
-                <li>
-                  현재 승인본:{" "}
-                  {base.currentProcessVersion ? `v${base.currentProcessVersion.versionNo}` : "없음"}
-                </li>
-              </ul>
-            ) : (
-              <StateNotice kind="empty" title="공정 버전이 없습니다">
-                이 제품에는 아직 공정이 없습니다.
-              </StateNotice>
-            )}
-          </>
-        )}
-      </Section>
+      <ProcessVersionsSection projectId={projectId} productId={base.id} productCode={base.code} role={role} />
 
       {source === "static" && <PreviewStateLinks states={["conflict", "forbidden"]} />}
     </>

@@ -1,0 +1,325 @@
+import type { Schemas } from "../../shared/api/types";
+import type { KnownValue } from "../../shared/components/KnownValueInput";
+
+/**
+ * 공정 그래프 문서와 단계 DTO 도우미(계약 0.4.0 `process-versions`).
+ * - 편집은 서버가 준 단계 DTO(`StepDto`)를 그대로 고쳐 쓴다. 화면이 모르는 필드도 `PUT graph`(전체 교체)에서
+ *   빠지지 않게 하기 위해서다(왕복 손실 방지).
+ * - 값은 `{mode: unknown|known|not_applicable, value}`이며 미정은 0도 빈 값도 아니다.
+ */
+export type StepDto = Schemas["StepDto"];
+export type GraphNode = Schemas["GraphNode"];
+export type GraphEdge = Schemas["GraphEdge"];
+export type GraphIn = Schemas["GraphIn"];
+export type RequirementDto = Schemas["RequirementDto"];
+export type TimingRule = Schemas["TimingRule"];
+export type OutputRule = Schemas["OutputRule"];
+export type Processing = NonNullable<TimingRule["processing"]>;
+
+/** 서버 기본값(미정)으로 모든 규칙 필드를 채운 단계. 화면은 이 모양으로만 읽고 고친다. */
+export type FullStep = Omit<StepDto, "timing_rule" | "input_rule" | "output_rule" | "handoff_rule" | "residual_rule" | "resources"> & {
+  timing_rule: Required<TimingRule>;
+  input_rule: NonNullable<StepDto["input_rule"]>;
+  output_rule: OutputRule;
+  handoff_rule: NonNullable<StepDto["handoff_rule"]>;
+  residual_rule: NonNullable<StepDto["residual_rule"]>;
+  resources: RequirementDto[];
+};
+
+export type GraphDoc = { nodes: GraphNode[]; edges: GraphEdge[] };
+
+export type DecimalMeasure = Schemas["DecimalMeasure"];
+export type DurationMeasure = Schemas["DurationMeasure"];
+export type CountMeasure = Schemas["CountMeasure"];
+type AnyMeasure = DecimalMeasure | DurationMeasure | CountMeasure;
+
+/* ---------------- 측정값 ↔ 화면 입력(KnownValue) ---------------- */
+
+/** 서버 측정값 → 입력 값. `known`만 값을 가지며 단위는 화면 선택용이다(서버에는 보내지 않는다). */
+export function measureToKnown(m: AnyMeasure | null | undefined, unit: string): KnownValue {
+  if (!m || m.mode === "unknown") return { mode: "unknown", value: "", unit };
+  if (m.mode === "not_applicable") return { mode: "not_applicable", value: "", unit };
+  return { mode: "value", value: m.value === null || m.value === undefined ? "" : String(m.value), unit };
+}
+
+/** 입력 값 → decimal 문자열 측정값. 값 있음이 아니면 mode만 보낸다(value를 보내면 서버가 422). */
+export function knownToDecimal(kv: KnownValue): DecimalMeasure {
+  if (kv.mode === "value") return { mode: "known", value: kv.value };
+  return { mode: kv.mode === "not_applicable" ? "not_applicable" : "unknown" };
+}
+
+/**
+ * 개수는 **JSON 정수**로 보낸다(문자열·소수는 서버가 422).
+ * 입력 중인 올바르지 않은 값(빈 칸, "abc", "1.5")은 지워지지 않도록 문자열 그대로 보존한다. 이런 값은 저장 전
+ * 검증(`validateMeasure`)이 막고, 보내는 시점(`toGraphIn`·단위 PATCH)에는 항상 정수만 남는다.
+ */
+export function knownToCount(kv: KnownValue): CountMeasure {
+  if (kv.mode !== "value") return { mode: kv.mode === "not_applicable" ? "not_applicable" : "unknown" };
+  const v = kv.value.trim();
+  return { mode: "known", value: /^[1-9]\d{0,11}$/.test(v) ? Number(v) : (kv.value as unknown as number) };
+}
+
+const POSITIVE_DECIMAL = /^(0|[1-9]\d*)(\.\d{1,6})?$/;
+const COUNT = /^[1-9]\d*$/;
+
+export type MeasureKind = "positive" | "nonnegative" | "count";
+
+/**
+ * 값 있음일 때의 형식 오류. 처리 시간·선속·길이는 0 초과, 준비·대기 시간은 0이 유효(`nonnegative`),
+ * 개수는 1 이상의 정수다. 오류가 없으면 null. 최종 판정은 서버 검증이다.
+ */
+export function validateMeasure(kv: KnownValue, kind: MeasureKind): string | null {
+  if (kv.mode !== "value") return null;
+  const v = kv.value.trim();
+  if (v === "") return "값을 입력하세요. 모르는 값이면 '미정'을 선택하세요.";
+  if (kind === "count") {
+    if (!COUNT.test(v)) return "1 이상의 정수만 입력할 수 있습니다.";
+    return Number(v) > 1_000_000_000_000 ? "값이 너무 큽니다." : null;
+  }
+  if (!POSITIVE_DECIMAL.test(v)) return "소수 6자리까지의 숫자만 입력할 수 있습니다(선행 0 불가).";
+  if (kind === "positive" && /^0(\.0+)?$/.test(v)) return "0보다 커야 합니다. 모르는 값이면 '미정'을 선택하세요.";
+  return null;
+}
+
+/* ---------------- 단계 DTO ---------------- */
+
+const unknownDecimal = (): DecimalMeasure => ({ mode: "unknown" });
+const unknownDuration = (): DurationMeasure => ({ mode: "unknown" });
+
+/** 새 단계의 시작값: 모두 미정(0이나 임의 값으로 채우지 않는다). */
+export function emptyStep(): FullStep {
+  return {
+    operation_type: null,
+    handler_version: null,
+    timing_rule: {
+      processing: { kind: "unknown" },
+      setup: { duration_min: unknownDuration(), trigger: "unknown" },
+      precondition_delay: { duration_min: unknownDuration(), trigger: "unknown", occupancy: "unknown" },
+    },
+    input_rule: { acquire_scope: "unknown", consume_policy: "unknown" },
+    output_rule: {
+      mode: "unknown",
+      unit_form: null,
+      length_m: unknownDecimal(),
+      weight_kg: unknownDecimal(),
+      unit_count: { mode: "unknown" },
+      quantity_basis: "unknown",
+      schedule: "unknown",
+      accounting_mode: "unknown",
+    },
+    handoff_rule: { mode: "unknown" },
+    residual_rule: {
+      mode: "unknown",
+      on_product_change: "unknown",
+      on_run_end: "unknown",
+      scope: "unknown",
+      physical_join_mode: "unknown",
+    },
+    resources: [],
+  };
+}
+
+/** 서버 기본값(미정)으로 빠진 필드를 채운 단계. 서버가 항상 완전한 단계를 주지만 방어적으로 둔다. */
+export function stepOf(node: GraphNode): FullStep {
+  const base = emptyStep();
+  const s = node.step ?? {};
+  return {
+    ...base,
+    ...s,
+    timing_rule: { ...base.timing_rule, ...s.timing_rule },
+    output_rule: { ...base.output_rule, ...s.output_rule },
+    input_rule: { ...base.input_rule, ...s.input_rule },
+    handoff_rule: { ...base.handoff_rule, ...s.handoff_rule },
+    residual_rule: { ...base.residual_rule, ...s.residual_rule },
+    resources: s.resources ?? [],
+  };
+}
+
+export function isOperation(n: GraphNode): boolean {
+  return n.kind === "operation";
+}
+
+/** 작업 노드의 단계를 바꾼 새 문서 */
+export function updateNode(doc: GraphDoc, id: string, fn: (n: GraphNode) => GraphNode): GraphDoc {
+  return { ...doc, nodes: doc.nodes.map((n) => (n.id === id ? fn(n) : n)) };
+}
+
+export function updateStep(doc: GraphDoc, id: string, fn: (s: FullStep, n: GraphNode) => StepDto): GraphDoc {
+  return updateNode(doc, id, (n) => ({ ...n, step: fn(stepOf(n), n) }));
+}
+
+/** 표에 보이는 순서: 직선이면 연결 순서, 아니면 display_order·node_key 순 */
+export function operationsInOrder(doc: GraphDoc): GraphNode[] {
+  const chain = parseLinear(doc);
+  if (chain) return chain.items.map((i) => i.op);
+  return doc.nodes
+    .filter(isOperation)
+    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || a.node_key.localeCompare(b.node_key));
+}
+
+/* ---------------- 직선 그래프(표 편집 가능 구조) ---------------- */
+
+export type ChainItem = { op: GraphNode; buffer: GraphNode | null };
+export type Chain = { source: GraphNode | null; items: ChainItem[]; sink: GraphNode | null };
+
+/**
+ * 직선 구조: [source] → (operation [buffer])+ → [sink]를 material 간선 하나씩으로 이은 것.
+ * join·milestone·precedence/supply 간선·분기·합류·연속 buffer·순환·고립 노드가 있으면 null(표로 구조를 바꿀 수 없음).
+ * 노드가 하나도 없는 빈 문서는 단계 없는 직선이다.
+ */
+export function parseLinear(doc: GraphDoc): Chain | null {
+  if (doc.nodes.length === 0) return doc.edges.length === 0 ? { source: null, items: [], sink: null } : null;
+  if (doc.edges.some((e) => e.edge_kind !== "material")) return null;
+  if (doc.nodes.some((n) => n.kind === "join" || n.kind === "milestone")) return null;
+  const byId = new Map(doc.nodes.map((n) => [n.id, n]));
+  const out = new Map<string, string>();
+  const incoming = new Map<string, number>();
+  for (const e of doc.edges) {
+    if (!byId.has(e.from_node_id) || !byId.has(e.to_node_id) || out.has(e.from_node_id)) return null;
+    out.set(e.from_node_id, e.to_node_id);
+    incoming.set(e.to_node_id, (incoming.get(e.to_node_id) ?? 0) + 1);
+  }
+  if ([...incoming.values()].some((c) => c > 1)) return null;
+  const starts = doc.nodes.filter((n) => !incoming.has(n.id));
+  if (starts.length !== 1) return null;
+  const order: GraphNode[] = [];
+  for (let n: GraphNode | undefined = starts[0]; n; n = byId.get(out.get(n.id) ?? "")) {
+    if (order.includes(n)) return null;
+    order.push(n);
+  }
+  if (order.length !== doc.nodes.length) return null;
+
+  let i = 0;
+  let source: GraphNode | null = null;
+  let sink: GraphNode | null = null;
+  if (order[i]?.kind === "source") source = order[i++]!;
+  const items: ChainItem[] = [];
+  while (i < order.length) {
+    const n = order[i]!;
+    if (n.kind === "sink") {
+      if (i !== order.length - 1) return null;
+      sink = n;
+      i++;
+    } else if (n.kind === "operation") {
+      const next = order[i + 1];
+      if (next?.kind === "buffer") {
+        items.push({ op: n, buffer: next });
+        i += 2;
+      } else {
+        items.push({ op: n, buffer: null });
+        i += 1;
+      }
+    } else return null;
+  }
+  return { source, items, sink };
+}
+
+const shortId = (id: string) => id.replace(/-/g, "").slice(0, 8);
+
+/**
+ * 직선 구조를 노드·간선으로 다시 만든다. 기존 노드·간선의 id와 간선의 이동 규칙은 보존하고
+ * 새로 이어지는 간선만 새 id를 받는다(묵시적으로 엉뚱한 연결을 만들지 않는다).
+ */
+export function buildLinear(chain: Chain, previous: GraphDoc, newId: () => string = () => crypto.randomUUID()): GraphDoc {
+  const seq: GraphNode[] = [];
+  if (chain.source) seq.push(chain.source);
+  for (const it of chain.items) {
+    seq.push(it.op);
+    if (it.buffer) seq.push(it.buffer);
+  }
+  if (chain.sink) seq.push(chain.sink);
+  const nodes = seq.map((n, i) => ({ ...n, display_order: i }));
+  const existing = new Map(previous.edges.map((e) => [`${e.from_node_id}>${e.to_node_id}`, e]));
+  const edges: GraphEdge[] = [];
+  for (let i = 0; i + 1 < nodes.length; i++) {
+    const a = nodes[i]!;
+    const b = nodes[i + 1]!;
+    const old = existing.get(`${a.id}>${b.id}`);
+    if (old) edges.push(old);
+    else {
+      const id = newId();
+      edges.push({ id, edge_key: `e-${shortId(id)}`, from_node_id: a.id, to_node_id: b.id, edge_kind: "material" });
+    }
+  }
+  return { nodes, edges };
+}
+
+function newNode(kind: GraphNode["kind"], label: string, id: string, key: string): GraphNode {
+  return { id, node_key: key, kind, label, asset_id: null, display_order: 0, step: null };
+}
+
+/** 빈 문서에서 처음 단계를 만들 때 쓰는 시작·끝 노드를 갖춘 직선 */
+function chainWithEnds(chain: Chain | null, newId: () => string): Chain {
+  if (chain && (chain.source || chain.sink || chain.items.length > 0)) return chain;
+  return {
+    source: newNode("source", "원자재", newId(), "src"),
+    items: [],
+    sink: newNode("sink", "완제품", newId(), "sink"),
+  };
+}
+
+/** 단계 추가(맨 끝). 직선이 아니면 null. */
+export function addStep(doc: GraphDoc, newId: () => string = () => crypto.randomUUID()): { doc: GraphDoc; id: string } | null {
+  const parsed = parseLinear(doc);
+  if (!parsed) return null;
+  const chain = chainWithEnds(parsed, newId);
+  const id = newId();
+  const op: GraphNode = { ...newNode("operation", "", id, `op-${shortId(id)}`), step: emptyStep() };
+  return { doc: buildLinear({ ...chain, items: [...chain.items, { op, buffer: null }] }, doc, newId), id };
+}
+
+/** 단계 삭제: 그 단계와 뒤따르는 "다음 위치" 노드를 함께 지우고 앞뒤를 새 간선으로 잇는다. */
+export function removeStep(doc: GraphDoc, opId: string, newId: () => string = () => crypto.randomUUID()): GraphDoc | null {
+  const chain = parseLinear(doc);
+  if (!chain) return null;
+  return buildLinear({ ...chain, items: chain.items.filter((i) => i.op.id !== opId) }, doc, newId);
+}
+
+/** 단계 이동. "다음 위치"는 단계와 함께 움직인다. */
+export function moveStep(doc: GraphDoc, opId: string, delta: -1 | 1, newId: () => string = () => crypto.randomUUID()): GraphDoc | null {
+  const chain = parseLinear(doc);
+  if (!chain) return null;
+  const i = chain.items.findIndex((x) => x.op.id === opId);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= chain.items.length) return doc;
+  const items = [...chain.items];
+  [items[i], items[j]] = [items[j]!, items[i]!];
+  return buildLinear({ ...chain, items }, doc, newId);
+}
+
+/** 다음 위치 값: 공간 없이 바로 이어짐 / 공간은 있으나 위치 미정 / 특정 저장·도킹 공간 */
+export type NextLocation = { kind: "none" } | { kind: "unset" } | { kind: "asset"; assetId: string; label: string };
+
+export function nextLocationOf(chain: Chain, opId: string): NextLocation | null {
+  const it = chain.items.find((x) => x.op.id === opId);
+  if (!it) return null;
+  if (!it.buffer) return { kind: "none" };
+  return it.buffer.asset_id ? { kind: "asset", assetId: it.buffer.asset_id, label: it.buffer.label } : { kind: "unset" };
+}
+
+export function setNextLocation(
+  doc: GraphDoc,
+  opId: string,
+  next: NextLocation,
+  newId: () => string = () => crypto.randomUUID(),
+): GraphDoc | null {
+  const chain = parseLinear(doc);
+  if (!chain) return null;
+  const items = chain.items.map((it) => {
+    if (it.op.id !== opId) return it;
+    if (next.kind === "none") return { ...it, buffer: null };
+    const buf = it.buffer ?? newNode("buffer", "", newId(), "");
+    const id = buf.id;
+    const label = next.kind === "asset" ? next.label : "위치 미정";
+    return {
+      ...it,
+      buffer: {
+        ...buf,
+        node_key: buf.node_key || `buf-${shortId(id)}`,
+        label,
+        asset_id: next.kind === "asset" ? next.assetId : null,
+      },
+    };
+  });
+  return buildLinear({ ...chain, items }, doc, newId);
+}
