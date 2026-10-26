@@ -178,7 +178,7 @@ export function ProductCreatePage() {
           error={shown.notes}
           onChange={(e) => update({ notes: e.target.value }, "notes")}
         />
-        <Note>공정은 제품을 만든 뒤 공정 버전(초안)으로 정의합니다. 공정 화면은 아직 연결되어 있지 않습니다.</Note>
+        <Note>공정은 제품을 만든 뒤 공정 버전(초안)으로 정의합니다.</Note>
         <div>
           <Button variant="primary" disabled={!canSubmit} onClick={() => void submit()}>
             {submitting ? "만드는 중…" : "제품 만들기"}

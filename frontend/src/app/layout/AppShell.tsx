@@ -56,7 +56,7 @@ export function AppShell() {
       <div className={styles.banner} role="note" data-source={source}>
         {source === "static"
           ? "정적 예시 화면입니다. 서버에 연결되어 있지 않으며 표시된 데이터는 실제 데이터가 아닙니다."
-          : `API 연동 모드입니다(계약 ${contractMeta.contract_version}). 자산(기본 정보·용량·규칙 버전), 제품 기본 정보, 재료(기본 정보·기본 규격), 공정(버전·그래프 구조·단계·검토 요청)의 저장은 연결되어 있습니다.`}
+          : `API 연동 모드입니다(계약 ${contractMeta.contract_version}). 프로젝트 생성, 자산(기본 정보·용량·규칙 버전), 제품 기본 정보, 재료(기본 정보·기본 규격), 공정(버전·그래프 구조·단계·검토 요청)의 저장은 연결되어 있습니다.`}
       </div>
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>

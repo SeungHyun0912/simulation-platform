@@ -18,13 +18,13 @@ pnpm test:live  # 실제 API 서버 대상 읽기 전용 검증(LIVE_API 환경�
 ```
 
 ## 데이터 출처와 실제 API 연결 (로컬 개발)
-- `VITE_DATA_SOURCE=static`(기본): 정적 예시 데이터. 서버 호출 없음, 화면에 "예시" 표시.
-- `VITE_DATA_SOURCE=api`: 실제 API(계약 0.2.0). **실패해도 정적 데이터로 자동 전환하지 않는다.** 현재 읽기만 연결되어 있고(저장 없음), 제품·공정 화면은 아직 정적 예시다.
+- `VITE_DATA_SOURCE=api`(기본): 실제 API(계약 0.6.0). **실패해도 정적 데이터로 자동 전환하지 않는다.** 프로젝트·자산·제품·재료·공정의 조회와 저장이 연결되어 있다(범위는 앱 상단 배너와 `docs/communication/request-from-frontend.md` 상태 표).
+- `VITE_DATA_SOURCE=static`: 정적 예시 데이터(화면 검토용). 서버 호출 없음, 화면에 "예시" 표시. 명시했을 때만 쓴다.
 - 서버는 backend 세션 또는 사용자가 띄운다(`backend/scripts/run_dev_api.ps1`). FE는 기동하지 않는다.
 - 개발 서버의 proxy가 `/api`를 `DEV_API_TARGET`(기본 `http://127.0.0.1:8000`)으로 전달하고 `X-Debug-User`를 붙인다.
   개발용 사용자 id는 번들에 들어가지 않도록 `VITE_` 접두사 없는 셸 환경변수로만 넘긴다.
   ```powershell
-  $env:VITE_DATA_SOURCE="api"; $env:DEV_DEBUG_USER="<app_user.id>"; pnpm dev
+  $env:DEV_DEBUG_USER="<app_user.id>"; pnpm dev
   ```
   값(개발 전용 식별자)은 `docs/communication/request-from-backend.md`의 "현재 Backend 상태"를 본다. 이 인증은 계약이 아니며 운영 인증이 정해지면 바뀐다.
 - `src/shared/api/generated/`는 생성물이므로 직접 수정하지 않는다. 계약이 바뀌면 `contracts/CHANGELOG.md`를 읽고 `pnpm gen:api`로 다시 만든다.

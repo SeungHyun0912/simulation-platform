@@ -112,10 +112,10 @@ describe("프로젝트 목록", () => {
 });
 
 describe("프로젝트 만들기", () => {
-  it("처음에는 오류를 보여 주지 않고, 생성 버튼은 계약 필요로 비활성이다", () => {
+  it("처음에는 오류를 보여 주지 않고, 정적 예시에서는 생성 버튼이 비활성이다", () => {
     renderApp("/projects/new");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /만들기 \(계약 필요\)/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "프로젝트 만들기" })).toBeDisabled();
     expect(screen.getByLabelText("조직")).toHaveValue("bbbbbbbb-0000-4000-8000-000000000001");
     expect(screen.getByLabelText("시간대")).toHaveValue("Asia/Seoul");
   });

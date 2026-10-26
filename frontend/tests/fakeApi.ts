@@ -602,6 +602,15 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
   if (method === "GET" && path === "/me") return { status: 200, body: { data: ME } };
   if (method === "GET" && path === "/projects")
     return { status: 200, body: { data: PROJECTS_OUT, page: { limit: 50, next_cursor: null } } };
+  if (method === "POST" && path === "/projects") {
+    const b = req.body ?? {};
+    if (b.organization_id !== ORG_ADMIN) return notFound(); // 조직 admin이 아니면 서버는 존재 여부를 알리지 않는다
+    if (PROJECTS_OUT.some((x) => x.code === b.code))
+      return errorBody(409, "PROJECT_CODE_CONFLICT", "같은 조직에 동일한 프로젝트 코드가 있습니다.", [{ message: "이미 사용 중인 코드입니다.", field_path: "/code" }]);
+    // 공유 상수(ME·PROJECTS_OUT)는 바꾸지 않는다. 응답만 만들어 돌려준다.
+    const created = { ...PROJECTS_OUT[0]!, id: uuid(9001, "f"), organization_id: b.organization_id, code: b.code, name: b.name, timezone: b.timezone, description: b.description ?? null, row_version: 1 };
+    return { status: 201, headers: { ...etag(1), Location: `/api/v1/projects/${created.id}` }, body: { data: created } };
+  }
   const pm = /^\/projects\/([^/]+)$/.exec(path);
   if (pm && method === "GET") {
     const p = PROJECTS_OUT.find((x) => x.id === pm[1]);
