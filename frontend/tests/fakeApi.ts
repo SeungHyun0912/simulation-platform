@@ -1,4 +1,5 @@
 import type { Schemas } from "../src/shared/api/types";
+import { materialRoute, seedMaterials } from "./fakeMaterials";
 import { processProductId, processRoute, processSummaries, processVersionId, seedProcesses, type ProcessState } from "./fakeProcess";
 
 /**
@@ -213,6 +214,8 @@ export type FakeState = {
   products: Schemas["ProductOut"][];
   /** 모든 자산의 버전. 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
   revisions: Schemas["AssetRevisionOut"][];
+  /** 재료(fakeMaterials). 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
+  materials: Schemas["MaterialOut"][];
   /** 공정 버전·그래프(fakeProcess). 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
   processes: ProcessState;
   /** 현재 요청자의 프로젝트 역할. editor/viewer는 승인·반려(admin 전용)나 쓰기에서 403을 받는다. */
@@ -221,6 +224,7 @@ export type FakeState = {
 export const freshState = (): FakeState => ({
   assets: structuredClone(ASSETS),
   products: structuredClone(PRODUCTS),
+  materials: seedMaterials(),
   processes: seedProcesses(),
   revisions: structuredClone(REVISIONS_OF_ASSET_1),
   role: "admin",
@@ -644,6 +648,8 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
     if (method === "PATCH" && !rm[3]) return patchRevision(state, req, rm[2]!);
     if (method === "POST" && rm[3]) return transitionRevision(state, req, rm[2]!, rm[3]);
   }
+  const mr = materialRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
+  if (mr) return mr;
   const pr = processRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
   if (pr) return pr;
   return notFound();
