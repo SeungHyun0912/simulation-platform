@@ -753,6 +753,66 @@
         "title": "DefaultSpecPatch",
         "type": "object"
       },
+      "DiffField": {
+        "description": "엔티티 안의 JSON Pointer 경로와 before(against)·after(target) 값. 없는 쪽은 null이다.",
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "before": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "change": {
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "change",
+          "before",
+          "after"
+        ],
+        "title": "DiffField",
+        "type": "object"
+      },
+      "DiffSummary": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "integer"
+          },
+          "identical": {
+            "title": "Identical",
+            "type": "boolean"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "changed",
+          "identical"
+        ],
+        "title": "DiffSummary",
+        "type": "object"
+      },
       "DispatchUnknown": {
         "additionalProperties": false,
         "properties": {
@@ -826,6 +886,158 @@
           }
         },
         "title": "DurationMeasure",
+        "type": "object"
+      },
+      "EdgeChange": {
+        "properties": {
+          "edge_key": {
+            "title": "Edge Key",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/DiffField"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "edge_key",
+          "fields"
+        ],
+        "title": "EdgeChange",
+        "type": "object"
+      },
+      "EdgeDiff": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeChange"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "title": "EdgeDiff",
+        "type": "object"
+      },
+      "EditorStateIn": {
+        "additionalProperties": false,
+        "description": "화면 좌표 전체 교체. 키는 이 버전의 노드 id여야 한다(노드 수 상한 500과 같다).",
+        "properties": {
+          "node_positions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NodePosition"
+            },
+            "maxProperties": 500,
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Node Positions",
+            "type": "object"
+          },
+          "viewport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Viewport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "node_positions"
+        ],
+        "title": "EditorStateIn",
+        "type": "object"
+      },
+      "EditorStateOut": {
+        "properties": {
+          "node_positions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NodePosition"
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Node Positions",
+            "type": "object"
+          },
+          "process_version_id": {
+            "format": "uuid",
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "row_version": {
+            "description": "저장 전에는 0. 공정 버전의 row_version과 별개다.",
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "viewport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Viewport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "process_version_id",
+          "node_positions",
+          "viewport",
+          "row_version",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "EditorStateOut",
         "type": "object"
       },
       "EquipmentIn": {
@@ -1373,6 +1585,7 @@
         "title": "IssueOut",
         "type": "object"
       },
+      "JsonValue": {},
       "ListOut_AssetOut_": {
         "properties": {
           "data": {
@@ -1835,6 +2048,82 @@
         "title": "MovementRule",
         "type": "object"
       },
+      "NodeChange": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/DiffField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "node_key": {
+            "title": "Node Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_key",
+          "fields"
+        ],
+        "title": "NodeChange",
+        "type": "object"
+      },
+      "NodeDiff": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/NodeChange"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "title": "NodeDiff",
+        "type": "object"
+      },
+      "NodePosition": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "maximum": 1000000.0,
+            "minimum": -1000000.0,
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "maximum": 1000000.0,
+            "minimum": -1000000.0,
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "NodePosition",
+        "type": "object"
+      },
       "OutputRule": {
         "additionalProperties": false,
         "description": "길이·중량·단위 수·가닥 수를 섞지 않는다. 총 계획 수량과 작업 한 번의 산출량은 quantity_basis로 구분.",
@@ -2258,6 +2547,27 @@
           }
         },
         "title": "PreconditionDelay",
+        "type": "object"
+      },
+      "ProcessVersionCreate": {
+        "additionalProperties": false,
+        "description": "새 초안 생성 본문(선택). 생략·null이면 현재 승인본을 복사한다(0.4.0 동작).",
+        "properties": {
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "복사할 같은 제품의 공정 버전(모든 상태 가능). 복사본은 항상 draft.",
+            "title": "Base Version Id"
+          }
+        },
+        "title": "ProcessVersionCreate",
         "type": "object"
       },
       "ProcessVersionListItem": {
@@ -3359,6 +3669,18 @@
         "title": "Single[AssetRevisionOut]",
         "type": "object"
       },
+      "Single_EditorStateOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EditorStateOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[EditorStateOut]",
+        "type": "object"
+      },
       "Single_GraphOut_": {
         "properties": {
           "data": {
@@ -3455,6 +3777,18 @@
         "title": "Single[ValidationOut]",
         "type": "object"
       },
+      "Single_VersionDiffOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VersionDiffOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[VersionDiffOut]",
+        "type": "object"
+      },
       "Single_list_PortOut__": {
         "properties": {
           "data": {
@@ -3518,6 +3852,22 @@
           }
         },
         "title": "SpacePatch",
+        "type": "object"
+      },
+      "StepDiff": {
+        "properties": {
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/NodeChange"
+            },
+            "title": "Changed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "StepDiff",
         "type": "object"
       },
       "StepDto": {
@@ -3833,6 +4183,80 @@
           "issues"
         ],
         "title": "ValidationOut",
+        "type": "object"
+      },
+      "VersionDiffOut": {
+        "properties": {
+          "against_version_id": {
+            "format": "uuid",
+            "title": "Against Version Id",
+            "type": "string"
+          },
+          "edges": {
+            "$ref": "#/components/schemas/EdgeDiff"
+          },
+          "header": {
+            "items": {
+              "$ref": "#/components/schemas/DiffField"
+            },
+            "title": "Header",
+            "type": "array"
+          },
+          "nodes": {
+            "$ref": "#/components/schemas/NodeDiff"
+          },
+          "steps": {
+            "$ref": "#/components/schemas/StepDiff"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DiffSummary"
+          },
+          "target_version_id": {
+            "format": "uuid",
+            "title": "Target Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_version_id",
+          "against_version_id",
+          "header",
+          "nodes",
+          "steps",
+          "edges",
+          "summary"
+        ],
+        "title": "VersionDiffOut",
+        "type": "object"
+      },
+      "Viewport": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "maximum": 1000000.0,
+            "minimum": -1000000.0,
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "maximum": 1000000.0,
+            "minimum": -1000000.0,
+            "title": "Y",
+            "type": "number"
+          },
+          "zoom": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000.0,
+            "title": "Zoom",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "zoom"
+        ],
+        "title": "Viewport",
         "type": "object"
       }
     }
@@ -6448,6 +6872,313 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/diff": {
+      "get": {
+        "description": "이 버전(after)을 기준 버전(before)과 비교한다. 노드·간선은 node_key·edge_key로 맞춘다(읽기 전용).",
+        "operationId": "diff_process_version_api_v1_projects__project_id__process_versions__version_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "비교 기준 버전. 생략하면 이 버전의 base_version_id, 없으면 현재 승인본",
+            "in": "query",
+            "name": "against",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "비교 기준 버전. 생략하면 이 버전의 base_version_id, 없으면 현재 승인본",
+              "title": "Against"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_VersionDiffOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Diff Process Version",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-versions/{version_id}/editor-state": {
+      "get": {
+        "description": "화면 좌표(버전 공용). 저장 전에는 빈 좌표와 row_version 0을 돌려준다. ETag는 이 상태의 row_version이다.",
+        "operationId": "get_editor_state_api_v1_projects__project_id__process_versions__version_id__editor_state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_EditorStateOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Editor State",
+        "tags": [
+          "process-versions"
+        ]
+      },
+      "put": {
+        "description": "화면 좌표를 통째로 교체한다. 버전 상태와 무관하게 저장되며(승인본 포함) 공정 버전의 ETag·승인에\n영향이 없다. If-Match는 이 상태의 row_version(저장 전 0)이다.",
+        "operationId": "put_editor_state_api_v1_projects__project_id__process_versions__version_id__editor_state_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorStateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_EditorStateOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Put Editor State",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/process-versions/{version_id}/graph": {
       "get": {
         "operationId": "get_graph_api_v1_projects__project_id__process_versions__version_id__graph_get",
@@ -7741,7 +8472,7 @@
         ]
       },
       "post": {
-        "description": "새 초안. 승인본이 있으면 그래프까지 새 id로 복사하고, 없으면 빈 그래프·미정 단위로 시작한다.\n\n제품당 열린 버전(draft/in_review)은 하나뿐이다(409 PROCESS_DRAFT_EXISTS).",
+        "description": "새 초안. 본문의 `base_version_id`(같은 제품의 모든 상태) 또는 승인본의 그래프를 새 id로 복사하고,\n둘 다 없으면 빈 그래프·미정 단위로 시작한다. 본문은 선택이다(없으면 승인본 복사).\n\n제품당 열린 버전(draft/in_review)은 하나뿐이다(409 PROCESS_DRAFT_EXISTS).",
         "operationId": "create_process_version_api_v1_projects__project_id__products__product_id__process_versions_post",
         "parameters": [
           {
@@ -7765,6 +8496,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProcessVersionCreate"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/process-versions/00000000-0000-4000-8000-000000000015/editor-state"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"0\""
+    },
+    "body": {
+      "data": {
+        "process_version_id": "00000000-0000-4000-8000-000000000015",
+        "node_positions": {},
+        "viewport": null,
+        "row_version": 0,
+        "updated_at": null,
+        "updated_by": null
+      }
+    }
+  }
+}

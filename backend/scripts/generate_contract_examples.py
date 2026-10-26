@@ -288,6 +288,32 @@ def main(out_dir: Path) -> None:
     record("process-version.list", "GET", versions_url, r)
     r = client.get(product_path, headers=base)
     record("product.get", "GET", product_path, r)
+
+    # --- 복제 기준 선택·비교·편집기 상태 (contract 0.5.0) --------------------------------------
+    version_id = version_path.rsplit("/", 1)[1]
+    editor_path = f"{version_path}/editor-state"
+    r = client.get(editor_path, headers=base)
+    record("process-editor-state.get", "GET", editor_path, r)
+    state = {"node_positions": {n["id"]: {"x": 160.0 * i, "y": 80.0} for i, n in enumerate(nodes)},
+             "viewport": {"x": 0, "y": 0, "zoom": 1}}
+    r = client.put(editor_path, json=state, headers=match(0))  # 승인본에도 저장된다
+    record("process-editor-state.put", "PUT", editor_path, r, state, {"If-Match": '"0"'})
+    from_base = {"base_version_id": version_id}
+    r = client.post(versions_url, json=from_base, headers=base)
+    record("process-version.create-from-base", "POST", versions_url, r, from_base)
+    draft = r.json()["data"]
+    draft_path = f"{api}/projects/{pid}/process-versions/{draft['id']}"
+    r = client.patch(draft_path, json={"notes": "[시험] 절연 속도 검토"},
+                     headers=match(draft["row_version"]))
+    draft_nodes = client.get(f"{draft_path}/graph", headers=base).json()["data"]["nodes"]
+    draft_step = next(n["id"] for n in draft_nodes if n["kind"] == "operation")
+    faster = {"label": "[시험] 절연(속도 상향)", "timing_rule": {"processing": {
+        "kind": "output_speed", "speed_m_per_min": known("45"), "basis": "per_stream",
+        "output_schedule": "sequential_units", "parallel_streams": known(1)}}}
+    r = client.patch(f"{draft_path}/steps/{draft_step}", json=faster, headers=match(2))
+    diff_path = f"{draft_path}/diff?against={version_id}"
+    r = client.get(diff_path, headers=base)
+    record("process-version.diff", "GET", diff_path, r)
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 

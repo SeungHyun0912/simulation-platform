@@ -20,13 +20,17 @@ from simulation_platform.schemas.catalog import (
 from simulation_platform.schemas.common import ErrorEnvelope, ListOut, Single
 from simulation_platform.schemas.me import MeOut
 from simulation_platform.schemas.process import (
+    EditorStateIn,
+    EditorStateOut,
     GraphIn,
     GraphOut,
+    ProcessVersionCreate,
     ProcessVersionListItem,
     ProcessVersionOut,
     StepOut,
     StepPatch,
     ValidationOut,
+    VersionDiffOut,
 )
 from simulation_platform.schemas.project import ProjectCreate, ProjectOut
 from simulation_platform.schemas.revision import AssetRevisionOut, RejectBody, RevisionPatch
@@ -81,6 +85,11 @@ EXPECTED = {
     "process-validate.run-template": (None, Single[ValidationOut], 200),
     "error.process-draft-exists": (None, ERROR, 409),
     "error.graph-invalid": (None, ERROR, 422),
+    # contract 0.5.0
+    "process-version.create-from-base": (ProcessVersionCreate, Single[ProcessVersionOut], 201),
+    "process-version.diff": (None, Single[VersionDiffOut], 200),
+    "process-editor-state.get": (None, Single[EditorStateOut], 200),
+    "process-editor-state.put": (EditorStateIn, Single[EditorStateOut], 200),
 }
 
 
@@ -169,3 +178,25 @@ def test_revision_examples_show_the_documented_workflow():
     asset = _load("asset.get")["response"]["body"]["data"]
     assert asset["current_revision"]["status"] == "approved"
     assert asset["latest_revision"]["revision_no"] == 2
+
+
+def test_clone_diff_and_editor_state_examples_show_the_documented_behavior():
+    approved = _load("process-version.approve")["response"]["body"]["data"]
+    created = _load("process-version.create-from-base")
+    assert created["request"]["body"] == {"base_version_id": approved["id"]}
+    draft = created["response"]["body"]["data"]
+    assert draft["status"] == "draft" and draft["base_version_id"] == approved["id"]
+    assert draft["approved_at"] is None and draft["submitted_at"] is None  # 승인 기록은 복사하지 않는다
+    diff = _load("process-version.diff")["response"]["body"]["data"]
+    assert diff["target_version_id"] == draft["id"] and diff["against_version_id"] == approved["id"]
+    assert [f["field_path"] for f in diff["header"]] == ["/notes"]
+    assert diff["nodes"]["added"] == [] and diff["edges"]["removed"] == []
+    assert diff["steps"]["changed"], "단계 규칙 변경이 JSON Pointer 경로로 나온다"
+    assert all(f["field_path"].startswith("/") for c in diff["steps"]["changed"] for f in c["fields"])
+    assert diff["summary"]["identical"] is False
+    empty = _load("process-editor-state.get")["response"]
+    assert empty["headers"]["ETag"] == '"0"' and empty["body"]["data"]["node_positions"] == {}
+    saved = _load("process-editor-state.put")["response"]
+    assert saved["headers"]["ETag"] == '"1"' and len(saved["body"]["data"]["node_positions"]) == 5
+    # 승인본에도 저장됐고 공정 버전의 ETag(승인 후 5)에는 영향이 없다.
+    assert approved["status"] == "approved"

@@ -5,6 +5,16 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.5.0 — 2026-10-26 · scope `process-versions`(BE-04b) · sha256 `62e3529c…f02d` · 기준 commit `c9de49a`
+- **호환성: 0.4.0 클라이언트와 호환(추가만).** 기존 operation의 응답·요청 필드는 그대로이고, 새 초안 생성(`POST …/process-versions`)에 **선택** 본문이 늘었다. 본문 없이 호출하면 0.4.0과 똑같이 동작한다.
+- **추가 operation 3개:** `GET …/process-versions/{v}/diff`(버전 비교), `GET·PUT …/process-versions/{v}/editor-state`(화면 좌표). 별도 `clone` endpoint는 없다.
+- **복제 기준 선택:** 본문 `{base_version_id}`로 같은 제품의 어느 버전(승인본·superseded)이든 복사해 새 초안을 만든다. 승인·제출 기록은 복사하지 않고, 기준의 화면 좌표도 새 노드 id로 옮겨 복사한다. 다른 제품·프로젝트의 버전은 404.
+- **버전 비교:** `against` 생략 시 base 버전, 없으면 현재 승인본. **노드·간선은 `node_key`·`edge_key`로 맞춘다**(FE가 key를 새로 만들어 그래프를 다시 보내면 전부 추가·삭제로 나온다). 결과는 헤더·노드·단계·간선별 `{field_path(JSON Pointer), change, before, after}`와 요약. 기준이 없거나 다른 제품이면 422 `VAL-REF-004`.
+- **편집기 상태(화면 좌표):** **버전당 공용 하나**(PoC; 사용자별은 이후 변경). 어떤 버전 상태에서도 저장되며(승인본 포함) 공정 버전의 ETag·승인에 영향이 없다. **자체 ETag**: 저장 전 `row_version 0`, 첫 저장은 `If-Match: "0"`(428/412 규칙은 동일). 키는 그 버전의 노드 id여야 하고(422 `VAL-REF-005`) 좌표는 JSON 숫자다.
+- **프런트가 해야 할 일(요약, 모두 선택):** ① 타입 재생성(해시 `62e3529c…`) ② 새 초안 만들기에서 "기준 버전 선택" UI가 필요하면 `base_version_id` 사용 ③ 그래프 편집 화면의 노드 배치를 `editor-state`로 저장·복원(배치는 공정 버전의 ETag와 무관, 충돌은 편집기 상태 ETag로 처리) ④ 승인본·초안 비교 화면은 `diff` 사용(`node_key`를 안정적으로 유지해야 한다).
+- **아직 없는 것:** 사용자별 편집기 상태, 단계 입출력 재료 spec·합류/공급 간선의 spec 연결·완료 milestone(BE-04c), 값 구조가 정의되지 않은 `execution_rule`·`input_match_policy`·`condition_rule`·`parameter_override`.
+- **상세:** [04 §4.1.1](04_api_contract.md), [CR be05](../docs/change-requests/CR-backend-20261026-be05-process-clone-diff-editor-state.md), 예제 `examples/first-scope/process-version.{create-from-base,diff}`·`process-editor-state.*`.
+
 ## 0.4.0 — 2026-10-23 · scope `process-versions`(BE-04a) · sha256 `1da94db0…cb45` · 기준 commit `18754cf`
 - **호환성: 0.3.1 클라이언트와 호환(추가만).** 기존 operation의 요청·응답 필드는 그대로이며 `ProductOut`에 nullable 필드 2개(`current_process_version`, `latest_process_version`)가 늘었다.
 - **추가 operation 11개:** 제품의 공정 버전 목록/생성, 버전 조회·수정(원자재 기본 단위·완제품 단위·메모), 그래프 조회/전체 교체(PUT), 단계 수정, 검증(`validate?scope=knowledge|run_template`), 제출·반려·승인.

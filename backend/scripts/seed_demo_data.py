@@ -13,7 +13,7 @@
 - 프로젝트 B에 같은 코드(EQ-001) 자산 1건(프로젝트 격리 확인)
 - 제품 8건(규격 입력/미정 혼합)·재료 4건(default_spec 확정/미정/해당 없음 혼합), 프로젝트 B에 같은 코드(P-001) 제품 1건
 - 공정 버전 샘플(프로젝트 A): P-001 승인본(확정된 직선 그래프), P-002 초안(빈 그래프), P-003 검토 중(미정 경고만),
-  P-004 승인본 + 복사된 새 초안
+  P-004 승인본 + 복사된 새 초안(메모·1단계 속도를 바꿔 비교 결과가 나온다). P-001 승인본에는 화면 좌표(편집기 상태)도 저장
 """
 
 import argparse
@@ -346,6 +346,56 @@ def seed_process(seeder: Seeder, project_a: uuid.UUID) -> dict:
     return {"skipped": False, "versions": 5}
 
 
+def seed_process_extras(seeder: Seeder, project_a: uuid.UUID) -> dict:
+    """0.5.0 샘플(멱등, 이미 공정 샘플이 있는 DB에도 보충된다): P-001 승인본의 화면 좌표(편집기 상태)와
+    P-004 초안의 변경(비교 결과가 나오도록 메모·1단계 이름·공정 속도)."""
+    base = f"{API}/projects/{project_a}"
+    products = {p["code"]: p["id"] for p in seeder.client.get(
+        f"{base}/products?limit=50", headers=seeder.headers).json()["data"]}
+
+    def versions(code):
+        if code not in products:
+            return []
+        return seeder.client.get(f"{base}/products/{products[code]}/process-versions",
+                                 headers=seeder.headers).json()["data"]
+
+    def send(method, url, body, etag):
+        response = getattr(seeder.client, method)(
+            url, json=body, headers={**seeder.headers, "If-Match": f'"{etag}"'})
+        if response.status_code >= 300:
+            raise RuntimeError(f"{method.upper()} {url} -> {response.status_code}: {response.text}")
+        return response.json()["data"]
+
+    def graph_nodes(version_id):
+        return seeder.client.get(f"{base}/process-versions/{version_id}/graph",
+                                 headers=seeder.headers).json()["data"]["nodes"]
+
+    done = []
+    approved = next((v for v in versions("P-001") if v["status"] == "approved"), None)
+    if approved is not None:
+        url = f"{base}/process-versions/{approved['id']}/editor-state"
+        state = seeder.client.get(url, headers=seeder.headers).json()["data"]
+        if state["row_version"] == 0:
+            nodes = graph_nodes(approved["id"])
+            send("put", url, {
+                "node_positions": {n["id"]: {"x": 180.0 * i, "y": 60.0} for i, n in enumerate(nodes)},
+                "viewport": {"x": 0, "y": 0, "zoom": 1}}, 0)
+            done.append("editor-state")
+    listed = next((v for v in versions("P-004") if v["status"] == "draft"), None)
+    draft = None if listed is None else seeder.client.get(
+        f"{base}/process-versions/{listed['id']}", headers=seeder.headers).json()["data"]
+    if draft is not None and draft["notes"] is None:  # 목록 항목에는 notes가 없어 상세로 읽는다
+        draft = send("patch", f"{base}/process-versions/{draft['id']}",
+                     {"notes": "[시험] 1단계 속도 상향 검토"}, draft["row_version"])
+        first = next(n for n in graph_nodes(draft["id"]) if n["kind"] == "operation")
+        timing = first["step"]["timing_rule"]
+        timing["processing"]["speed_m_per_min"] = _known("45")
+        send("patch", f"{base}/process-versions/{draft['id']}/steps/{first['id']}",
+             {"label": "[시험] 1단계(속도 상향)", "timing_rule": timing}, draft["row_version"])
+        done.append("diff-sample")
+    return {"added": done}
+
+
 def seed(engine: Engine) -> dict:
     fixtures = seed_fixtures(engine)
     seeder = Seeder(engine, fixtures["users"]["admin"])
@@ -353,6 +403,7 @@ def seed(engine: Engine) -> dict:
     result = seed_assets(seeder, projects["A"], projects["B"], engine)
     catalog = seed_catalog(seeder, projects["A"], projects["B"])
     process = seed_process(seeder, projects["A"])
+    process["extras"] = seed_process_extras(seeder, projects["A"])
     return {**fixtures, "assets": result, "catalog": catalog, "process": process}
 
 
