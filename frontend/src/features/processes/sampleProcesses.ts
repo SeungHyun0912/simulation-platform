@@ -178,6 +178,35 @@ const draftIssues = [
   warn("VAL-GRAPH-013", uuid("3a2"), "/asset_id", "대기 공간의 위치가 미정입니다."),
 ];
 
+/** 분기·합류가 있는 예시(직선이 아님): 원자재 → 가닥 A·가닥 B → 합류 → 완제품. 가닥 A → 합류 이동은 사람이 정한 5분. */
+const branchNodes = [
+  node("source", uuid("4c1"), "src", "원자재", { display_order: 0 }),
+  op(uuid("2c1"), "strand-a", "예시 가닥 A", extrusion),
+  op(uuid("2c2"), "strand-b", "예시 가닥 B", braiding),
+  node("join", uuid("5c1"), "join", "예시 합류", { display_order: 3 }),
+  node("sink", uuid("4c2"), "sink", "완제품", { display_order: 4 }),
+].map((n, i) => ({ ...n, display_order: i }));
+const branchEdge = (n: number, from: string, to: string, extra: Partial<GraphDoc["edges"][number]> = {}): GraphDoc["edges"][number] => ({
+  id: uuid(`6c${n}`),
+  edge_key: `e${n}`,
+  from_node_id: from,
+  to_node_id: to,
+  edge_kind: "material",
+  ...extra,
+});
+const branchDoc: GraphDoc = {
+  nodes: branchNodes,
+  edges: [
+    branchEdge(1, uuid("4c1"), uuid("2c1")),
+    branchEdge(2, uuid("4c1"), uuid("2c2")),
+    branchEdge(3, uuid("2c1"), uuid("5c1"), { movement_rule: { mode: "manual_duration", duration_min: { mode: "known", value: "5" } } }),
+    branchEdge(4, uuid("2c2"), uuid("5c1")),
+    branchEdge(5, uuid("5c1"), uuid("4c2")),
+  ],
+};
+const VC1 = uuid("1d1");
+const P4 = uuid("c4");
+
 type SampleProcess = { version: ProcessVersionView; graph: ProcessGraphView };
 
 export const SAMPLE_PROCESSES: Record<string, SampleProcess> = {
@@ -188,6 +217,10 @@ export const SAMPLE_PROCESSES: Record<string, SampleProcess> = {
   [V1]: {
     version: version(V1, P1, 1, "approved", { approvedAt: "2026-10-20T00:00:00Z", rowVersion: 2 }),
     graph: { rowVersion: 2, doc: approvedDoc, issues: [] },
+  },
+  [VC1]: {
+    version: version(VC1, P4, 1, "draft", { rowVersion: 1 }),
+    graph: { rowVersion: 1, doc: branchDoc, issues: [] },
   },
   [VB1]: {
     version: version(VB1, P2, 1, "in_review", { rowVersion: 2 }),

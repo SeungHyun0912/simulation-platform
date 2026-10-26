@@ -238,3 +238,45 @@ describe("공정 화면 (정적 예시)", () => {
     expect(screen.getAllByText(new RegExp(text)).length).toBeGreaterThan(0);
   });
 });
+
+describe("그래프 구성 (정적 예시: 분기·합류)", () => {
+  const BRANCH = Object.values(SAMPLE_PROCESSES).find((p) => p.version.productId.endsWith("c4"))!.version;
+
+  it("직선이 아닌 예시의 도식·노드 표·간선 표와 이동 규칙을 보여 준다", () => {
+    renderApp(url(BRANCH));
+    expect(screen.getByRole("group", { name: /공정 그래프 도식/ })).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "노드" })).getAllByRole("row")).toHaveLength(6);
+    expect(within(screen.getByRole("table", { name: "간선" })).getByText("사람이 정한 이동 시간 · 5 분")).toBeInTheDocument();
+    expect(screen.getByText("직선이 아닌 공정입니다")).toBeInTheDocument();
+  });
+
+  it("정적 예시에서도 노드·간선을 편집해 볼 수 있지만 저장하지 않는다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(BRANCH));
+    await user.type(screen.getByLabelText("새 노드 이름"), "예시 검사");
+    await user.click(screen.getByRole("button", { name: "노드 추가" }));
+    expect(await screen.findByRole("heading", { name: "단계 편집: 예시 검사" })).toBeInTheDocument();
+    expect(screen.getByText(/저장하지 않은 변경이 있습니다/)).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "노드" })).getAllByRole("row")).toHaveLength(7);
+    expect(screen.getByRole("button", { name: "저장 (정적 예시)" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "노드 예시 검사 삭제" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "노드와 간선 삭제" }));
+    expect(within(screen.getByRole("table", { name: "노드" })).getAllByRole("row")).toHaveLength(6);
+  });
+
+  it("승인된 예시 버전은 그래프 편집 컨트롤 없이 보기만 한다", () => {
+    renderApp(url(APPROVED));
+    expect(screen.queryByRole("button", { name: "노드 추가" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "간선 추가" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "노드" })).toBeInTheDocument();
+  });
+
+  it("직선 예시에서 도식 노드를 키보드로 선택해 편집을 연다", async () => {
+    const user = userEvent.setup();
+    renderApp(url(DRAFT));
+    const node = screen.getByRole("button", { name: "공정 단계 예시 편조 선택" });
+    node.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("heading", { name: "단계 편집: 예시 편조" })).toBeInTheDocument();
+  });
+});

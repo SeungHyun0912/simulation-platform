@@ -285,6 +285,18 @@ function graphError(state: FakeState, versionId: string, body: any): FakeRespons
     if (!ids.has(e.from_node_id)) return { status: 422, body: errorEnv(`/edges/${i}/from_node_id`, "간선이 그래프에 없는 노드를 가리킵니다.", { rule_id: "VAL-GRAPH-001" }) };
     if (!ids.has(e.to_node_id)) return { status: 422, body: errorEnv(`/edges/${i}/to_node_id`, "간선이 그래프에 없는 노드를 가리킵니다. 노드를 함께 보내거나 간선을 제거하세요.", { rule_id: "VAL-GRAPH-001" }) };
     if (e.from_node_id === e.to_node_id) return { status: 422, body: errorEnv(`/edges/${i}/to_node_id`, "간선이 자기 자신을 가리킵니다.", { rule_id: "VAL-GRAPH-003" }) };
+    const kind = e.edge_kind ?? "material";
+    if (!["material", "precedence", "supply"].includes(kind)) return { status: 422, body: errorEnv(`/edges/${i}/edge_kind`, "알 수 없는 간선 종류입니다.", { rule_id: "VAL-REF-001" }) };
+    const from = nodes.find((n) => n.id === e.from_node_id);
+    const to = nodes.find((n) => n.id === e.to_node_id);
+    if (kind === "material" && from?.kind === "sink") return { status: 422, body: errorEnv(`/edges/${i}/from_node_id`, "물류 간선은 끝 노드에서 나갈 수 없습니다.", { rule_id: "VAL-GRAPH-004" }) };
+    if (kind === "material" && to?.kind === "source") return { status: 422, body: errorEnv(`/edges/${i}/to_node_id`, "물류 간선은 시작 노드로 들어올 수 없습니다.", { rule_id: "VAL-GRAPH-004" }) };
+    const mv = e.movement_rule;
+    if (mv) {
+      if (mv.mode !== undefined && !["unknown", "manual_duration", "network_route", "direct_feed"].includes(mv.mode)) return { status: 422, body: errorEnv(`/edges/${i}/movement_rule/mode`, "알 수 없는 이동 방식입니다.", { rule_id: "VAL-REF-001" }) };
+      const bad = measureError(mv.duration_min, `/edges/${i}/movement_rule/duration_min`, "duration");
+      if (bad) return bad;
+    }
   }
   return null;
 }

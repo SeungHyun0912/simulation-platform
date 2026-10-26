@@ -114,7 +114,8 @@ describe.skipIf(!LIVE || !WRITE)("실제 서버: 화면 조작으로 저장·검
     // 2) 이름을 바꿔 다시 저장한다(저장 응답의 새 버전을 If-Match로 이어 쓴다)
     const before = await graphOf();
     const op = before.nodes.find((n) => n.kind === "operation")!;
-    await user.click(await screen.findByRole("button", { name: `${op.label} 편집` }, slow));
+    // 이름이 같은 단계가 여러 개 남아 있을 수 있어 첫 번째(표의 첫 행)를 쓴다
+    await user.click((await screen.findAllByRole("button", { name: `${op.label} 편집` }, slow))[0]!);
     const name = screen.getByLabelText("공정명");
     const next = op.label.endsWith("*") ? op.label.slice(0, -1) : `${op.label}*`;
     await user.clear(name);
@@ -137,5 +138,61 @@ describe.skipIf(!LIVE || !WRITE)("실제 서버: 화면 조작으로 저장·검
     await screen.findByText(/반려했습니다/, {}, slow);
     expect(await screen.findByText(/반려 사유: \[FE 시험\] 반려 확인/, {}, slow)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "단계 추가" }, slow)).toBeInTheDocument();
+  });
+
+  it("화면 조작으로 합류 노드와 간선·이동 규칙을 추가해 저장하고, 삭제해 원래 구조로 정리한다", async () => {
+    const user = userEvent.setup();
+    const [p6] = (await json<{ id: string; code: string }[]>(`/projects/${PROJECT_A}/products?q=P-006`)).filter((p) => p.code === "P-006");
+    const open = (await json<{ id: string; status: string }[]>(`/projects/${PROJECT_A}/products/${p6!.id}/process-versions`)).find((v) => v.status === "draft")!;
+    type G = { row_version: number; nodes: { id: string; kind: string; label: string }[]; edges: { id: string; from_node_id: string; to_node_id: string; movement_rule?: { mode: string; duration_min: { mode: string; value?: string | null } } }[] };
+    const graphOf = () => json<G>(`/projects/${PROJECT_A}/process-versions/${open.id}/graph`);
+    const before = await graphOf();
+    const sink = before.nodes.find((n) => n.kind === "sink")!;
+    const lastEdge = before.edges.find((e) => e.to_node_id === sink.id)!;
+
+    renderApp(`/projects/${PROJECT_A}/products/${p6!.id}/processes/${open.id}`, { source: "api", fetchImpl: realFetch() });
+    await screen.findByRole("heading", { level: 1, name: /P-006 공정 v/ }, slow);
+    await waitFor(() => expect(screen.getByText(/내 역할: 관리자/)).toBeInTheDocument(), slow);
+
+    // 노드 추가(합류)
+    await user.selectOptions(await screen.findByLabelText("새 노드 종류", {}, slow), "join");
+    await user.click(screen.getByLabelText("새 노드 이름"));
+    await user.paste("[FE 시험] UI 합류");
+    await user.click(screen.getByRole("button", { name: "노드 추가" }));
+    await screen.findByRole("group", { name: "노드 편집: [FE 시험] UI 합류" });
+
+    // 간선 추가: 마지막 단계 → 합류 (이동 규칙 사람이 정한 1분), 합류 → 완제품
+    const joinOption = within(screen.getByLabelText("새 간선 끝")).getByRole("option", { name: /\[FE 시험\] UI 합류/ }) as HTMLOptionElement;
+    await user.selectOptions(screen.getByLabelText("새 간선 시작"), lastEdge.from_node_id);
+    await user.selectOptions(screen.getByLabelText("새 간선 끝"), joinOption.value);
+    await user.click(screen.getByRole("button", { name: "간선 추가" }));
+    await screen.findByRole("group", { name: /^간선 편집: .* → \[FE 시험\] UI 합류$/ });
+    await user.selectOptions(screen.getByLabelText("이동 방식"), "manual_duration");
+    await user.click(within(screen.getByRole("radiogroup", { name: "이동 시간 상태" })).getByRole("radio", { name: "값 있음" }));
+    await user.type(screen.getByLabelText("이동 시간 값"), "1");
+    await user.selectOptions(screen.getByLabelText("새 간선 시작"), joinOption.value);
+    await user.selectOptions(screen.getByLabelText("새 간선 끝"), sink.id);
+    await user.click(screen.getByRole("button", { name: "간선 추가" }));
+    await user.click(screen.getByRole("button", { name: /^저장/ }));
+    await screen.findByText("공정을 저장했습니다.", {}, slow);
+
+    const saved = await graphOf();
+    expect(saved.row_version).toBe(before.row_version + 1);
+    const join = saved.nodes.find((n) => n.kind === "join")!;
+    expect(join.label).toBe("[FE 시험] UI 합류");
+    expect(saved.edges).toHaveLength(before.edges.length + 2);
+    expect(saved.edges.find((e) => e.to_node_id === join.id)!.movement_rule).toMatchObject({ mode: "manual_duration", duration_min: { mode: "known", value: "1" } });
+    expect(await screen.findByText("직선이 아닌 공정입니다", {}, slow)).toBeInTheDocument();
+
+    // 정리: 합류 노드를 지우면 연결된 간선도 함께 지워지고(앞뒤를 자동으로 잇지 않음) 원래 구조가 된다
+    await user.click(screen.getByRole("button", { name: "노드 [FE 시험] UI 합류 삭제" }));
+    const dialog = await screen.findByRole("dialog", { name: "노드를 삭제할까요?" });
+    expect(dialog).toHaveTextContent("연결된 간선 2개");
+    await user.click(within(dialog).getByRole("button", { name: "노드와 간선 삭제" }));
+    await user.click(screen.getByRole("button", { name: /^저장/ }));
+    await waitFor(async () => expect((await graphOf()).row_version).toBe(saved.row_version + 1), slow);
+    const after = await graphOf();
+    expect(after.nodes.map((n) => n.id)).toEqual(before.nodes.map((n) => n.id));
+    expect(after.edges.map((e) => e.id).sort()).toEqual(before.edges.map((e) => e.id).sort());
   });
 });

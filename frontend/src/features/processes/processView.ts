@@ -104,6 +104,12 @@ export const NODE_KIND_LABELS = {
   milestone: "완료 기준",
   sink: "끝(완제품)",
 } as const;
+export const MOVEMENT_LABELS = {
+  unknown: "미정",
+  manual_duration: "사람이 정한 이동 시간",
+  network_route: "경로망 이동",
+  direct_feed: "직결 공급",
+} as const;
 export const EDGE_KIND_LABELS = { material: "물류", precedence: "선후 관계", supply: "공급" } as const;
 
 /** 엔진이 지원하는 handler(07 §2). 등록은 아무 문자열이나 가능하며 실행 가능 여부만 서버가 판정한다. */
