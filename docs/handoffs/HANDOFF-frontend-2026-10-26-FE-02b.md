@@ -2,7 +2,7 @@
 - 상태: 검토 요청
 - 역할 / 작업 ID / 관련 로드맵 ID: Frontend / FE-02b(공정 그래프 편집: 노드·간선·이동 규칙, 직선이 아닌 공정 구조 편집) / A-01
 - workspace 버전: 1.1.0
-- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 48efcc5(FE-02a 종료) / (커밋 후 기록)
+- branch / 시작 commit / 종료 commit: worktree-frontend-fe00-m / 48efcc5(FE-02a 종료) / 3f819eb
 - 계약 버전 / OpenAPI hash / 승인 scope: **0.4.0 / `1da94db09abb06bb0a08cc6ee40c58d97f5aac85c28d3ec0364e7a4f4b77cb45` / `process-versions` 포함 4개 scope** (변경 없음)
 - 수정 파일: `frontend/**`, `docs/communication/request-from-frontend.md`, 이 문서. 계약·backend·`request-from-backend.md`는 수정하지 않았다.
 
