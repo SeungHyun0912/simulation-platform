@@ -46,6 +46,34 @@ export function useProcessVersions(projectId: string, productId: string): Loadab
   return fromQuery(q, (d) => d);
 }
 
+export const editorStateKey = (projectId: string, source: string, versionId: string) =>
+  projectKey(projectId, source, "process-editor-state", versionId);
+
+/** 플로우차트 화면 좌표(버전당 공용, 0.5.0). 저장 전에는 좌표가 비어 있고 row_version은 0이다. 좌표는 공정 내용이 아니다. */
+export type EditorStateView = {
+  positions: Record<string, { x: number; y: number }>;
+  viewport: { x: number; y: number; zoom: number } | null;
+  /** 이 상태 자체의 ETag(공정 버전의 row_version과 별개). 저장 전 0 */
+  rowVersion: number;
+};
+
+export function toEditorStateView(s: Schemas["EditorStateOut"]): EditorStateView {
+  return { positions: s.node_positions, viewport: s.viewport ?? null, rowVersion: s.row_version };
+}
+
+export function useEditorState(projectId: string, versionId: string): Loadable<EditorStateView> {
+  const source = useDataSource();
+  const client = useApiClient();
+  const q = useQuery({
+    queryKey: editorStateKey(projectId, source, versionId),
+    enabled: source === "api" && projectId !== "" && versionId !== "",
+    queryFn: async ({ signal }) =>
+      toEditorStateView((await client.get<Schemas["Single_EditorStateOut_"]>(`/projects/${projectId}/process-versions/${versionId}/editor-state`, { signal })).body.data),
+  });
+  if (source === "static") return success({ positions: {}, viewport: null, rowVersion: 0 });
+  return fromQuery(q, (d) => d);
+}
+
 export type ProcessDetailResult = { version: ProcessVersionView; graph: ProcessGraphView };
 
 /**

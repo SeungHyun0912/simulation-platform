@@ -15,7 +15,7 @@ import {
   type ProcessVersionListItem,
   type ProcessVersionView,
 } from "./processView";
-import { graphKey, versionKey, versionListKey } from "./queries";
+import { editorStateKey, graphKey, toEditorStateView, versionKey, versionListKey, type EditorStateView } from "./queries";
 
 export type ProcessTransition = "submit" | "approve" | "reject";
 export type ValidateScope = "knowledge" | "run_template";
@@ -46,6 +46,28 @@ export function useProcessWriter(projectId: string) {
     }
 
     return {
+      /**
+       * 화면 좌표 저장(전체 교체). 공정 버전의 상태·row_version·승인과 무관하며 승인본에도 저장된다. 자체 ETag(`rowVersion`)를 If-Match로
+       * 보낸다(저장 전 0). 키는 서버에 저장된 노드 id여야 한다(없는 id는 422 VAL-REF-005)이므로 호출 전에 그래프를 저장해 둔다.
+       */
+      async saveEditorState(versionId: string, state: Pick<EditorStateView, "positions" | "viewport">, rowVersion: number): Promise<EditorStateView> {
+        const r = await client.put<Schemas["Single_EditorStateOut_"]>(`${base}/${versionId}/editor-state`, {
+          body: { node_positions: state.positions, viewport: state.viewport },
+          ifMatch: rowVersion,
+        });
+        const v = toEditorStateView(r.body.data);
+        qc.setQueryData(editorStateKey(projectId, source, versionId), v);
+        return v;
+      },
+
+      /** 서버의 최신 화면 좌표(충돌 후 다시 불러오기). */
+      async fetchEditorState(versionId: string): Promise<EditorStateView> {
+        const r = await client.get<Schemas["Single_EditorStateOut_"]>(`${base}/${versionId}/editor-state`);
+        const v = toEditorStateView(r.body.data);
+        qc.setQueryData(editorStateKey(projectId, source, versionId), v);
+        return v;
+      },
+
       /** 새 초안. 승인본이 있으면 서버가 그래프를 새 id로 복사한다. 열린 버전이 있으면 409 PROCESS_DRAFT_EXISTS. */
       async createDraft(productId: string): Promise<ProcessVersionView> {
         const r = await client.post<Schemas["Single_ProcessVersionOut_"]>(`/projects/${projectId}/products/${productId}/process-versions`);

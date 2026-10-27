@@ -14,6 +14,7 @@ const MENU: { to: string; label: string; pending?: boolean }[] = [
   { to: "products", label: "제품" },
   { to: "materials", label: "재료" },
   { to: "processes", label: "공정" },
+  { to: "flow", label: "공정 플로우차트" },
   { to: "scenarios", label: "시나리오" },
   { to: "runs", label: "실행 결과" },
 ];
