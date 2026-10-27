@@ -69,6 +69,9 @@ EXPECTED = {
     ("get", "/api/v1/projects/{project_id}/runs/{run_id}"),
     ("get", "/api/v1/projects/{project_id}/runs/{run_id}/input"),
     ("post", "/api/v1/projects/{project_id}/runs/{run_id}/cancel"),
+    # scope runs 확장 (contract 0.10.0)
+    ("get", "/api/v1/projects/{project_id}/runs/{run_id}/events"),
+    ("get", "/api/v1/projects/{project_id}/runs/{run_id}/items/{item_key}/lineage"),
 }
 
 
@@ -223,7 +226,7 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials", "process-versions", "scenario-versions", "runs"]
-    assert status["contract_version"] == "0.9.0"
+    assert status["contract_version"] == "0.10.0"
 
 
 def test_process_0_5_0_additions_are_compatible_and_closed():

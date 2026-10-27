@@ -1546,6 +1546,124 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "EventOut": {
+        "properties": {
+          "asset_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Key"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "event_seq": {
+            "title": "Event Seq",
+            "type": "integer"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "item_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Key"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Version Id"
+          },
+          "quantities": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "양·상태. 길이·무게는 decimal 문자열이며 `STATE_SNAPSHOT`은 상태 요약을 담는다",
+            "title": "Quantities",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sim_time": {
+            "$ref": "#/components/schemas/MinutesOut"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "step_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Key"
+          }
+        },
+        "required": [
+          "event_seq",
+          "sim_time",
+          "event_type"
+        ],
+        "title": "EventOut",
+        "type": "object"
+      },
       "FailureOut": {
         "properties": {
           "message": {
@@ -2003,6 +2121,184 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LineageLinkOut": {
+        "properties": {
+          "child_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "자식이 없으면(전부 잔량·폐기) null",
+            "title": "Child Key"
+          },
+          "child_length_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Length M"
+          },
+          "parent_key": {
+            "title": "Parent Key",
+            "type": "string"
+          },
+          "parent_length_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Length M"
+          }
+        },
+        "required": [
+          "parent_key"
+        ],
+        "title": "LineageLinkOut",
+        "type": "object"
+      },
+      "LineageOperationOut": {
+        "properties": {
+          "accounting_mode": {
+            "description": "`abstract_yield`는 물량 보존 검증 대상이 아니다(03 §5)",
+            "enum": [
+              "physical",
+              "abstract_yield"
+            ],
+            "title": "Accounting Mode",
+            "type": "string"
+          },
+          "balanced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "자식 길이 합 + 잔량 = 부모 길이. 검증 대상이 아니면 null",
+            "title": "Balanced"
+          },
+          "carried_in_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 작업이 잔량 풀에서 이어 받은 길이",
+            "title": "Carried In M"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/LineageLinkOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "operation_key": {
+            "title": "Operation Key",
+            "type": "string"
+          },
+          "process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Version Id"
+          },
+          "relation_type": {
+            "enum": [
+              "split",
+              "transform",
+              "supply",
+              "yield"
+            ],
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "residual_length_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 작업이 남긴 잔량(작업 단위 값)",
+            "title": "Residual Length M"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_key",
+          "step_key",
+          "relation_type",
+          "accounting_mode",
+          "links"
+        ],
+        "title": "LineageOperationOut",
+        "type": "object"
+      },
+      "LineageOut": {
+        "properties": {
+          "item_key": {
+            "title": "Item Key",
+            "type": "string"
+          },
+          "items": {
+            "description": "계보에 나온 작업물(조상·후손 전부)",
+            "items": {
+              "$ref": "#/components/schemas/WorkItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "operations": {
+            "description": "그 작업물을 만들거나 바꾼 작업, 이벤트 순서",
+            "items": {
+              "$ref": "#/components/schemas/LineageOperationOut"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "description": "작업물이 너무 많아 일부만 담았다",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_key",
+          "items",
+          "operations"
+        ],
+        "title": "LineageOut",
+        "type": "object"
+      },
       "ListOut_AssetOut_": {
         "properties": {
           "data": {
@@ -2041,6 +2337,26 @@
           "page"
         ],
         "title": "ListOut[AssetRevisionOut]",
+        "type": "object"
+      },
+      "ListOut_EventOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[EventOut]",
         "type": "object"
       },
       "ListOut_MaterialOut_": {
@@ -5577,6 +5893,18 @@
         "title": "Single[GraphOut]",
         "type": "object"
       },
+      "Single_LineageOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LineageOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[LineageOut]",
+        "type": "object"
+      },
       "Single_MaterialOut_": {
         "properties": {
           "data": {
@@ -6224,6 +6552,122 @@
           "zoom"
         ],
         "title": "Viewport",
+        "type": "object"
+      },
+      "WorkItemOut": {
+        "properties": {
+          "created_at": {
+            "$ref": "#/components/schemas/MinutesOut"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "item_key": {
+            "title": "Item Key",
+            "type": "string"
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "없으면 null(해당 없음 ≠ 0)",
+            "title": "Length M"
+          },
+          "location_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Key"
+          },
+          "lot_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Key"
+          },
+          "parent_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Key"
+          },
+          "process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Version Id"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "consumed",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          }
+        },
+        "required": [
+          "item_key",
+          "status",
+          "created_at"
+        ],
+        "title": "WorkItemOut",
         "type": "object"
       }
     }
@@ -10985,6 +11429,234 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/runs/{run_id}/events": {
+      "get": {
+        "description": "공식 결과(선택된 시도)의 이벤트를 `event_seq` 순서로 돌려준다(cursor). 공식 결과가 아직 없으면 409\n`RUN_RESULT_NOT_AVAILABLE`. 하루·주·월 경계의 상태 요약은 `event_type=STATE_SNAPSHOT`으로 모아 본다.",
+        "operationId": "list_run_events_api_v1_projects__project_id__runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "이벤트 종류(예: `STATE_SNAPSHOT`)",
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이벤트 종류(예: `STATE_SNAPSHOT`)",
+              "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "step_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "item_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Key"
+            }
+          },
+          {
+            "description": "가상 시간(분) 이상, decimal 문자열",
+            "in": "query",
+            "name": "from_min",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "가상 시간(분) 이상, decimal 문자열",
+              "title": "From Min"
+            }
+          },
+          {
+            "description": "가상 시간(분) 미만, decimal 문자열",
+            "in": "query",
+            "name": "to_min",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "가상 시간(분) 미만, decimal 문자열",
+              "title": "To Min"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_EventOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Run Events",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/runs/{run_id}/input": {
       "get": {
         "description": "실행을 요청한 당시의 입력 스냅샷(불변)과 해시. 과거 실행을 현재 설정이 아니라 이 입력으로 설명해야 한다.",
@@ -11054,6 +11726,99 @@
           }
         },
         "summary": "Get Run Input",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/items/{item_key}/lineage": {
+      "get": {
+        "description": "작업물의 조상(어디서 왔나)과 후손(무엇이 되었나), 그 작업물을 만들거나 바꾼 작업과 길이 보존 값(잔량·이월·균형).",
+        "operationId": "get_item_lineage_api_v1_projects__project_id__runs__run_id__items__item_key__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_key",
+            "required": true,
+            "schema": {
+              "title": "Item Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LineageOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Item Lineage",
         "tags": [
           "runs"
         ]
