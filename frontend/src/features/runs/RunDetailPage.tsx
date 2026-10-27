@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
 import { classifyError } from "../../shared/api/errors";
 import { ApiOnlyNotice } from "../../shared/components/ApiOnlyNotice";
-import { Button } from "../../shared/components/Button";
+import { Button, LinkButton } from "../../shared/components/Button";
+import { SelectField } from "../../shared/components/Fields";
 import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
 import { DataTable, type Column } from "../../shared/components/DataTable";
 import { Note, Section } from "../../shared/components/Layout";
@@ -15,9 +16,10 @@ import { formatDateTime } from "../../shared/format/datetime";
 import { canEdit } from "../projects/projectView";
 import { useProjectTimezone } from "../projects/queries";
 import { useCurrentProject } from "../projects/useCurrentProject";
+import { RunAssetTimelineSection, RunBottlenecksSection } from "./RunAnalysisSections";
 import { RunEventsSection, RunInputSection, RunMetricsSection, RunResultSection } from "./RunDetailSections";
 import { RunStatusBadge } from "./RunStatusBadge";
-import { useRun, runKey } from "./queries";
+import { useRun, useRunList, runKey } from "./queries";
 import { ATTEMPT_STATE_LABELS, isActiveRun, terminationText, type RunOut } from "./runView";
 import { useRunWriter } from "./writer";
 import { useQueryClient } from "@tanstack/react-query";
@@ -128,9 +130,50 @@ export function RunDetailPage() {
         대기 중이면 바로 취소되고, 실행 중이면 취소를 요청하며 worker가 멈춘 뒤 취소됩니다. 이미 끝난 실행은 취소할 수 없습니다.
       </ConfirmDialog>
       {r.result && <RunResultSection result={r.result} projectId={projectId} />}
+      <RunBottlenecksSection projectId={projectId} runId={runId} enabled={!active && r.result !== null} />
+      <RunAssetTimelineSection projectId={projectId} runId={runId} enabled={!active && r.result !== null} />
+      {!active && r.result !== null && <CompareWith projectId={projectId} runId={runId} />}
       <RunInputSection projectId={projectId} runId={runId} />
       <RunMetricsSection projectId={projectId} runId={runId} enabled={!active && r.result !== null} />
       <RunEventsSection projectId={projectId} runId={runId} enabled={!active && r.result !== null} />
     </>
+  );
+}
+
+const RESULT_STATES = new Set(["completed", "stalled", "horizon_reached", "limit_reached"]);
+
+/** 다른 실행과 비교: 같은 프로젝트의 결과가 있는(끝까지 실행된) 실행을 고른다. 서버가 최종 판정한다(결과 없으면 409). */
+function CompareWith({ projectId, runId }: { projectId: string; runId: string }) {
+  const runs = useRunList(projectId, { status: "", scenarioVersionId: "" });
+  const [other, setOther] = useState("");
+  const options = runs.status === "success" ? runs.data.items.filter((x) => x.id !== runId && RESULT_STATES.has(x.status)) : [];
+  return (
+    <Section id="sec-compare" title="다른 실행과 비교">
+      <Note>이 실행을 기준으로, 다른 실행과 입력 차이·제품별 결과·병목·지표 차이를 나란히 봅니다.</Note>
+      {runs.status === "pending" && <StateNotice kind="loading" />}
+      {runs.status === "error" && <QueryErrorNotice error={runs.error} subject="실행 목록" onRetry={runs.retry} />}
+      {runs.status === "success" &&
+        (options.length === 0 ? (
+          <Note>비교할 다른 실행이 없습니다(결과가 있는 실행만 비교할 수 있습니다).</Note>
+        ) : (
+          <div>
+            <SelectField label="비교할 실행" value={other} onChange={(e) => setOther(e.target.value)}>
+              <option value="">고르세요</option>
+              {options.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.id.slice(0, 8)} · seed {x.seed} · 반복 {x.replicate_index} · {x.status}
+                </option>
+              ))}
+            </SelectField>
+            {other ? (
+              <LinkButton to={`/projects/${projectId}/runs/${runId}/compare/${other}`}>비교 보기</LinkButton>
+            ) : (
+              <Button disabled title="비교할 실행을 고르세요">
+                비교 보기
+              </Button>
+            )}
+          </div>
+        ))}
+    </Section>
   );
 }

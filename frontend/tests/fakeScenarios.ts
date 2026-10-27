@@ -97,6 +97,126 @@ function completedRun(n: number, versionId: string): Schemas["RunOut"] {
   } as Schemas["RunOut"];
 }
 
+/* ---------------- 실행 분석 시드(병목·타임라인·비교) ---------------- */
+
+const finding = (rank: number, kind: "space_full" | "equipment_busy" | "queue_pileup", level: "high" | "medium" | "low", amount: string, extra: Partial<Schemas["BottleneckOut"]> = {}): Schemas["BottleneckOut"] => ({
+  rank,
+  rank_in_kind: 1,
+  kind,
+  level,
+  stalled_item_min: amount,
+  share: "0.5",
+  location: { process_version_id: processVersionId(1), product_id: processProductId(1), product_code: "P-001", product_name: "서버 제품 1", step_key: "op-1", step_label: "압출", node_key: null, node_label: null },
+  explanation: `${kind} 설명 ${rank}`,
+  evidence: { equipment_wait_avg_min: "12.5", assets: [{ asset_code: "EQ-001", utilization: "0.98" }], future_key: "열린 구조" },
+  ...extra,
+});
+
+export function analysisBottlenecks(runId: string): Schemas["BottleneckSummaryOut"] {
+  const busy = Array.from({ length: 5 }, (_, i) => finding(i === 0 ? 1 : i + 2, "equipment_busy", i === 0 ? "high" : "low", String(1000 - i * 100), { rank_in_kind: i + 1, explanation: `설비 대기 ${i + 1}` }));
+  return {
+    run_id: runId,
+    quality_status: "complete",
+    observed: minutes("90"),
+    definition_version: "1",
+    headline: "가장 큰 정체: P-001 압출 설비 대기",
+    findings: [
+      ...busy,
+      finding(2, "queue_pileup", "medium", "800", {
+        location: { process_version_id: null, product_id: null, product_code: null, product_name: null, step_key: null, step_label: null, node_key: "buf", node_label: "ST-041 서버 공간 41" },
+        explanation: "대기 자재가 최대 5개 쌓였습니다",
+        evidence: { peak_items: "5", transport_related: true, carriers: [] },
+      }),
+    ],
+    limitations: ["공간 용량을 무제한으로 가정한 실행이라 공간 부족은 평가되지 않습니다.", "운반 자원 대수는 모델링하지 않습니다."],
+    thresholds: { pileup_min_peak_items: "3", level_high_share: "0.30" },
+  };
+}
+
+const bucket = (i: number, len: number, util: string | null): Schemas["AssetTimelineBucketOut"] => ({
+  start: minutes(String(i * len)),
+  end: minutes(String((i + 1) * len)),
+  processing_min: util === null ? "0" : String(Number(util) * len),
+  setup_min: "0",
+  reserved_min: "0",
+  blocked_min: "0",
+  idle_min: util === null ? String(len) : String((1 - Number(util)) * len),
+  utilization: util,
+});
+
+export function analysisTimeline(window: string): Schemas["AssetTimelineOut"][] {
+  const n = window === "week" ? 2 : window === "run" ? 1 : 3;
+  const len = window === "week" ? 10080 : window === "run" ? 90 : 1440;
+  const used = Array.from({ length: 24 }, (_, i): Schemas["AssetTimelineOut"] => ({
+    asset_id: `aaaaaaaa-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+    asset_code: `EQ-${String(i + 1).padStart(3, "0")}`,
+    asset_name: `서버 설비 ${i + 1}`,
+    used: true,
+    uses: [{ process_version_id: processVersionId(1), product_code: "P-001", step_key: "op-1", step_label: "압출" }],
+    buckets: Array.from({ length: n }, (_, k) => bucket(k, len, k === 0 ? "1" : "0.25")),
+  }));
+  const unused: Schemas["AssetTimelineOut"] = {
+    asset_id: "aaaaaaaa-0000-4000-8000-000000000099",
+    asset_code: "EQ-099",
+    asset_name: "쓰이지 않은 설비",
+    used: false,
+    uses: [{ process_version_id: processVersionId(1), product_code: "P-001", step_key: "op-1", step_label: "압출" }],
+    buckets: Array.from({ length: n }, (_, k) => bucket(k, len, null)),
+  };
+  return [...used.slice(0, 2), unused, ...used.slice(2)];
+}
+
+export function analysisStates(): Schemas["AssetStateSegmentOut"][] {
+  return [
+    { state: "SETUP", start: minutes("0"), end: minutes("10"), duration_min: "10", operation_id: "op-1#1", step_key: "op-1", process_version_id: processVersionId(1), product_code: "P-001" },
+    { state: "PROCESSING", start: minutes("10"), end: minutes("60"), duration_min: "50", operation_id: "op-1#1", step_key: "op-1", process_version_id: processVersionId(1), product_code: "P-001" },
+    { state: "BLOCKED", start: minutes("60"), end: minutes("70"), duration_min: "10", operation_id: "op-1#1", step_key: "op-1", process_version_id: processVersionId(1), product_code: "P-001" },
+    { state: "FUTURE_STATE", start: minutes("70"), end: minutes("80"), duration_min: "10", operation_id: null, step_key: null, process_version_id: null, product_code: null },
+  ];
+}
+
+export function analysisComparison(a: Schemas["RunOut"], b: Schemas["RunOut"]): Schemas["RunComparisonOut"] {
+  const sameSeed = a.seed === b.seed;
+  return {
+    base_run_id: a.id,
+    other_run_id: b.id,
+    comparable: a.engine_version === b.engine_version,
+    warnings: a.engine_version === b.engine_version ? [] : ["엔진 버전이 다릅니다."],
+    base_status: a.status,
+    other_status: b.status,
+    base_end_time: minutes("90"),
+    other_end_time: minutes("120"),
+    input_changes: sameSeed ? [] : [{ path: "seed", base: a.seed, other: b.seed, note: "난수 시드" }, { path: "products/P-001/arrivals", base: [{ count: 1 }], other: [{ count: 2 }], note: null }],
+    products: [
+      {
+        product_id: processProductId(1),
+        product_code: "P-001",
+        product_name: "서버 제품 1",
+        base_process_version_id: processVersionId(1),
+        other_process_version_id: processVersionId(1),
+        base_last_completion: minutes("90"),
+        other_last_completion: minutes("120"),
+        metrics: [
+          { metric_key: "completed_items", base: "1", other: "2", delta: "1", ratio: "2", unit: "items" },
+          { metric_key: "lead_time_avg_min", base: "0", other: "30", delta: "30", ratio: null, unit: "min" },
+        ],
+      },
+    ],
+    bottlenecks: { base: analysisBottlenecks(a.id).findings.slice(0, 2), other: [] },
+  };
+}
+
+export function analysisMetricDiff(a: Schemas["RunOut"], b: Schemas["RunOut"]): Schemas["MetricComparisonOut"][] {
+  const w = { kind: "run" as const, start: minutes("0"), end: minutes("120") };
+  void a;
+  void b;
+  return [
+    { metric_key: "completed_items", dimensions: { product_id: processProductId(1), product_code: "P-001" }, window: w, base: "1", other: "2", delta: "1", ratio: "2", unit: "items", base_process_version_id: processVersionId(1), other_process_version_id: processVersionId(1) },
+    { metric_key: "utilization", dimensions: { asset_key: "EQ-001" }, window: w, base: "0.5", other: "0.5", delta: "0", ratio: "1", unit: "ratio", base_process_version_id: null, other_process_version_id: null },
+    { metric_key: "lead_time_avg_min", dimensions: { product_id: processProductId(1), product_code: "P-001" }, window: w, base: null, other: "30", delta: null, ratio: null, unit: "min", base_process_version_id: processVersionId(1), other_process_version_id: processVersionId(1) },
+  ];
+}
+
 export function seedScenarios(): ScenarioState {
   const versions = [
     // SC-A: 승인 v1 하나(열린 초안 없음 → 새 초안을 만들 수 있다)
@@ -314,6 +434,44 @@ export function scenarioRoute(req: FakeRequest, state: FakeState, h: Helpers): F
       return { status: 202, body: { data: fix(run) } };
     }
   }
+  // ---- 실행 분석(0.12.0 병목, 0.13.0 설비 타임라인·두 실행 비교) ----
+  const an = new RegExp(`^/projects/${P}/runs/([^/]+)/(bottlenecks|asset-timeline|assets/([^/]+)/states|compare/([^/]+)(/metrics)?)$`).exec(path);
+  if (an && method === "GET") {
+    const r = S.runs.find((x) => x.id === an[1]);
+    if (!r) return h.notFound();
+    const noResult = () => h.errorBody(409, "RUN_RESULT_NOT_AVAILABLE", "공식 결과가 없습니다.", [{ message: "선택된 시도가 없습니다." }]);
+    if (an[2] === "bottlenecks") {
+      if (r.status !== "completed") return noResult();
+      return { status: 200, body: { data: analysisBottlenecks(r.id) } };
+    }
+    if (an[2] === "asset-timeline") {
+      if (r.status !== "completed") return noResult();
+      const win = req.query.get("window") ?? "day";
+      const limit = Number(req.query.get("limit") ?? 50);
+      const start = Number(req.query.get("cursor") ?? 0);
+      const all = analysisTimeline(win);
+      const page = all.slice(start, start + limit);
+      return { status: 200, body: { data: page, page: { limit, next_cursor: start + limit < all.length ? String(start + limit) : null } } };
+    }
+    if (an[3]) {
+      if (r.status !== "completed") return noResult();
+      const segs = an[3] === "aaaaaaaa-0000-4000-8000-000000000001" ? analysisStates() : [];
+      return { status: 200, body: { data: segs, page: { limit: 200, next_cursor: null } } };
+    }
+    if (an[4]) {
+      const o = S.runs.find((x) => x.id === an[4]);
+      if (!o) return h.notFound();
+      if (o.id === r.id) return h.invalid("/other_run_id", "같은 실행끼리는 비교할 수 없습니다.");
+      if (r.status !== "completed" || o.status !== "completed") return noResult();
+      if (an[5]) {
+        const changedOnly = req.query.get("changed_only") === "true";
+        const rows = analysisMetricDiff(r, o).filter((m) => !changedOnly || m.base !== m.other);
+        return { status: 200, body: { data: rows, page: { limit: 200, next_cursor: null } } };
+      }
+      return { status: 200, body: { data: analysisComparison(r, o) } };
+    }
+  }
+
   const rm = new RegExp(`^/projects/${P}/runs/([^/]+)(?:/(input|cancel|events|metrics))?$`).exec(path);
   if (rm) {
     const r = S.runs.find((x) => x.id === rm[1]);

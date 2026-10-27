@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.12.0, openapi_sha256 f0250383ed652ed3702f447ffbd9151abdc82a369e218ce39a6f0c768b299689
+// 기준 계약: version 0.13.0, openapi_sha256 ea8ee8239ec4280d04805b2a519f920e8a2cd91f2835814b184a3f05cf0ac704
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
@@ -624,6 +624,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/runs/{run_id}/asset-timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Asset Timeline
+         * @description 설비마다 구간별 상태 시간 구성(처리·준비·예약·막힘·유휴·가동률). 공정이 후보로 둔 설비 전체를 보여 주며 쓰이지 않은
+         *     설비는 `used=false`(전 구간 유휴)다. 설비 코드 순. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
+         */
+        get: operations["get_asset_timeline_api_v1_projects__project_id__runs__run_id__asset_timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/assets/{asset_id}/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Asset States
+         * @description 설비 하나의 상태 구간(간트용): 상태·시작·끝·길이와 그때의 작업·단계·제품. 길이 0인 전이는 빼고 마지막 구간은 실행
+         *     종료 시각까지. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
+         */
+        get: operations["list_asset_states_api_v1_projects__project_id__runs__run_id__assets__asset_id__states_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/runs/{run_id}/bottlenecks": {
         parameters: {
             query?: never;
@@ -660,6 +702,48 @@ export interface paths {
          *     확인해 멈춘 뒤 `cancelled`가 된다(요청과 실제 취소를 구분). 이미 끝났으면 409 `JOB_CANCEL_TOO_LATE`.
          */
         post: operations["cancel_run_api_v1_projects__project_id__runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/compare/{other_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Runs
+         * @description 두 실행 비교 요약: 비교 가능 여부·주의, 입력 스냅샷 차이, 제품별 핵심 지표(기준·비교·차이·비율), 양쪽 병목 상위 5개.
+         *     `run_id`가 기준, `other_run_id`가 비교 대상이다. 같은 프로젝트여야 하고 둘 다 공식 결과가 있어야 한다.
+         */
+        get: operations["compare_runs_api_v1_projects__project_id__runs__run_id__compare__other_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/compare/{other_run_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Run Metrics
+         * @description 지표별 기준값·비교값·차이(비교 − 기준)·비율(비교 ÷ 기준). 공정 버전이 달라도 같은 제품이면 맞춘다(차원의 공정 버전을
+         *     제품 id로 바꿈). 한쪽에만 있는 행은 다른 쪽 값이 null이다.
+         */
+        get: operations["compare_run_metrics_api_v1_projects__project_id__runs__run_id__compare__other_run_id__metrics_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1054,6 +1138,81 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
+        /** AssetStateSegmentOut */
+        AssetStateSegmentOut: {
+            /** Duration Min */
+            duration_min: string;
+            end: components["schemas"]["MinutesOut"];
+            /** Operation Id */
+            operation_id?: string | null;
+            /** Process Version Id */
+            process_version_id?: string | null;
+            /** Product Code */
+            product_code?: string | null;
+            start: components["schemas"]["MinutesOut"];
+            /**
+             * State
+             * @description IDLE·RESERVED·SETUP·PROCESSING·BLOCKED(열린 목록)
+             */
+            state: string;
+            /** Step Key */
+            step_key?: string | null;
+        };
+        /** AssetTimelineBucketOut */
+        AssetTimelineBucketOut: {
+            /** Blocked Min */
+            blocked_min: string;
+            end: components["schemas"]["MinutesOut"];
+            /**
+             * Idle Min
+             * @description 구간 길이 − (처리+준비+예약+막힘). 가동 달력이 없어 24시간 기준
+             */
+            idle_min: string;
+            /** Processing Min */
+            processing_min: string;
+            /** Reserved Min */
+            reserved_min: string;
+            /** Setup Min */
+            setup_min: string;
+            start: components["schemas"]["MinutesOut"];
+            /**
+             * Utilization
+             * @description 처리 ÷ 구간 길이(0~1). 구간 길이가 0이면 null
+             */
+            utilization: string | null;
+        };
+        /** AssetTimelineOut */
+        AssetTimelineOut: {
+            /** Asset Code */
+            asset_code?: string | null;
+            /** Asset Id */
+            asset_id: string;
+            /** Asset Name */
+            asset_name?: string | null;
+            /** Buckets */
+            buckets: components["schemas"]["AssetTimelineBucketOut"][];
+            /**
+             * Used
+             * @description 이 실행에서 한 번이라도 배정됐는가. false면 후보였지만 쓰이지 않아 전 구간 유휴
+             */
+            used: boolean;
+            /**
+             * Uses
+             * @description 이 설비를 후보로 가진 제품·단계
+             */
+            uses: components["schemas"]["AssetUseOut"][];
+        };
+        /** AssetUseOut */
+        AssetUseOut: {
+            /** Process Version Id */
+            process_version_id: string;
+            /** Product Code */
+            product_code?: string | null;
+            /** Step Key */
+            step_key: string;
+            /** Step Label */
+            step_label?: string | null;
+        };
         /** AssumptionUseOut */
         AssumptionUseOut: {
             /** Code */
@@ -1249,6 +1408,13 @@ export interface components {
             unit?: ("item" | "bobbin_slot" | "pallet_slot" | "kg" | "m2") | null;
             /** Value */
             value?: string | null;
+        };
+        /** ComparisonBottlenecksOut */
+        ComparisonBottlenecksOut: {
+            /** Base */
+            base: components["schemas"]["BottleneckOut"][];
+            /** Other */
+            other: components["schemas"]["BottleneckOut"][];
         };
         /**
          * CompileIssueOut
@@ -1665,6 +1831,18 @@ export interface components {
              */
             mode: "unknown" | "per_output_unit" | "total_batch";
         };
+        /** InputChangeOut */
+        InputChangeOut: {
+            base?: components["schemas"]["JsonValue"];
+            /** Note */
+            note?: string | null;
+            other?: components["schemas"]["JsonValue"];
+            /**
+             * Path
+             * @description 바뀐 입력의 위치(예: `products.P04.arrivals`, `assets.{asset_id}`, `seed`)
+             */
+            path: string;
+        };
         /** InputRule */
         InputRule: {
             /**
@@ -1813,6 +1991,18 @@ export interface components {
             data: components["schemas"]["AssetRevisionOut"][];
             page: components["schemas"]["Page"];
         };
+        /** ListOut[AssetStateSegmentOut] */
+        ListOut_AssetStateSegmentOut_: {
+            /** Data */
+            data: components["schemas"]["AssetStateSegmentOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[AssetTimelineOut] */
+        ListOut_AssetTimelineOut_: {
+            /** Data */
+            data: components["schemas"]["AssetTimelineOut"][];
+            page: components["schemas"]["Page"];
+        };
         /** ListOut[EventOut] */
         ListOut_EventOut_: {
             /** Data */
@@ -1823,6 +2013,12 @@ export interface components {
         ListOut_MaterialOut_: {
             /** Data */
             data: components["schemas"]["MaterialOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[MetricComparisonOut] */
+        ListOut_MetricComparisonOut_: {
+            /** Data */
+            data: components["schemas"]["MetricComparisonOut"][];
             page: components["schemas"]["Page"];
         };
         /** ListOut[MetricDefinitionOut] */
@@ -2012,6 +2208,33 @@ export interface components {
              */
             id: string;
         };
+        /** MetricComparisonOut */
+        MetricComparisonOut: {
+            /** Base */
+            base?: string | null;
+            /** Base Process Version Id */
+            base_process_version_id?: string | null;
+            /** Delta */
+            delta?: string | null;
+            /**
+             * Dimensions
+             * @description 공정 버전 대신 `product_id`(+`product_code`)로 맞춘 차원
+             */
+            dimensions: {
+                [key: string]: string;
+            };
+            /** Metric Key */
+            metric_key: string;
+            /** Other */
+            other?: string | null;
+            /** Other Process Version Id */
+            other_process_version_id?: string | null;
+            /** Ratio */
+            ratio?: string | null;
+            /** Unit */
+            unit?: string | null;
+            window: components["schemas"]["MetricWindowOut"];
+        };
         /** MetricDefinitionOut */
         MetricDefinitionOut: {
             /** Definition Version */
@@ -2056,6 +2279,27 @@ export interface components {
              */
             value: string | null;
             window: components["schemas"]["MetricWindowOut"];
+        };
+        /** MetricPairOut */
+        MetricPairOut: {
+            /** Base */
+            base?: string | null;
+            /**
+             * Delta
+             * @description 비교 − 기준. 한쪽이 없으면 null
+             */
+            delta?: string | null;
+            /** Metric Key */
+            metric_key: string;
+            /** Other */
+            other?: string | null;
+            /**
+             * Ratio
+             * @description 비교 ÷ 기준. 한쪽이 없거나 기준이 0이면 null
+             */
+            ratio?: string | null;
+            /** Unit */
+            unit?: string | null;
         };
         /** MetricWindowOut */
         MetricWindowOut: {
@@ -2474,6 +2718,23 @@ export interface components {
              */
             kind: "unknown";
         };
+        /** ProductComparisonOut */
+        ProductComparisonOut: {
+            base_last_completion?: components["schemas"]["MinutesOut"] | null;
+            /** Base Process Version Id */
+            base_process_version_id: string;
+            /** Metrics */
+            metrics: components["schemas"]["MetricPairOut"][];
+            other_last_completion?: components["schemas"]["MinutesOut"] | null;
+            /** Other Process Version Id */
+            other_process_version_id: string;
+            /** Product Code */
+            product_code?: string | null;
+            /** Product Id */
+            product_id: string;
+            /** Product Name */
+            product_name?: string | null;
+        };
         /** ProductCreate */
         ProductCreate: {
             /** Code */
@@ -2766,6 +3027,41 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "in_review" | "approved" | "superseded";
+        };
+        /** RunComparisonOut */
+        RunComparisonOut: {
+            base_end_time?: components["schemas"]["MinutesOut"] | null;
+            /**
+             * Base Run Id
+             * Format: uuid
+             */
+            base_run_id: string;
+            /** Base Status */
+            base_status: string;
+            /** @description 양쪽 병목 요약 상위 5개 */
+            bottlenecks: components["schemas"]["ComparisonBottlenecksOut"];
+            /**
+             * Comparable
+             * @description 엔진 버전이 같아 결과 차이를 입력 차이로 설명할 수 있는가
+             */
+            comparable: boolean;
+            /** Input Changes */
+            input_changes: components["schemas"]["InputChangeOut"][];
+            other_end_time?: components["schemas"]["MinutesOut"] | null;
+            /**
+             * Other Run Id
+             * Format: uuid
+             */
+            other_run_id: string;
+            /** Other Status */
+            other_status: string;
+            /**
+             * Products
+             * @description 두 실행에 모두 있는 제품(제품 id로 맞춤)의 핵심 지표 비교
+             */
+            products: components["schemas"]["ProductComparisonOut"][];
+            /** Warnings */
+            warnings: string[];
         };
         /** RunCreate */
         RunCreate: {
@@ -3216,6 +3512,10 @@ export interface components {
         /** Single[ProjectOut] */
         Single_ProjectOut_: {
             data: components["schemas"]["ProjectOut"];
+        };
+        /** Single[RunComparisonOut] */
+        Single_RunComparisonOut_: {
+            data: components["schemas"]["RunComparisonOut"];
         };
         /** Single[RunInputOut] */
         Single_RunInputOut_: {
@@ -6402,6 +6702,143 @@ export interface operations {
             };
         };
     };
+    get_asset_timeline_api_v1_projects__project_id__runs__run_id__asset_timeline_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+                /** @description 구간 종류: day(기본)·week·month·run */
+                window?: "run" | "day" | "week" | "month";
+                /** @description 설비 하나만 */
+                asset_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_AssetTimelineOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_asset_states_api_v1_projects__project_id__runs__run_id__assets__asset_id__states_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+                /** @description 이 시각에 걸친 구간부터(가상 시간 분, decimal 문자열) */
+                from_min?: string | null;
+                /** @description 이 시각 전에 시작한 구간까지 */
+                to_min?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_AssetStateSegmentOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_run_bottlenecks_api_v1_projects__project_id__runs__run_id__bottlenecks_get: {
         parameters: {
             query?: {
@@ -6496,6 +6933,137 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    compare_runs_api_v1_projects__project_id__runs__run_id__compare__other_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+                other_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_RunComparisonOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    compare_run_metrics_api_v1_projects__project_id__runs__run_id__compare__other_run_id__metrics_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+                /** @description 지표 하나만(일·주·월 구간이면 필수) */
+                metric_key?: string | null;
+                /** @description 구간 종류: run(기본)·day·week·month */
+                window?: "run" | "day" | "week" | "month";
+                /** @description 값이 다른 행만(한쪽에만 있는 행 포함) */
+                changed_only?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+                other_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_MetricComparisonOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
