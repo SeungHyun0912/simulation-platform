@@ -288,7 +288,7 @@ class _Compiler:
                 self.issue("ENGINE_HANDLER_NOT_AVAILABLE",
                            f"{key}: handler {name} v{version}은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.", key)
             return None  # 이름이 없거나 지원 목록 밖이면 도메인 검증(VAL-HANDLER-001·UNSUPPORTED_HANDLER)이 이미 막았다.
-        transport_minutes = self._transport_minutes(key, handler)
+        transport_minutes = self._transport_minutes(key, handler, step)
         timing = TimingModel("none") if handler.name == TRANSPORT else self._timing(key, step, handler)
         setup = Fraction(0) if handler.name == TRANSPORT else self._setup(key, step)
         delay = None if handler.name == TRANSPORT else self._delay(key, step)
@@ -311,20 +311,29 @@ class _Compiler:
             transport_minutes=transport_minutes, residual=residual, out_policies=out_policies,
             inputs=inputs, consume_policy=consume_policy, delay=delay)
 
-    def _transport_minutes(self, key: str, handler: HandlerDef) -> Fraction | None:
+    def _transport_minutes(self, key: str, handler: HandlerDef, step: dict) -> Fraction | None:
+        """수동 운반의 이동 시간(보빈 하나가 한 번 옮겨지는 시간, 상하차 포함은 값에 담는다).
+
+        공정 데이터가 정한 값(처리 방식 `per_output_unit`)이 사실이다. 시나리오 가정(`manual_transport_minutes`)이 있으면
+        그 시나리오에서만 그 값으로 덮어쓰고 가정으로 보고한다. 둘 다 없으면 막는다(0분도 명시해야 한다)."""
         if handler.name != TRANSPORT:
             return None
         minutes = self.assumptions.manual_transport_minutes.get(key)
-        if minutes is None:
-            self.issue("TRANSPORT_DURATION_UNKNOWN",
-                       f"{key}: 수동 운반의 이동 시간이 미정입니다. 시나리오가 명시 가정으로 정해야 합니다(0분도 명시해야 함).", key)
-            return None
-        if minutes < 0:
-            self.issue("TRANSPORT_DURATION_INVALID", f"{key}: 이동 시간은 0 이상이어야 합니다.", key)
-            return None
-        self.used.append(AssumptionUse("MANUAL_TRANSPORT_MINUTES",
-                                       f"{key}: 수동 운반 {minutes}분(시나리오 가정, 운반 자원은 무제한이 아니라 미모형)", key))
-        return Fraction(minutes)
+        if minutes is not None:
+            if minutes < 0:
+                self.issue("TRANSPORT_DURATION_INVALID", f"{key}: 이동 시간은 0 이상이어야 합니다.", key)
+                return None
+            self.used.append(AssumptionUse(
+                "MANUAL_TRANSPORT_MINUTES",
+                f"{key}: 수동 운반 {minutes}분(시나리오 가정, 운반 자원은 무제한이 아니라 미모형)", key))
+            return Fraction(minutes)
+        processing = step["timing_rule"]["processing"]
+        if processing["kind"] == "per_output_unit" and processing["duration_min"]["mode"] == "known":
+            return to_fraction(processing["duration_min"]["value"])
+        self.issue("TRANSPORT_DURATION_UNKNOWN",
+                   f"{key}: 수동 운반의 이동 시간이 미정입니다. 공정에 확정하거나(처리 방식 per_output_unit) 시나리오가 "
+                   "명시 가정으로 정해야 합니다(0분도 명시해야 함).", key)
+        return None
 
     def _timing(self, key: str, step: dict, handler: HandlerDef) -> TimingModel | None:
         proc = step["timing_rule"]["processing"]

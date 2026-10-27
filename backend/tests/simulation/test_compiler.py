@@ -285,3 +285,30 @@ def test_transport_waiver_does_not_hide_an_unsupported_handler():
     snap = edit(with_transport(), "forklift", lambda n: n["step"].update(operation_type="network_transport"))
     result = compile_snapshot(snap, ScenarioAssumptions(manual_transport_minutes={"forklift": Fraction(5)}))
     assert "UNSUPPORTED_HANDLER" in rules_of(result)
+
+
+# --- 이동 시간은 공정 데이터가 사실이다(사용자 확정, CR be09 §6-⑥) -------------------------------------
+
+def transport_with_data(minutes="4"):
+    g = Graph()
+    g.node("src", "source")
+    g.node("forklift", "operation", step("transport_manual", processing=per_unit(minutes, "sequential_units"),
+                                         output=out_pass(), worker=True))
+    g.node("complete", "milestone")
+    g.node("sink", "sink")
+    return g.chain().snapshot()
+
+
+def test_transport_time_comes_from_the_process_data_without_any_assumption():
+    result = compile_snapshot(transport_with_data("4"), ScenarioAssumptions())
+    assert result.ok, result.issues
+    model = result.require_model()
+    assert model.steps["forklift"].transport_minutes == Fraction(4)
+    assert not model.assumptions and not result.waived  # 사실이므로 가정으로 보고하지 않는다
+
+
+def test_a_scenario_assumption_overrides_the_process_time_and_is_reported():
+    result = compile_snapshot(transport_with_data("4"), ScenarioAssumptions(
+        manual_transport_minutes={"forklift": Fraction(10)}))
+    assert result.require_model().steps["forklift"].transport_minutes == Fraction(10)
+    assert any(a.code == "MANUAL_TRANSPORT_MINUTES" for a in result.assumptions)

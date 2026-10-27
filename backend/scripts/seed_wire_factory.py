@@ -4,8 +4,12 @@
 - 프로젝트 `DEMO-WIRE`(개발 인계용 제안 코드, 사용자 기존 코드가 아님)에 설비 96대(EQ-001~096)·공간 22곳(ST-001~022)·
   제품 6종(P01~P06)·공정 버전 6건(모두 draft)을 만든다. 자산·제품·공정은 **실제 API(서비스 계층)로** 만든다.
 - 서로 다른 공정 흐름은 4가지다: 실리콘 공통 경로(P01~P03, 값만 다름), P04(AL), P05(CU 세선), P06(CU 태선).
-- 모르는 값은 unknown으로 둔다(0·무제한·해당 없음으로 바꾸지 않는다). 후보 설비는 설비 한 대로 지정된 경우만 `confirmed`,
-  여러 호기 중 선택은 "사용 가능 호기 미확정"이므로 `unknown`이다(문서 §2·§9-8). 용량·좌표·운반 자원은 모두 미정이라 만들지 않는다.
+- 문서가 정하지 않은 값은 unknown으로 둔다(0·무제한·해당 없음으로 바꾸지 않는다). 용량·좌표는 모두 미정이라 만들지 않는다.
+- **사용자 정리 반영(2026-10-27, CR be09 §6)**: 아래 값은 문서가 아니라 사용자가 확정한 값이며 `INTAKE_MARK`로 메모에 남긴다 —
+  범위 안의 후보 설비 전부 자격 확정(`confirmed`)·선택 규칙 `first_available`, 입력 확보 작업마다(`per_operation`)·소비 시점,
+  모든 인계 보빈별, 값이 없는 준비·대기 시간 0분, 120분 준비는 제품이 바뀔 때(`on_product_change`), 싱글-12 대기 120분은 작업 시간,
+  P01~P03 검사 작업자 무제한 10분/보빈·완제품은 쉬스 완료, P04·P05 원자재 길이 해당 없음, P05 출발 공간 ST-005,
+  운반은 보빈 1개씩 이동 3분 + 상하차 1분(운반 자원 무제한).
 - 단계별 투입·산출 수량·12가닥 공급은 단계의 재료 spec, 간선은 spec 연결, 완제품 시점은 milestone 지정으로 만든다(계약 0.6.0).
   계약에 필드가 없는 값(폐기량 등)은 버전 메모(notes)에 문서 근거와 함께 남긴다.
 - 시험 데이터(`seed_demo_data.py`, "[시험]" 이름)와 분리된 별도 프로젝트이며 재실행해도 중복 생성하지 않는다(멱등).
@@ -104,6 +108,15 @@ def count(value: int) -> dict:
 
 UNKNOWN = {"mode": "unknown"}
 NOT_APPLICABLE = {"mode": "not_applicable"}
+NA = "n/a"  # 길이 없음(해당 없음). 값이 정해지지 않은 unknown과 다르다
+INTAKE_MARK = "정리 반영(2026-10-27)"
+TRANSPORT_MINUTES = 4  # 이동 3분 + 상하차 1분(사용자 결정, 해석은 CR be09 §6-⑥)
+
+
+def measure(name, value) -> dict:
+    if value == NA:
+        return NOT_APPLICABLE
+    return count(value) if name in ("unit_count", "strand_count") else known(value)
 
 
 def codes(first: int, last: int | None = None) -> list[str]:
@@ -126,14 +139,14 @@ def per_unit(minutes, schedule="unknown") -> dict:
 
 NO_PROCESSING = {"kind": "none"}
 SETUP_UNKNOWN = {"duration_min": UNKNOWN, "trigger": "unknown"}
-SETUP_NONE = {"duration_min": known(0), "trigger": "not_applicable"}  # "준비0": 준비 없음
+SETUP_NONE = {"duration_min": known(0), "trigger": "not_applicable"}  # "준비0" 또는 값이 없으면 0분(사용자 확정)
 DELAY_UNKNOWN = {"duration_min": UNKNOWN, "trigger": "unknown", "occupancy": "unknown"}
 DELAY_NONE = {"duration_min": NOT_APPLICABLE, "trigger": "not_applicable", "occupancy": "unknown"}
 
 
 def setup_minutes(minutes) -> dict:
-    """제공된 준비 시간. 발생 주기는 문서에 없어 trigger는 미정으로 둔다."""
-    return {"duration_min": known(minutes), "trigger": "unknown"}
+    """문서가 준 준비 시간. 발생 시점은 사용자가 "제품이 바뀔 때"로 정했다(on_product_change, CR be09 §6-④의 임시 기본값)."""
+    return {"duration_min": known(minutes), "trigger": "on_product_change"}
 
 
 def out_pass() -> dict:
@@ -159,6 +172,9 @@ def out_mass(weight_kg, units) -> dict:
 INSPECTOR = {"role_key": "inspector", "resource_kind": "worker", "selection_mode": "one_of",
              "required_count": 1, "capacity_mode": "unlimited", "allocation_rule": {"mode": "unknown"},
              "candidates": []}
+# 운반 자원: 지게차 3대·AMR 2대가 있지만 이번에는 무제한으로 시작한다(대수는 메모에 사실로 기록, 사용자 결정)
+CARRIER = {**INSPECTOR, "role_key": "carrier"}
+INPUT_RULE = {"acquire_scope": "per_operation", "consume_policy": "consume"}
 
 
 def msp(key, direction, state, *, form="보빈", basis="per_operation", **quantity) -> dict:
@@ -167,7 +183,7 @@ def msp(key, direction, state, *, form="보빈", basis="per_operation", **quanti
     spec = {"spec_key": key, "direction": direction, "state_code": state, "form": form,
             "quantity_basis": basis}
     for name, value in quantity.items():
-        spec[name] = count(value) if name in ("unit_count", "strand_count") else known(value)
+        spec[name] = measure(name, value)
     return spec
 
 
@@ -215,20 +231,23 @@ class Route:
     def space(self, code, suffix="") -> dict:
         return self._add(f"{code.lower()}{suffix}", "buffer", f"{code} {SPACE_NAME[code]}", code)
 
-    def op(self, key, label, handler, equipment, *, processing, setup=SETUP_UNKNOWN, delay=DELAY_UNKNOWN,
-           output=None, handoff="unknown", residual=None, worker=False, specs=None) -> dict:
+    def op(self, key, label, handler, equipment, *, processing, setup=SETUP_NONE, delay=DELAY_NONE,
+           output=None, handoff="per_output_unit", residual=None, worker=False, specs=None,
+           consume="consume") -> dict:
+        """사용자 정리 반영 기본값: 후보 설비 전부 자격 확정·선택 규칙 first_available, 입력 확보 작업마다,
+        인계 보빈별, 값이 없는 준비·대기 0분. `worker`는 True(검사 작업자) 또는 "carrier"(운반 자원, 무제한)."""
         resources = []
         if equipment:
-            status = "confirmed" if len(equipment) == 1 else "unknown"
             resources.append({
                 "role_key": "main", "resource_kind": "equipment", "selection_mode": "one_of",
-                "required_count": 1, "capacity_mode": "finite", "allocation_rule": {"mode": "unknown"},
-                "candidates": [{"asset_id": self.assets[c], "eligibility_status": status}
+                "required_count": 1, "capacity_mode": "finite", "allocation_rule": {"mode": "first_available"},
+                "candidates": [{"asset_id": self.assets[c], "eligibility_status": "confirmed"}
                                for c in equipment]})
         if worker:
-            resources.append(INSPECTOR)
+            resources.append(CARRIER if worker == "carrier" else INSPECTOR)
         step = {"operation_type": handler, "handler_version": "1",
                 "timing_rule": {"processing": processing, "setup": setup, "precondition_delay": delay},
+                "input_rule": {**INPUT_RULE, "consume_policy": consume},
                 "output_rule": output or out_pass(), "handoff_rule": {"mode": handoff},
                 "resources": resources, "material_specs": specs or []}
         if residual:
@@ -236,9 +255,11 @@ class Route:
         return self._add(key, "operation", label, step=step)
 
     def transport(self, key, method, origin, target) -> dict:
-        """문서가 방식(지게차·AMR)을 정한 운반. 이동 시간·운반 자원은 미확정이라 비워 둔다."""
+        """문서가 방식(지게차·AMR)을 정한 운반. 보빈 1개씩 독립 이동하며 이동 3분 + 상하차 1분(사용자 결정),
+        운반 자원은 이번에는 무제한이다(지게차 3대·AMR 2대는 후속 운반 자원 기능에서 쓴다)."""
         return self.op(key, f"{method} 운반 {origin}→{target}", "transport_manual", [],
-                       processing={"kind": "unknown"}, output=out_pass())
+                       processing=per_unit(TRANSPORT_MINUTES, "sequential_units"), output=out_pass(),
+                       worker="carrier")
 
     def link(self, a, b, kind="material", movement=None):
         edge = {"id": str(uuid.uuid4()), "edge_key": f"{a['node_key']}-{b['node_key']}",
@@ -267,7 +288,7 @@ class Route:
         return {"nodes": self.nodes, "edges": self.edges, "completion_node_id": self.completion}
 
 
-def inspect_op(r: Route, *, worker: bool, handoff: str, setup=SETUP_UNKNOWN, delay=DELAY_UNKNOWN,
+def inspect_op(r: Route, *, worker: bool, handoff: str, setup=SETUP_NONE, delay=DELAY_NONE,
                specs=None):
     return r.op("inspect", "육안 검사", "inspection", [], processing=per_unit(10, "sequential_units"),
                 setup=setup, delay=delay, output=out_pass(), handoff=handoff, worker=worker, specs=specs)
@@ -296,13 +317,13 @@ def silicon(assets, *, raw_len, bobbins, sheath_len, sheath_units, carry) -> dic
              output=out_split(sheath_len, sheath_units, "per_lot"), residual=residual,
              specs=io(bobbin, {"length_m": str(sheath_len), "unit_count": sheath_units},
                       src_state="테이핑 후", dst_state="쉬스 후", dst_basis="per_lot")),
-        r.space("ST-003"),
-        inspect_op(r, worker=False, handoff="unknown",
+        r.milestone("완제품(쉬스 완료)"), r.space("ST-003"),  # 사용자 확정: 실리콘 3종은 쉬스 이후가 완제품
+        inspect_op(r, worker=True, handoff="per_output_unit",
                    specs=io(final, final, src_state="쉬스 후", dst_state="검사 후")),
         r.sink("완제품"),
     ]
     r.chain(*chain)
-    return r.graph()  # 완제품 판정 시점은 문서에 없어 completion_node_id는 미정(null)
+    return r.graph()
 
 
 # --- 공정 2: P04 HV_조사_태선(AL) (§5) ------------------------------------------------------------
@@ -313,7 +334,8 @@ def p04(assets) -> dict:
     src = r.source("원자재 (개당 2t)", "ST-017")
     multi = r.op("multi", "AL 멀티신선", "output_units_by_time", codes(89), processing=speed(100, single_stream=False),
                  setup=setup_minutes(120), output=out_units(40000, 12),
-                 specs=io({"weight_kg": "2000", "unit_count": 2}, {"length_m": "40000", "unit_count": 12},
+                 specs=io({"weight_kg": "2000", "length_m": NA, "unit_count": 2},
+                          {"length_m": "40000", "unit_count": 12},
                           src_state="원자재", dst_state="멀티신선 후", src_form="원자재"), **N)
     st018 = r.space("ST-018")
     double = r.op("double", "AL 더블 집합", "split_length", codes(90, 93), processing=speed(100),
@@ -323,10 +345,11 @@ def p04(assets) -> dict:
     st019 = r.space("ST-019")
     pre = r.op("single-pre", "싱글-1 선행 가공", "pass_through_length", codes(94), processing=speed(4.4),
                setup=SETUP_NONE, specs=io(b4000, b4000, src_state="더블 집합 후", dst_state="선행 가공 후"), **N)
+    # 대기 120분은 설비 가동이 아니라 재료를 걸어 두는 작업이라 작업 시간 2시간으로 본다(사용자 결정): 작업마다, 설비 점유
     feed = r.op("single-feed", "싱글-12 공급 준비", "supply_delay", codes(95), processing=NO_PROCESSING,
-                setup=SETUP_NONE, delay={"duration_min": known(120), "trigger": "unknown",
-                                         "occupancy": "unknown"},
-                handoff="total_batch",
+                setup=SETUP_NONE, delay={"duration_min": known(120), "trigger": "per_operation",
+                                         "occupancy": "occupies_machine"},
+                handoff="total_batch", consume="transfer",
                 specs=[msp("in", "input", "더블 집합 후", length_m="4000", unit_count=12),
                        msp("out", "output", "공급 준비", form="가닥", strand_count=12)])
     main = r.op("single-main", "싱글 메인 집합", "configured_yield", codes(96),
@@ -365,13 +388,13 @@ def p05(assets) -> dict:
     r = Route(assets)
     N = {"handoff": "per_output_unit", "delay": DELAY_NONE, "setup": SETUP_NONE}
     b100k, b24k, b12k = ({"length_m": m, "unit_count": 1} for m in ("100000", "24000", "12000"))
-    # 출발 공간 ST-005는 "원자재 공간과의 대응 제안"일 뿐 사용자가 직접 지정한 위치가 아니므로 위치를 비워 둔다.
+    # 출발 공간 ST-005(CU 도체 원자재 보관 장소, 태신선 대기 공간)는 사용자가 확정했다(2026-10-27).
     chain = [
-        r.source("원자재 (3.3t/보빈, 출발 위치 미확정: ST-005 대응 제안)"),
+        r.source("원자재 (3.3t/보빈)", "ST-005"),
         r.op("draw", "CU 태신선", "output_units_by_time", codes(13), processing=per_unit(22),
              output=out_mass(1000, 36),
-             specs=io({"weight_kg": "3300", "unit_count": 11}, {"weight_kg": "1000", "unit_count": 36},
-                      src_state="원자재", dst_state="태신선 후"), **N),
+             specs=io({"weight_kg": "3300", "length_m": NA, "unit_count": 11},
+                      {"weight_kg": "1000", "unit_count": 36}, src_state="원자재", dst_state="태신선 후"), **N),
         r.space("ST-006"),
         r.op("multi", "CU 멀티신선", "output_units_by_time", codes(14), processing=speed(60, single_stream=False),
              output=out_units(100000, 9),
@@ -465,23 +488,38 @@ def p06(assets) -> dict:
 
 
 def _spec(**fields) -> dict:
-    return {name: (known(v) if name != "unit_count" else count(v)) for name, v in fields.items()}
+    return {name: measure(name, v) for name, v in fields.items()}
 
 
 def _notes(product, lines) -> str:
     return "\n".join([notes_head(product), *lines])
 
 
-def notes_head(product) -> str:
+def legacy_notes_head(product) -> str:
+    """사용자 정리 반영 전(계약 0.6.0 시드)의 메모 머리말. 시드가 쓴 메모인지 알아보는 데만 쓴다."""
     return f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft)이며 문서의 미정 값은 unknown으로 두었다."
+
+
+def notes_head(product) -> str:
+    return (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). {INTAKE_MARK}: 사용자가 확정한 값은 문서 값과 구분해 "
+            "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
+
+
+INTAKE_NOTES = [
+    ("사용자 확정(2026-10-27): 후보 설비 범위 안의 설비는 모두 자격 확정, 선택 규칙은 비어 있는 설비를 코드 순서로(first_available), "
+     "입력은 작업마다 확보(실제 소비는 작업 끝이나 결과가 같아 시작 때 소비, 설비는 작업이 끝날 때까지 독점), 모든 인계는 보빈별."),
+    "사용자 확정: 준비·교체 시간 값이 없으면 0분, 120분 준비는 제품이 바뀔 때(on_product_change, \"제품\" 뜻은 임시로 제품 종류).",
+]
+TRANSPORT_NOTE = (f"운반(사용자 확정): 보빈 1개씩 독립 이동, 이동 3분 + 상하차 1분 = {TRANSPORT_MINUTES}분, 운반 자원은 무제한으로 시작"
+                  "(지게차 3대·AMR 2대는 후속 운반 자원 기능에서 사용).")
 
 
 def definitions(assets: dict[str, str]) -> dict[str, dict]:
     """제품 코드 → {raw, finished, notes, graph}. 값의 근거는 문서 §4~7."""
     si_notes = ["단계별 투입·산출 수량은 각 단계의 재료 spec(material_specs)에 있다.",
-                "준비/교체 시간, 보빈 인계 시점, 검사 위치·자원 수, 완제품 판정 시점은 미정(완제품 milestone 미지정).",
                 "편조·테이핑·쉬스 사이에 저장공간을 임의로 만들지 않았다(직결).",
-                "검사 자원은 이 제품에 확인된 바 없어 작업자 무제한으로 가정하지 않았다."]
+                "사용자 확정: 완제품은 쉬스 압출 완료 시점(완제품 milestone), 검사는 작업자 무제한·10분/보빈, 값이 없는 준비 시간은 0분.",
+                *INTAKE_NOTES]
     return {
         "P01": {"raw": _spec(length_m=3000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=300),
                 "notes": _notes("P01", [("절연 후 1,000m×3보빈, 쉬스 후 300m×10보빈/1롤분(잔량 이월: 동일 제품 연속 생산 때 이월, "
@@ -493,23 +531,28 @@ def definitions(assets: dict[str, str]) -> dict[str, dict]:
         "P03": {"raw": _spec(length_m=5000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=500),
                 "notes": _notes("P03", ["절연 후 1,000m×5보빈, 쉬스 후 500m×10보빈/1롤분.", *si_notes]),
                 "graph": silicon(assets, raw_len=5000, bobbins=5, sheath_len=500, sheath_units=10, carry=False)},
-        "P04": {"raw": _spec(weight_kg=2000, unit_count=1), "finished": _spec(length_m=4000),
+        "P04": {"raw": _spec(weight_kg=2000, length_m=NA, unit_count=1), "finished": _spec(length_m=4000),
                 "notes": _notes("P04", [
                     "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다(싱글-12의 12가닥 공급은 strand_count 12).",
                     "싱글 메인 산출 10개는 변경 가능한 per-operation 설정값이며 투입 길이로 자동 물량보존해 부정하지 않는다(abstract_yield).",
                     "재권취 완료가 완제품(완제품 milestone 지정)이고 검사·적재는 별도 상태. 검사 작업자는 무제한 가용(확정), 10분/보빈.",
-                    ("미정: 멀티신선 12보빈 동시/순차와 선속의 스트림 기준, 준비·대기 120분의 발생 주기, feeder 점유(OPEN-004), "
-                    "싱글-1/메인의 인계·원자재 소비 시점. GRP-001(EQ-094~096 연계 그룹)은 계약 밖(그룹 미도입)."),
-                    "운반: ST-020→ST-021 지게차, ST-021→ST-008 AMR(이동 시간·운반 자원 미확정)."]),
+                    ("사용자 확정: 원자재는 길이가 없고(해당 없음) 멀티신선을 거치며 길이가 생긴다, 싱글-12의 대기 120분은 재료를 걸어 두는 "
+                     "작업이라 작업 시간 2시간(작업마다·설비 점유), 싱글-12·싱글-1은 메인 작업 동안 점유하지 않는다."),
+                    ("미정: 멀티신선 12보빈을 동시에 만드는지 순차인지(선속의 스트림 기준). GRP-001(EQ-094~096 연계 그룹)은 "
+                     "계약 밖(그룹 미도입)."),
+                    TRANSPORT_NOTE, *INTAKE_NOTES,
+                    "운반 경로: ST-020→ST-021 지게차, ST-021→ST-008 AMR."]),
                 "graph": p04(assets)},
-        "P05": {"raw": _spec(weight_kg=3300, unit_count=1), "finished": _spec(length_m=600),
+        "P05": {"raw": _spec(weight_kg=3300, length_m=NA, unit_count=1), "finished": _spec(length_m=600),
                 "notes": _notes("P05", [
                     "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다(태신선 3.3t×11개 동시→1t×36보빈, 재권취 12,000m→600m×20 등).",
                     "잔량(현재 스키마에 필드 없음): 태신선 36.3t 투입·36t 산출 차이 300kg 폐기, 절연 100,000m 투입·96,000m 산출 차이 4,000m 처리 미정.",
                     "되돌리지 말 정정: 연선은 100,000→100,000(24,000×4 아님), 절연에서 24,000×4 분할, 1차 조사는 1→1, 검사 600→600.",
-                    ("출발 위치 ST-005는 원자재 공간 대응 제안이라 위치를 비워 두었다(inferred). 모든 단계 보빈별 인계, 검사 작업자 무제한. "
-                    "재권취 완료가 완제품(완제품 milestone 지정)."),
-                    "운반: ST-012→ST-013 지게차(1차 조사 후만), ST-022→ST-009 AMR. 테이핑 OUT→ST-022 운반 방식 미정."]),
+                    ("사용자 확정: 원자재는 길이가 없고(해당 없음) 태신선·멀티신선을 거치며 길이가 생긴다, 원자재 첫 공간은 ST-005, "
+                     "입고 24개여도 태신선이 11개씩 확보하므로 2개가 남아 입력 부족으로 끝나는 것은 정상(공정 정보는 사용자가 수정해 다시 실행). "
+                     "모든 단계 보빈별 인계, 검사 작업자 무제한. 재권취 완료가 완제품(완제품 milestone 지정)."),
+                    TRANSPORT_NOTE, *INTAKE_NOTES,
+                    "운반 경로: ST-012→ST-013 지게차(1차 조사 후만), ST-022→ST-009 AMR."]),
                 "graph": p05(assets)},
         "P06": {"raw": _spec(length_m=2000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=500),
                 "notes": _notes("P06", [
@@ -517,7 +560,8 @@ def definitions(assets: dict[str, str]) -> dict[str, dict]:
                     "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다. 재권취 완료가 완제품(완제품 milestone 지정).",
                     ("쉬스·2차 조사 입력은 1,000m, 검사 입력·완제품은 500m(문서의 100m/600m 표기는 오기). 무손실 단위 관계상 "
                     "원자재 1보빈→최종 500m 4보빈이며 실제 생산계획 수량이 아니다."),
-                    "운반: ST-012→ST-013 지게차, 편조 OUT→ST-022 방식 미정, ST-022→ST-009 AMR. 검사 작업자 무제한."]),
+                    TRANSPORT_NOTE, *INTAKE_NOTES,
+                    "운반 경로: ST-012→ST-013 지게차, ST-022→ST-009 AMR. 검사 작업자 무제한."]),
                 "graph": p06(assets)},
     }
 
@@ -634,14 +678,48 @@ def _upgrade_version(seeder, project, code, spec, listed) -> bool:
     return True
 
 
+def _apply_intake(seeder, project, code, spec, listed) -> bool:
+    """사용자 정리 반영(2026-10-27) 전에 만든 draft 공정에 새 값을 적용한다(멱등).
+
+    시드가 쓴 메모가 그대로이고(사람이 고치지 않음), 현재 노드가 모두 새 구성에도 있을 때만 바꾼다(사람이 노드를 더하지
+    않음). 같은 node_key·edge_key의 id는 유지하고 새로 생기는 노드(예: 완제품 milestone)·간선만 새 id를 받는다.
+    승인·검토 중인 버전은 건드리지 않는다."""
+    if listed["status"] != "draft":
+        return False
+    base = f"{API}/projects/{project}/process-versions/{listed['id']}"
+    version = _get(seeder, base)
+    if not (version["notes"] or "").startswith(legacy_notes_head(code)):
+        return False
+    graph = _get(seeder, f"{base}/graph")
+    wanted = spec["graph"]
+    wanted_key = {n["id"]: n["node_key"] for n in wanted["nodes"]}
+    if not {n["node_key"] for n in graph["nodes"]} <= set(wanted_key.values()):
+        return False
+    old_nodes = {n["node_key"]: n["id"] for n in graph["nodes"]}
+    old_edges = {e["edge_key"]: e["id"] for e in graph["edges"]}
+    nodes = [{**n, "id": old_nodes.get(n["node_key"], n["id"])} for n in wanted["nodes"]]
+    new_id = {n["node_key"]: n["id"] for n in nodes}
+    edges = [{**e, "id": old_edges.get(e["edge_key"], e["id"]),
+              "from_node_id": new_id[wanted_key[e["from_node_id"]]],
+              "to_node_id": new_id[wanted_key[e["to_node_id"]]]} for e in wanted["edges"]]
+    completion = new_id["complete"] if wanted["completion_node_id"] else None
+    saved = _send(seeder, "put", f"{base}/graph",
+                  {"nodes": nodes, "edges": edges, "completion_node_id": completion}, version["row_version"])
+    _send(seeder, "patch", base, {"raw_unit_spec": spec["raw"], "finished_unit_spec": spec["finished"],
+                                  "notes": spec["notes"]}, saved["row_version"])
+    return True
+
+
 def seed_processes(seeder, project, products, assets) -> dict:
-    created, upgraded = [], []
+    created, upgraded, reapplied = [], [], []
     for code, spec in definitions(assets).items():
         url = f"{API}/projects/{project}/products/{products[code]}/process-versions"
         versions = _get(seeder, url)
         if versions:
             if _upgrade_version(seeder, project, code, spec, versions[0]):
                 upgraded.append(code)
+            if _apply_intake(seeder, project, code, spec, versions[0]):
+                reapplied.append(code)
             continue
         version = seeder.post(url)
         version = seeder.patch(f"{API}/projects/{project}/process-versions/{version['id']}", {
@@ -650,7 +728,7 @@ def seed_processes(seeder, project, products, assets) -> dict:
         _send(seeder, "put", f"{API}/projects/{project}/process-versions/{version['id']}/graph",
               spec["graph"], version["row_version"])
         created.append(code)
-    return {"created": created, "upgraded": upgraded}
+    return {"created": created, "upgraded": upgraded, "reapplied": reapplied}
 
 
 def seed(engine: Engine) -> dict:

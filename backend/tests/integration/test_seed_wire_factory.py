@@ -122,8 +122,8 @@ def test_silicon_products_share_one_route_with_different_values(client, wire):
         version, graph, nodes = graph_of(client, wire, code)
         keys = keys or list(nodes)
         assert list(nodes) == keys  # 같은 경로 모양
-        assert list(nodes) == ["src", "st-002", "insulate", "st-004", "braid", "tape", "sheath", "st-003",
-                               "inspect", "sink"]
+        assert list(nodes) == ["src", "st-002", "insulate", "st-004", "braid", "tape", "sheath", "complete",
+                               "st-003", "inspect", "sink"]
         assert version["raw_unit_spec"]["length_m"] == {"mode": "known", "value": raw}
         assert version["raw_unit_spec"]["weight_kg"]["value"] == "2000"  # 2t 롤
         assert version["finished_unit_spec"]["length_m"]["value"] == last
@@ -133,7 +133,8 @@ def test_silicon_products_share_one_route_with_different_values(client, wire):
         assert (out["length_m"]["value"], out["unit_count"]["value"]) == (last, units)
         assert [proc(nodes[k])["speed_m_per_min"]["value"] for k in ("insulate", "braid", "tape", "sheath")] \
             == ["20", "1.5", "20", "15"]
-        assert nodes["inspect"]["step"]["resources"] == []  # 이 3종의 검사 자원은 확인된 바 없다
+        worker = nodes["inspect"]["step"]["resources"]  # 사용자 확정: 검사 작업자 무제한(P04~P06과 같음)
+        assert [(r["resource_kind"], r["capacity_mode"]) for r in worker] == [("worker", "unlimited")]
         assert proc(nodes["inspect"])["duration_min"]["value"] == "10"
         # 편조·테이핑·쉬스 사이에 저장공간을 임의로 만들지 않았다
         order = [n["node_key"] for n in graph["nodes"]]
@@ -150,6 +151,7 @@ def test_silicon_products_share_one_route_with_different_values(client, wire):
 def test_p04_al_route_has_direct_feed_supply_wait_and_abstract_yield(client, wire):
     version, graph, nodes = graph_of(client, wire, "P04")
     assert version["raw_unit_spec"]["weight_kg"]["value"] == "2000"
+    assert version["raw_unit_spec"]["length_m"]["mode"] == "not_applicable"  # 사용자 확정: 원자재에 길이가 없다
     assert version["finished_unit_spec"]["length_m"]["value"] == "4000"
     assert [k for k in nodes if nodes[k]["kind"] == "operation"] == [
         "multi", "double", "single-pre", "single-feed", "single-main", "forklift", "amr", "insulate",
@@ -158,10 +160,14 @@ def test_p04_al_route_has_direct_feed_supply_wait_and_abstract_yield(client, wir
               for k in ("multi", "double", "single-pre", "single-main", "insulate", "irradiate", "rewind")}
     assert speeds == {"multi": "100", "double": "100", "single-pre": "4.4", "single-main": "32",
                       "insulate": "50", "irradiate": "110", "rewind": "50"}
-    assert nodes["multi"]["step"]["timing_rule"]["setup"]["duration_min"]["value"] == "120"
+    setup = nodes["multi"]["step"]["timing_rule"]["setup"]
+    assert (setup["duration_min"]["value"], setup["trigger"]) == ("120", "on_product_change")  # 제품이 바뀔 때(임시 해석)
     feed = nodes["single-feed"]["step"]
     assert feed["operation_type"] == "supply_delay" and feed["timing_rule"]["processing"] == {"kind": "none"}
-    assert feed["timing_rule"]["precondition_delay"]["duration_min"]["value"] == "120"
+    delay = feed["timing_rule"]["precondition_delay"]  # 걸어 두는 작업 2시간: 작업마다, 설비 점유
+    assert (delay["duration_min"]["value"], delay["trigger"], delay["occupancy"]) == (
+        "120", "per_operation", "occupies_machine")
+    assert feed["input_rule"] == {"acquire_scope": "per_operation", "consume_policy": "transfer"}
     assert feed["handoff_rule"]["mode"] == "total_batch"  # 싱글-12만 전체 준비 후 공급
     main = nodes["single-main"]["step"]
     assert main["operation_type"] == "configured_yield"
@@ -202,7 +208,9 @@ def test_p05_cu_fine_wire_route_and_corrections(client, wire):
     ops = [k for k in nodes if nodes[k]["kind"] == "operation"]
     assert ops == ["draw", "multi", "strand", "insulate", "irradiate-1", "forklift", "braid", "tape", "amr",
                    "sheath", "irradiate-2", "rewind", "inspect"]
-    assert nodes["src"]["asset_id"] is None  # ST-005는 대응 제안일 뿐 위치를 확정하지 않았다
+    assets = {a["code"]: a["id"] for a in all_assets(client, wire)}
+    assert nodes["src"]["asset_id"] == assets["ST-005"]  # 사용자 확정: 태신선 대기 공간 = ST-005
+    assert version["raw_unit_spec"]["length_m"] == {"mode": "not_applicable", "value": None}  # 길이 없음(미정 아님)
     assert proc(nodes["draw"])["duration_min"]["value"] == "22"
     assert nodes["draw"]["step"]["output_rule"]["weight_kg"]["value"] == "1000"
     assert nodes["draw"]["step"]["output_rule"]["unit_count"]["value"] == 36
@@ -240,17 +248,31 @@ def test_p06_has_no_taping_and_uses_sheath_extruders_for_first_insulation(client
         "30", "50", "1.5", "60", "195", "30"]
 
 
-def test_candidates_are_confirmed_only_for_single_named_equipment(client, wire):
-    for code in ("P01", "P04", "P05", "P06"):
-        _, graph, _ = graph_of(client, wire, code)
-        for node in graph["nodes"]:
-            for req in (node["step"] or {}).get("resources", []):
-                status = {c["eligibility_status"] for c in req["candidates"]}
+def test_user_decisions_of_the_six_groups_are_applied_to_every_step(client, wire):
+    """CR be09 §6: 후보 설비 전부 자격 확정·first_available, 입력은 작업마다, 인계 보빈별, 값이 없는 준비 0분, 운반 4분."""
+    for code in seed_wire_factory.PRODUCTS:
+        _, _graph, nodes = graph_of(client, wire, code)
+        for key, node in nodes.items():
+            step = node["step"]
+            if not step:
+                continue
+            assert step["input_rule"]["acquire_scope"] == "per_operation", (code, key)
+            for req in step["resources"]:
                 if req["resource_kind"] == "equipment":
-                    assert status == ({"confirmed"} if len(req["candidates"]) == 1 else {"unknown"})
+                    assert {c["eligibility_status"] for c in req["candidates"]} == {"confirmed"}, (code, key)
+                    assert req["allocation_rule"] == {"mode": "first_available"}
+            want = "total_batch" if key == "single-feed" else "per_output_unit"
+            assert step["handoff_rule"]["mode"] == want, (code, key)
+            timing = step["timing_rule"]
+            if (code, key) not in {("P04", "multi"), ("P05", "multi"), ("P05", "strand")}:
+                assert timing["setup"]["duration_min"]["value"] == "0", (code, key)  # 값이 없으면 0분(사용자 확정)
+            if step["operation_type"] == "transport_manual":
+                assert proc(node) == {"kind": "per_output_unit", "duration_min": {"mode": "known", "value": "4"},
+                                      "output_schedule": "sequential_units"}  # 이동 3분 + 상하차 1분, 보빈 1개씩
+                assert [(r["role_key"], r["capacity_mode"]) for r in step["resources"]] == [("carrier", "unlimited")]
 
 
-def test_every_graph_passes_structure_checks_but_is_not_runnable_yet(client, wire):
+def test_every_graph_passes_structure_checks_and_only_p04_p05_have_run_template_errors(client, wire):
     for code in seed_wire_factory.PRODUCTS:
         version, _graph, _ = graph_of(client, wire, code)
         knowledge = client.post(f"{API}/projects/{wire['project']}/process-versions/{version['id']}/validate",
@@ -260,7 +282,10 @@ def test_every_graph_passes_structure_checks_but_is_not_runnable_yet(client, wir
         assert "VAL-GRAPH-011" not in rules and "VAL-GRAPH-012" not in rules  # 순환·고립 단계 없음
         run = client.post(f"{API}/projects/{wire['project']}/process-versions/{version['id']}/validate",
                           params={"scope": "run_template"}, headers=admin(wire)).json()["data"]
-        assert run["error_count"] > 0  # 미정(준비·운반·입력 규칙 등)이 남아 있어 아직 실행 불가, 숨기지 않는다
+        if code in ("P04", "P05"):  # 멀티신선의 동시/순차 시간 기준이 아직 미정이다(숨기지 않는다)
+            assert {i["rule_id"] for i in run["issues"] if i["severity"] == "error"} == {"VAL-TIME-003"}, code
+        else:
+            assert run["error_count"] == 0, (code, run["issues"][:3])  # 도메인 미정이 모두 정리됨
         assert not [i for i in run["issues"] if i["rule_id"] == "UNSUPPORTED_HANDLER"]  # handler는 모두 지원 목록
 
 
@@ -283,7 +308,7 @@ def test_seed_is_idempotent_and_does_not_change_row_counts(engine, wire, db):
     before = counts()
     again = seed_wire_factory.seed(engine)
     assert again["assets"] == {"created": 0}
-    assert again["processes"] == {"created": [], "upgraded": []}
+    assert again["processes"] == {"created": [], "upgraded": [], "reapplied": []}
     assert counts() == before
 
 
@@ -309,7 +334,7 @@ def test_p05_and_p06_specs_follow_the_document_tables(client, wire):
     assert (spec["multi"]["out"]["length_m"]["value"], spec["multi"]["out"]["unit_count"]["value"]) == ("100000", 9)
     assert spec["strand"]["in"]["length_m"] == spec["strand"]["out"]["length_m"]  # 연선은 1→1
     assert (spec["insulate"]["out"]["length_m"]["value"], spec["insulate"]["out"]["unit_count"]["value"]) == ("24000", 4)
-    assert spec["draw"]["in"]["length_m"]["mode"] == "unknown"  # 문서에 없는 값은 만들지 않는다
+    assert spec["draw"]["in"]["length_m"]["mode"] == "not_applicable"  # 원자재에 길이가 없다(미정이 아니라 해당 없음)
     assert spec["draw"]["in"]["state_code"] == "원자재" and spec["rewind"]["out"]["state_code"] == "재권취 후"
     assert [m["unit_count"]["value"] for m in spec["rewind"].values()] == [1, 20]  # 12,000m×1 → 600m×20
     assert p5["forklift"]["step"]["material_specs"] == [] and p5["amr"]["step"]["material_specs"] == []
@@ -321,11 +346,11 @@ def test_p05_and_p06_specs_follow_the_document_tables(client, wire):
     assert graph6["completion_node_id"] == p6["complete"]["id"]
 
 
-def test_silicon_specs_and_unknown_completion(client, wire):
+def test_silicon_specs_and_completion_after_the_sheath(client, wire):
     for code, raw, last, units in (("P01", "3000", "300", 10), ("P02", "4000", "500", 8),
                                    ("P03", "5000", "500", 10)):
         _, graph, nodes = graph_of(client, wire, code)
-        assert graph["completion_node_id"] is None  # 완제품 판정 시점은 문서에 없다 → 미정으로 둔다
+        assert graph["completion_node_id"] == nodes["complete"]["id"]  # 사용자 확정: 쉬스 완료가 완제품
         roll = nodes["insulate"]["step"]["material_specs"][0]
         assert (roll["form"], roll["length_m"]["value"], roll["weight_kg"]["value"]) == ("롤", raw, "2000")
         sheath = {m["spec_key"]: m for m in nodes["sheath"]["step"]["material_specs"]}
@@ -335,7 +360,7 @@ def test_silicon_specs_and_unknown_completion(client, wire):
     version, _, _ = graph_of(client, wire, "P01")
     run = client.post(f"{API}/projects/{wire['project']}/process-versions/{version['id']}/validate",
                       params={"scope": "run_template"}, headers=admin(wire)).json()["data"]
-    assert "VAL-GRAPH-014" in {i["rule_id"] for i in run["issues"] if i["severity"] == "error"}
+    assert "VAL-GRAPH-014" not in {i["rule_id"] for i in run["issues"]}
 
 
 def test_no_spec_is_left_with_every_quantity_unknown(client, wire):
@@ -369,12 +394,12 @@ def test_upgrade_fills_specs_into_older_drafts_once_and_keeps_ids(client, engine
     assert stripped["completion_node_id"] is None
     assert all(not (n["step"] or {}).get("material_specs") for n in stripped["nodes"])
     result = seed_wire_factory.seed(engine)["processes"]
-    assert result == {"created": [], "upgraded": ["P04"]}
+    assert result == {"created": [], "upgraded": ["P04"], "reapplied": []}
     version, restored, nodes = graph_of(client, wire, "P04")
     assert {n["node_key"]: n["id"] for n in restored["nodes"]} == ids_before  # 노드 id는 그대로
     assert restored["completion_node_id"] == ids_before["complete"]
     assert nodes["single-main"]["step"]["material_specs"][0]["spec_key"] == "feed"
-    assert seed_wire_factory.seed(engine)["processes"] == {"created": [], "upgraded": []}  # 두 번째는 없음
+    assert seed_wire_factory.seed(engine)["processes"] == {"created": [], "upgraded": [], "reapplied": []}
     assert version["notes"].count("각 단계의 재료 spec") >= 1  # 시드가 쓴 메모는 새 내용으로 바뀐다
 
 
@@ -387,7 +412,8 @@ def test_upgrade_does_not_touch_drafts_whose_structure_or_notes_were_changed(cli
     edited = strip_new_fields(graph)
     edited["nodes"].append(extra)
     save(client, wire, version, edited)
-    assert seed_wire_factory.seed(engine)["processes"] == {"created": [], "upgraded": []}  # 구조가 달라 건드리지 않는다
+    assert seed_wire_factory.seed(engine)["processes"] == {
+        "created": [], "upgraded": [], "reapplied": []}  # 구조가 달라 건드리지 않는다
     _, after, _ = graph_of(client, wire, "P05")
     assert "extra" in {n["node_key"] for n in after["nodes"]}
     assert after["completion_node_id"] is None
@@ -395,3 +421,30 @@ def test_upgrade_does_not_touch_drafts_whose_structure_or_notes_were_changed(cli
     save(client, wire, current, original)
     _, restored, _ = graph_of(client, wire, "P05")
     assert restored["completion_node_id"] == graph["completion_node_id"]
+
+
+def test_intake_reapplies_to_pre_intake_drafts_once_and_keeps_ids(client, engine, wire):
+    """사용자 정리 반영 전에 만든 draft(완제품 milestone 없음, 시드의 옛 메모)에 새 값이 한 번만 적용되고 node id는 유지된다."""
+    version, graph, _nodes = graph_of(client, wire, "P02")
+    ids_before = {n["node_key"]: n["id"] for n in graph["nodes"]}
+    complete = ids_before["complete"]
+    old_edges = [e for e in graph["edges"] if complete not in (e["from_node_id"], e["to_node_id"])]
+    old_edges.append({"id": str(uuid.uuid4()), "edge_key": "sheath-st-003", "from_node_id": ids_before["sheath"],
+                      "to_node_id": ids_before["st-003"], "edge_kind": "material",
+                      "movement_rule": {"mode": "unknown"}, "source_output_spec_key": None,
+                      "target_input_spec_key": None})
+    save(client, wire, version, {"nodes": [n for n in graph["nodes"] if n["id"] != complete], "edges": old_edges,
+                                 "completion_node_id": None})
+    current, _, _ = graph_of(client, wire, "P02")
+    r = client.patch(f"{API}/projects/{wire['project']}/process-versions/{current['id']}",
+                     json={"notes": seed_wire_factory.legacy_notes_head("P02") + "\n옛 메모"},
+                     headers={**admin(wire), "If-Match": f'"{current["row_version"]}"'})
+    assert r.status_code == 200, r.text
+    result = seed_wire_factory.seed(engine)["processes"]
+    assert result == {"created": [], "upgraded": [], "reapplied": ["P02"]}
+    version, restored, _nodes = graph_of(client, wire, "P02")
+    now = {n["node_key"]: n["id"] for n in restored["nodes"]}
+    assert {k: v for k, v in now.items() if k != "complete"} == {k: v for k, v in ids_before.items() if k != "complete"}
+    assert restored["completion_node_id"] == now["complete"]  # 완제품 milestone이 다시 생겼다
+    assert version["notes"].startswith(seed_wire_factory.notes_head("P02"))
+    assert seed_wire_factory.seed(engine)["processes"] == {"created": [], "upgraded": [], "reapplied": []}
