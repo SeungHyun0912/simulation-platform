@@ -8,7 +8,7 @@
 
 import uuid
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from simulation_platform.auth.principal import Principal
@@ -372,6 +372,8 @@ def collect_inputs(session: Session, version: ScenarioVersion) -> tuple[list[rul
     rows = repo.products_of(session, project_id, version.id)
     versions = repo.process_versions(session, project_id, {p.process_version_id for p in rows})
     inputs = []
+    names = {p.id: p for p in session.scalars(select(Product).where(
+        Product.project_id == project_id, Product.id.in_({r.product_id for r in rows})))}
     for row in rows:
         pv = versions[row.process_version_id]
         nodes, edges = process_repo.load_graph(session, project_id, pv.id)
@@ -382,7 +384,8 @@ def collect_inputs(session: Session, version: ScenarioVersion) -> tuple[list[rul
                      "finished_unit_spec": pv.finished_unit_spec},
             graph={"nodes": nodes, "edges": edges,
                    "completion_node_id": None if pv.completion_node_id is None else str(pv.completion_node_id)},
-            arrivals=row.arrivals, assumptions=row.assumptions))
+            arrivals=row.arrivals, assumptions=row.assumptions,
+            product={"code": names[row.product_id].code, "name": names[row.product_id].name}))
     pinned = repo.assets_of(session, project_id, version.id)
     revisions = repo.asset_revisions(session, project_id, {a.asset_revision_id for a in pinned})
     engine_assets = repo.revision_engine_data(session, project_id, [revisions[a.asset_revision_id] for a in pinned])

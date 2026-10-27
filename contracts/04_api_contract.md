@@ -362,7 +362,7 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 ## 5. 시나리오·실행 API
 
 > 아래 표에서 시나리오 6행(목록~승인)은 §5.1로, 실행 5행(요청·목록·조회·input·cancel)은 §5.2로, `events`·`lineage`
-> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0)되었다. `rerun`·비교 행은 PROPOSED이며 후속 CR에서 다룬다.
+> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0)되었다. `rerun`·비교 행은 PROPOSED이며 후속 CR에서 다룬다.
 
 | Method | Path | 의미 |
 |---|---|---|
@@ -441,7 +441,7 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 - **`Idempotency-Key` 헤더 필수**(1~128자): 없으면 428 `PRECONDITION_REQUIRED`, 길이 위반은 422. 같은 키로 본문이 다르면 409 `IDEMPOTENCY_CONFLICT`. 키는 (프로젝트, 요청자) 안에서 유일하다.
 - **입력 스냅샷은 불변:** 정규화 JSON(키 정렬·공백 없음·UTF-8)의 SHA-256이 `input_hash`이며, DB 트리거가 스냅샷의 수정·삭제를 막는다. 스냅샷은 시나리오 버전·제품별 공정 그래프·도착·가정·고정한 자산 버전·시드·엔진 버전·이벤트 한도를 담아, 이후 원본이 바뀌어도 같은 입력을 다시 보여 준다.
 - **상태:** `queued`, `running`, 엔진 종료 상태(`completed`·`stalled`·`horizon_reached`·`failed`·`limit_reached`), `cancelled`. 종료 상태는 다시 바뀌지 않는다. `stalled`는 실행 실패가 아니라 **더 진행할 수 없는 상태**이며 결과에 부족한 입력(`shortfalls`)이 들어간다. 종료 사유 예: `CANCELLED_BEFORE_START`, `CANCELLED`, `WALL_TIMEOUT`, `ENGINE_ERROR`, `WORKER_LOST`, `SNAPSHOT_HASH_MISMATCH`, `COMPILE_FAILED`.
-- **결과 요약(`result`):** 종료 시 한 번 기록되는 작은 요약 — `state`·`reason`·`censored`·`end_time{min,exact}`·`horizon`·`event_count`·`engine_version`·`seed`·`products[]`(완제품 수·길이·최초/최종 완료 시각·폐기 길이)·`assumptions`·`shortfalls`·`residuals`·`wip_items`·`failure`·`compile_issues`. 시각은 가상 시간(분)이며 표시용 소수 6자리 `min`과 정확한 분수 `exact`를 함께 준다. 이벤트·지표·계보는 be08b·be08c에서 조회 API가 생긴다.
+- **결과 요약(`result`):** 종료 시 한 번 기록되는 작은 요약 — `state`·`reason`·`censored`·`end_time{min,exact}`·`horizon`·`event_count`·`engine_version`·`seed`·`products[]`(제품 코드·이름(0.12.0), 완제품 수·길이·최초/최종 완료 시각·폐기 길이)·`assumptions`·`shortfalls`·`residuals`·`wip_items`·`failure`·`compile_issues`. 시각은 가상 시간(분)이며 표시용 소수 6자리 `min`과 정확한 분수 `exact`를 함께 준다. 이벤트·지표·계보는 be08b·be08c에서 조회 API가 생긴다.
 - **취소 의미:** 대기 중 취소는 즉시 `cancelled`/`CANCELLED_BEFORE_START`. 실행 중 취소는 요청 시각만 남기고 worker가 다음 heartbeat에서 자식 프로세스를 멈춘 뒤 `cancelled`가 된다. 이미 끝난 run은 409 `JOB_CANCEL_TOO_LATE`.
 - **worker(참고):** API와 별도 프로세스가 DB 큐(`FOR UPDATE SKIP LOCKED`)에서 job을 가져가 엔진을 자식 프로세스로 실행한다. 임대·heartbeat·fencing 토큰으로 죽은 worker를 대체하고, worker가 사라진 경우만 최대 3회 재시도한다(엔진 오류·시간 초과는 재시도하지 않음). FE는 polling으로 상태를 본다.
 - **권한:** 조회 viewer, 요청·취소 editor 이상. organization·project 범위는 서버가 검증하며 다른 프로젝트의 run은 404다.
@@ -467,18 +467,38 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 
 | Method | Path | 권한 | 결과 |
 |---|---|---|---|
-| GET | /projects/{p}/runs/{r}/metrics | viewer | 공식 결과의 지표를 구간별로. 필터 `metric_key`, `window`(run 기본·day·week·month), 차원 `process_version_id`·`asset_key`·`node_key`(하나만), `limit`·`cursor` |
+| GET | /projects/{p}/runs/{r}/metrics | viewer | 공식 결과의 지표를 구간별로. 필터 `metric_key`, `window`(run 기본·day·week·month), 차원 `process_version_id`·`step_key`·`asset_key`·`node_key`(함께 쓰면 모두 만족하는 행만, 0.12.0), `limit`·`cursor` |
 | GET | /metric-definitions | 로그인 사용자 | 지표 정의 목록(key·단위·차원·설명·`definition_version`) |
 
 - **공식 결과:** 이벤트·계보와 같다. 선택된 시도의 지표만 보이고, 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
 - **계산:** 이벤트로만 계산한다(엔진 내부 상태를 직접 읽지 않음). 하루(1,440분) 단위로 모은 값을 하루·주(7일)·월(30일)·전체 구간으로 합산한다. 마지막 구간은 실행이 끝난 시각까지로 잘린다(관측 시간 = `window.end − window.start`). 근무 달력이 없어 24시간 연속 기준이다.
-- **행(`MetricOut`):** `metric_key`, `dimensions`(`process_version_id` | `asset_key` | `node_key` 중 하나), `window{kind,start,end}`(`{min,exact}` 가상 시간), `value`(decimal 문자열 또는 null), `unit`, `definition_version`, `quality_status`.
+- **행(`MetricOut`):** `metric_key`, `dimensions`(`process_version_id` | `asset_key` | `node_key` 중 하나, 단계 지표는 `process_version_id`+`step_key`), `window{kind,start,end}`(`{min,exact}` 가상 시간), `value`(decimal 문자열 또는 null), `unit`, `definition_version`, `quality_status`.
 - **null 규칙:** 분모가 0이면(관측 시간 0·완료 없음 등) null, 해당 없는 양(길이 없는 원자재의 길이 합, 무게 기록이 없는 폐기 무게)도 null이다. **0과 null은 다르다**: 관측했지만 없었던 값(예: 완료가 없는 날의 `completed_items`)은 0이다. 사용 기록이 없는 설비·공간은 행이 없다(0이 아니라 "기록 없음").
 - **`quality_status`:** `complete`(끝까지 실행됨), `censored`(고정 지평선에서 끊긴 관측), `incomplete`(입력 부족·이벤트 한도 등으로 끝나지 못함). run 단위 값이며 모든 행에 같다.
 - **지표 목록(`definition_version` 1):** 공정 버전별 — `arrived_*`(입고 수·길이·무게), `completed_*`(완제품 milestone 도달 수·길이·무게, 최종 작업물 기준), `sunk_*`(경로 끝 도달), `discarded_length_m`·`discarded_weight_kg`, `throughput_items_per_day`, `lead_time_avg_min`·`lead_time_max_min`(완료 시각 − 원자재 입고 시각, 분할·합류를 따라 가장 이른 입고 기준), `wip_items`·`wip_length_m`·`wip_weight_kg`(구간 끝 시점, **설비 안에서 처리 중인 재료 포함**, 수·길이·무게 따로, 단위가 다른 작업물을 섞어 센다). 대기 공간별 — `buffer_wait_avg_min`·`buffer_wait_max_min`(구간에 떠난 작업물의 대기), `buffer_occupancy_avg_items`(시간적분 ÷ 구간 길이). 설비별 — `processing_time_min`·`setup_time_min`·`reserved_time_min`·`blocked_time_min`, `utilization`(= 처리 시간 ÷ 구간 길이, 0~1, **가동 달력이 없어 24시간 기준**).
 - **합산 금지:** 서로 다른 공정(제품)의 생산량을 더한 값은 만들지 않는다(07 §10). 화면·답변도 공정 버전별로 보여야 한다.
 - **아직 없는 것:** 검사 완료량(검사 완료 이벤트가 엔진에 없음), 운반 대기(이동 이벤트 없음), 달력 기준 가동률, 목표 대비 달성률.
 - 예제: 성공 응답은 worker가 끝낸 실행이 필요해 시험(`tests/integration/test_api_run_metrics.py`, `test_engine_real_catalog.py`의 P05 한 달치)이 정본이다.
+
+### 5.5 승인 scope `runs` 확장 — BE-10 (contract 0.12.0): 병목 요약·단계별 지표
+근거: `docs/change-requests/CR-backend-20261027-be10-bottleneck-analysis.md`(사용자 병목 판정 기준 2026-10-27). 필드·타입의 정본은 openapi.json.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/runs/{r}/bottlenecks | viewer | 병목 요약. 쿼리 `limit`(1~100, 기본 20). 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE` |
+
+- **병목 판정 기준(사용자 결정):** 아래 셋으로 **멈춰 있는 곳**이다. 멈춘 양은 **작업물·분(`item-min`)** 이다.
+  1. `space_full` — 다음 저장 공간으로의 이동이 여유 공간 부족으로 멈춤: 다음 공간 자리를 기다린 시간(`space_wait_item_min`, 위치 = 대기 공간 노드)과 단계 출력이 막힌 시간(`step_blocked_item_min`, 위치 = 단계).
+  2. `equipment_busy` — 다음 생산 설비로의 이동이 그 설비의 가동으로 멈춤: 입력을 확보한 뒤 설비를 배정받기까지의 대기(`step_equipment_wait_item_min`, 위치 = 공정 버전의 단계). 근거에 후보 설비와 그 가동률이 들어간다.
+  3. `queue_pileup` — AMR·지게차는 한 번에 1제품을 옮기므로 대기 자재가 여러 개 쌓인 곳: 한 대기 공간에 동시에 쌓인 작업물의 최댓값(`buffer_peak_items`)이 기준(3개) 이상일 때 `buffer_item_min`을 멈춘 양으로 본다. 그 노드의 다음 단계가 운반(`transport_manual`)이면 `transport_related`로 표시하고 운반 단계의 **최대·평균 동시 운반 수**(운반 자원 무제한 가정에서 필요한 지게차·AMR 대수)를 붙인다.
+- **응답(`BottleneckSummaryOut`):** `run_id`, `quality_status`, `observed`(관측한 가상 시간), `definition_version`, `headline`(가장 큰 정체 한 줄), `findings[]`, `limitations[]`(**화면에 함께 보여야 하는 한계**), `thresholds`(판정에 쓴 기준값).
+- **후보(`BottleneckOut`):** `rank`(전체: level → 종류 순서 → 멈춘 양)·`rank_in_kind`(같은 종류 안, 멈춘 양 큰 순), `kind`, `level`(high ≥ 30%, medium ≥ 10%, 그 밖은 low; 같은 종류 안의 비율 `share` 기준이며 멈춘 양이 60작업물·분 미만이면 low), `stalled_item_min`, `share`, `location`(`process_version_id`·`product_id`·`product_code`·`product_name`, 단계면 `step_key`·`step_label`, 대기 공간이면 `node_key`·`node_label`), `explanation`(수치가 든 한국어 한 줄), `evidence`(종류마다 다른 근거 수치. 열린 구조, 숫자는 decimal 문자열).
+- **합산하지 않는다:** 종류가 다르면 멈춘 시간이 겹치므로(대기 공간에 쌓인 시간에 설비 대기가 들어 있음) 종류별로 순위를 매기고 합산 값을 만들지 않는다.
+- **한계(응답의 `limitations`에도 담김):** 공간 용량을 무제한으로 가정한 실행(`UNBOUNDED_BUFFERS`)은 `space_full`을 평가하지 못한다. 운반 자원(지게차·AMR 대수)은 엔진이 모델링하지 않아 적체와 필요 대수로만 추정하며, 동시 운반 수는 공정 단계별 값이라 같은 운반 자원을 여러 공정이 쓰면 합쳐 봐야 한다. 가동 달력이 없다(24시간 연속). 기준값은 임시 휴리스틱이며 실제 운영 데이터로 보정한다.
+- **단계별 지표(정의 버전 1에 추가):** 차원 `step`(= `process_version_id` + `step_key`) — `step_operations`, `step_processing_time_min`, `step_input_wait_item_min`, `step_equipment_wait_item_min`·`_avg_min`·`_max_min`, `step_blocked_item_min`, `step_peak_concurrency`. 대기 공간(`node_key`) — `space_wait_item_min`·`space_wait_max_min`, `buffer_item_min`, `buffer_peak_items`. 정의는 `GET /metric-definitions`가 정본이다. 대기 공간 지표의 `node_key`는 그래프의 노드 key이며, 서로 다른 공정이 같은 key(공유 저장 공간)를 쓰면 합쳐서 센다.
+- **지표 조회 변경(호환):** `GET /runs/{r}/metrics`에 `step_key` 필터가 늘었고 차원 필터(`process_version_id`·`step_key`·`asset_key`·`node_key`)를 **함께 쓸 수 있다**(모두 만족하는 행만). 0.11.0까지는 둘 이상 보내면 422였다. `MetricDefinition.dimension`에 `step`이 늘었다.
+- **결과의 제품 코드·이름:** `GET /runs/{r}`의 `result.products[]`에 `product_code`·`product_name`(선택)이 늘었다. 값은 실행 요청 당시 입력 스냅샷에 고정되며(스냅샷 `products[].product`) 이전 run은 현재 제품 목록으로 보충한다.
+- 예제: 성공 응답은 worker가 끝낸 실행이 필요해 시험(`tests/integration/test_api_run_bottlenecks.py`, `tests/unit/test_bottleneck.py`)이 정본이다. 실제 6공정 실행 결과는 인계 문서 BE-10에 있다.
 
 ## 6. LLM·위키 API
 

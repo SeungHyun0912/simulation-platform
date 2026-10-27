@@ -49,6 +49,7 @@ def build_snapshot(*, project_id, scenario: dict, inputs: list[ProductInput], pi
             "graph": item.graph,
             "arrivals": item.arrivals,
             "assumptions": item.assumptions,
+            **({} if item.product is None else {"product": item.product}),
         } for item in inputs],
         "assets": pinned_assets,
     }

@@ -15,6 +15,7 @@ from simulation_platform.auth.principal import Principal, get_principal
 from simulation_platform.db import get_session
 from simulation_platform.schemas.common import ListOut, Single
 from simulation_platform.schemas.run import (
+    BottleneckSummaryOut,
     EventOut,
     LineageOut,
     MetricOut,
@@ -151,12 +152,27 @@ def list_run_metrics(
     process_version_id: Annotated[str | None, Query(max_length=64, description="공정 버전 차원 필터")] = None,
     asset_key: Annotated[str | None, Query(max_length=64, description="설비 차원 필터")] = None,
     node_key: Annotated[str | None, Query(max_length=64, description="대기 공간 차원 필터")] = None,
+    step_key: Annotated[str | None, Query(max_length=64, description="단계 차원 필터(공정 버전 필터와 함께 쓰면 한 단계)")] = None,
     principal: Principal = Depends(get_principal),
     session: Session = Depends(get_session),
 ):
     """공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.
-    공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 하나만 쓸 수 있다."""
+    공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 함께 쓸 수 있다(모두 만족하는 행만)."""
     items, page = service.list_metrics(
         session, principal, project_id, run_id, limit=limit, cursor=cursor, metric_key=metric_key, window=window,
-        process_version_id=process_version_id, asset_key=asset_key, node_key=node_key)
+        process_version_id=process_version_id, asset_key=asset_key, node_key=node_key, step_key=step_key)
     return {"data": items, "page": page}
+
+
+@router.get("/runs/{run_id}/bottlenecks", response_model=Single[BottleneckSummaryOut],
+            responses={**READ_ERRORS, 409: ERR})
+def get_run_bottlenecks(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=100, description="돌려줄 병목 후보 수(순위순)")] = 20,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로
+    돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다."""
+    return {"data": service.get_bottlenecks(session, principal, project_id, run_id, limit)}

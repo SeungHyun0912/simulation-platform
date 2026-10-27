@@ -89,8 +89,8 @@ def test_metrics_can_be_filtered_by_key_dimension_and_paged(client, ctx, run):
     assert {r["metric_key"] for r in asset_rows} == {"processing_time_min", "setup_time_min", "reserved_time_min",
                                                      "blocked_time_min", "utilization"}
     nodes = all_metrics(client, ctx, run["id"], node_key="wait")  # 시험 공정의 대기 공간 노드
-    assert {r["metric_key"] for r in nodes} == {"buffer_wait_avg_min", "buffer_wait_max_min",
-                                                "buffer_occupancy_avg_items"}
+    assert {"buffer_wait_avg_min", "buffer_wait_max_min", "buffer_occupancy_avg_items", "buffer_item_min",
+            "buffer_peak_items", "space_wait_item_min", "space_wait_max_min"} == {r["metric_key"] for r in nodes}
     page = ok_page(metrics_of(client, ctx, run["id"], limit=5))
     assert len(page["data"]) == 5 and page["page"]["next_cursor"]
     rest = ok_page(metrics_of(client, ctx, run["id"], limit=5, cursor=page["page"]["next_cursor"]))
@@ -99,8 +99,8 @@ def test_metrics_can_be_filtered_by_key_dimension_and_paged(client, ctx, run):
 
 
 def test_bad_metric_queries_are_rejected(client, ctx, run):
-    both = metrics_of(client, ctx, run["id"], asset_key="a", node_key="b")
-    assert both.status_code == 422  # 차원 필터는 하나만
+    both = ok_page(metrics_of(client, ctx, run["id"], asset_key="a", node_key="b"))
+    assert both["data"] == []  # 차원 필터를 함께 쓰면 모두 만족하는 행만(0.12.0부터 조합 가능)
     assert metrics_of(client, ctx, run["id"], window="year").status_code == 422
     cursor = ok_page(metrics_of(client, ctx, run["id"], limit=3))["page"]["next_cursor"]
     assert metrics_of(client, ctx, run["id"], cursor=cursor, metric_key="utilization").status_code == 422

@@ -5,6 +5,13 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.12.0 — 2026-10-27 · scope `runs`(확장, BE-10) · sha256 `f0250383…9689` · 기준 commit `6738ff7`
+- **호환성: 0.11.0과 호환(추가만, 지표 필터는 완화).** 기존 operation·필드 삭제·변경 없음. 새 operation 1개(`GET /runs/{r}/bottlenecks`). 새 오류 코드 없음. `result.products[]`에 `product_code`·`product_name`(선택) 추가, `GET /runs/{r}/metrics`에 `step_key` 필터 추가와 차원 필터 조합 허용(0.11.0에서는 둘 이상이면 422였던 요청이 이제 AND로 동작), 지표 정의의 `dimension`에 값 `step` 추가.
+- 근거: CR be10(사용자 병목 판정 기준, '후보로 정해준 API들을 순서대로 개발해 줘', 2026-10-27) + FE 요청(제품 코드·이름). 상세는 04 §5.5.
+- 핵심 규칙: 병목은 **멈춰 있는 곳**이다 — ① 다음 저장 공간 부족(`space_full`) ② 다음 설비의 가동(`equipment_busy`) ③ 대기 자재 적체(`queue_pileup`, 운반이 1제품씩이라는 기준). 멈춘 양은 작업물·분이며 종류별 순위·`level`·근거·한국어 설명을 준다. 종류끼리 합산하지 않는다. **`limitations`를 화면에 함께 보여야 한다**(공간 무제한 가정 실행은 공간 부족을 평가하지 못함, 운반 자원 대수는 모델링하지 않음).
+- 지표 정의(버전 1)에 단계별·공간 대기·적체 지표 12개가 늘었다(`GET /metric-definitions`가 정본). 값은 이벤트로만 계산하며 기존 지표 값은 바뀌지 않는다.
+- **프런트가 해야 할 일:** 결과 화면을 만들 때 타입 재생성. 병목 화면은 `findings`를 `rank` 순으로 보여 주고 `kind`별로 묶어 `level`을 색·배지로 표현하며 `explanation`을 그대로 쓸 수 있다. `evidence`는 종류마다 달라 열린 구조로 다루고(알 수 없는 키는 무시), **`limitations`와 `thresholds`를 함께 표시**한다. `location.product_code`가 있으면 그것을 표시하고, `result.products[].product_code`가 생겼으므로 제품 목록으로 id를 바꾸는 대신 이 값을 우선한다. `quality_status`가 `complete`가 아니면 미완료·관측 중단 결과임을 표시한다.
+
 ## 0.11.0 — 2026-10-27 · scope `runs`(확장, BE-06c) · sha256 `d6189bb8…5d49` · 기준 commit `1a16559`
 - **호환성: 0.10.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 2개(`GET /runs/{r}/metrics`, `GET /metric-definitions`). 새 오류 코드 없음(결과가 없으면 기존 `RUN_RESULT_NOT_AVAILABLE`).
 - 근거: CR be08 §4 be08c / 보드 DEC-008(사용자 'be08c 시작해 줘', 2026-10-27, 권장안 승인으로 해석). 상세는 04 §5.4.

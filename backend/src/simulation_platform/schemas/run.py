@@ -31,6 +31,8 @@ class MinutesOut(Out):
 class ProductResultOut(Out):
     product_id: str
     process_version_id: str
+    product_code: str | None = Field(default=None, description="제품 표시 코드(실행 요청 당시 값, 이전 run은 현재 제품 목록으로 보충)")
+    product_name: str | None = None
     completed_items: int = Field(description="완제품 milestone에 도달한 작업물 수")
     completed_length_m: str
     reached_sink: int
@@ -210,6 +212,43 @@ class MetricOut(Out):
 class MetricDefinitionOut(Out):
     metric_key: str
     unit: str
-    dimension: Literal["process_version_id", "asset_key", "node_key"]
+    dimension: Literal["process_version_id", "asset_key", "node_key", "step"] = Field(
+        description="`step`은 공정 버전과 단계를 함께(`process_version_id`+`step_key`) 가리킨다")
     description: str
     definition_version: str
+
+
+class BottleneckLocationOut(Out):
+    process_version_id: str | None = None
+    product_id: str | None = None
+    product_code: str | None = None
+    product_name: str | None = None
+    step_key: str | None = None
+    step_label: str | None = None
+    node_key: str | None = None
+    node_label: str | None = None
+
+
+class BottleneckOut(Out):
+    rank: int = Field(description="전체 순위(level → 종류 순서 → 멈춘 양)")
+    rank_in_kind: int = Field(description="같은 종류 안에서의 순위(멈춘 양 큰 순)")
+    kind: Literal["space_full", "equipment_busy", "queue_pileup"] = Field(
+        description="space_full: 다음 저장 공간 부족으로 멈춤, equipment_busy: 다음 설비의 가동으로 멈춤, "
+                    "queue_pileup: 대기 자재가 쌓임(운반이 1제품씩이라는 기준)")
+    level: Literal["high", "medium", "low"] = Field(description="같은 종류 안의 비율(`share`)과 멈춘 양으로 정한 정도(임시 기준값)")
+    stalled_item_min: str = Field(description="멈춘 양(작업물·분). 종류가 다르면 겹치므로 합산하지 않는다")
+    share: str = Field(description="같은 종류의 멈춘 양 합계 대비 비율(0~1)")
+    location: BottleneckLocationOut
+    explanation: str = Field(description="한국어 한 줄 설명(수치 포함)")
+    evidence: dict[str, JsonValue] = Field(description="근거 수치(종류마다 다름). 숫자는 decimal 문자열")
+
+
+class BottleneckSummaryOut(Out):
+    run_id: uuid.UUID
+    quality_status: MetricQuality
+    observed: MinutesOut = Field(description="관측한 가상 시간(실행 종료 시각)")
+    definition_version: str
+    headline: str
+    findings: list[BottleneckOut]
+    limitations: list[str] = Field(description="이 판정의 한계(가정·모델링하지 않은 것). 화면에 함께 보여야 한다")
+    thresholds: dict[str, str] = Field(description="판정에 쓴 기준값(임시 휴리스틱)")

@@ -141,6 +141,8 @@ def summarize(snapshot: dict, result, tally: _Tally) -> dict:
         "event_count": result.event_count, "engine_version": result.engine_version, "seed": result.seed,
         "products": [{
             "product_id": by_version[v]["product_id"], "process_version_id": v,
+            "product_code": (by_version[v].get("product") or {}).get("code"),
+            "product_name": (by_version[v].get("product") or {}).get("name"),
             "completed_items": tally.completed[v], "completed_length_m": format_decimal(tally.length[v]),
             "reached_sink": tally.sunk[v], "discarded_length_m": format_decimal(tally.discarded[v]),
             "first_completion": None if v not in tally.first else _minutes(tally.first[v]),

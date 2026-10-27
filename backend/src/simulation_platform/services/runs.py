@@ -9,10 +9,11 @@
 import uuid
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from simulation_platform.auth.principal import Principal
+from simulation_platform.domain import bottleneck as bottleneck_rules
 from simulation_platform.domain import run as rules
 from simulation_platform.domain.errors import (
     DomainError,
@@ -31,13 +32,23 @@ from simulation_platform.domain.pagination import (
     make_tag,
 )
 from simulation_platform.domain.scenario import precheck as scenario_precheck
-from simulation_platform.models import Job, RunInputSnapshot, Scenario, SimulationRun
+from simulation_platform.models import (
+    Asset,
+    Job,
+    Product,
+    RunInputSnapshot,
+    Scenario,
+    SimulationRun,
+)
 from simulation_platform.models.base import new_id
 from simulation_platform.repositories import runs as repo
 from simulation_platform.repositories import scenarios as scenario_repo
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.run import (
     AttemptOut,
+    BottleneckLocationOut,
+    BottleneckOut,
+    BottleneckSummaryOut,
     EventOut,
     LineageLinkOut,
     LineageOperationOut,
@@ -79,10 +90,29 @@ def _run_out(session: Session, run: SimulationRun) -> RunOut:
     selected = next((a for a in attempts if a.id == run.selected_attempt_id), None)
     result = (RunResultOut.model_validate(selected.result_summary)
               if selected is not None and selected.result_summary else None)
+    if result is not None:
+        _fill_product_names(session, run.project_id, result)
     return RunOut(
         **_item(run), requested_by=run.requested_by, engine_version=run.engine_version,
         cancel_requested_at=run.cancel_requested_at, termination_reason=run.termination_reason,
         attempts=[AttemptOut.model_validate(a) for a in attempts], result=result)
+
+
+def _fill_product_names(session: Session, project_id: uuid.UUID, result: RunResultOut) -> None:
+    """결과 요약에 제품 코드·이름이 없는 이전 run은 현재 제품 목록으로 보충한다(새 run은 요청 당시 값이 이미 들어 있다)."""
+    missing = [p for p in result.products if p.product_code is None]
+    if not missing:
+        return
+    try:
+        ids = {uuid.UUID(p.product_id) for p in missing}
+    except ValueError:
+        return
+    found = {str(p.id): p for p in session.scalars(select(Product).where(Product.project_id == project_id,
+                                                                         Product.id.in_(ids)))}
+    for product in missing:
+        row = found.get(product.product_id)
+        if row is not None:
+            product.product_code, product.product_name = row.code, row.name
 
 
 def _reload(session: Session, project_id: uuid.UUID, run_id: uuid.UUID) -> SimulationRun:
@@ -337,21 +367,108 @@ def _metric_out(row) -> MetricOut:
 
 def list_metrics(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID, *,
                  limit: int | None, cursor: str | None, metric_key: str | None, window: str,
-                 process_version_id: str | None, asset_key: str | None,
-                 node_key: str | None) -> tuple[list[MetricOut], Page]:
+                 process_version_id: str | None, asset_key: str | None, node_key: str | None,
+                 step_key: str | None = None) -> tuple[list[MetricOut], Page]:
     require_project(session, principal, project_id)
     attempt_id = _official_attempt(session, project_id, run_id)
-    chosen = [(name, value) for name, value in (("process_version_id", process_version_id),
+    chosen = [(name, value) for name, value in (("process_version_id", process_version_id), ("step_key", step_key),
                                                  ("asset_key", asset_key), ("node_key", node_key)) if value is not None]
-    if len(chosen) > 1:
-        raise ValidationFailed("차원 필터는 하나만 쓸 수 있습니다.", [ErrorDetail(
-            message="process_version_id, asset_key, node_key 중 하나만 보내세요.", field_path="/asset_key")])
     limit = limit or DEFAULT_LIMIT
     tag = make_tag("run-metrics", ("id", False), {"run": run_id, "metric_key": metric_key, "window": window,
                                                   "dimension": chosen})
     values = decode_cursor(cursor, tag, 1) if cursor else None
     rows = repo.list_metrics(session, project_id, attempt_id, limit=limit, cursor_values=values,
-                             metric_key=metric_key, window_kind=window, dimension=chosen[0] if chosen else None)
+                             metric_key=metric_key, window_kind=window, dimensions=chosen)
     page_rows = rows[:limit]
     next_cursor = encode_cursor(tag, [page_rows[-1].id]) if len(rows) > limit else None
     return [_metric_out(r) for r in page_rows], Page(limit=limit, next_cursor=next_cursor)
+
+
+# --- 병목 요약(CR be10) ----------------------------------------------------------------------------------
+_BOTTLENECK_METRICS = (
+    "step_equipment_wait_item_min", "step_equipment_wait_avg_min", "step_equipment_wait_max_min", "step_operations",
+    "step_processing_time_min", "step_input_wait_item_min", "step_blocked_item_min", "step_peak_concurrency",
+    "space_wait_item_min", "space_wait_max_min", "buffer_item_min", "buffer_peak_items", "buffer_wait_avg_min",
+    "buffer_wait_max_min", "buffer_occupancy_avg_items", "utilization", "processing_time_min")
+
+
+def _graph_info(snapshot: dict, names: dict[str, tuple[str, str]]) -> dict[str, dict]:
+    """스냅샷의 공정 그래프에서 병목 설명에 필요한 것(노드 이름·종류·후보 설비·다음 노드)만 뽑는다."""
+    graphs = {}
+    for product in snapshot["products"]:
+        nodes = product["graph"]["nodes"]
+        by_id = {n["id"]: n["node_key"] for n in nodes}
+        following: dict[str, list[str]] = {}
+        for edge in product["graph"]["edges"]:
+            following.setdefault(by_id.get(edge["from_node_id"]), []).append(by_id.get(edge["to_node_id"]))
+        info = {}
+        for node in nodes:
+            step = node.get("step") or {}
+            assets = [str(c["asset_id"]) for r in step.get("resources", []) for c in r.get("candidates", [])]
+            info[node["node_key"]] = {"label": node.get("label") or node["node_key"], "kind": node.get("kind"),
+                                      "operation_type": step.get("operation_type"), "assets": assets,
+                                      "next": [k for k in following.get(node["node_key"], []) if k]}
+        meta = product.get("product") or {}
+        code, name = meta.get("code"), meta.get("name")
+        if code is None and product["product_id"] in names:
+            code, name = names[product["product_id"]]
+        graphs[product["process_version"]["id"]] = {
+            "product": {"id": product["product_id"], "code": code, "name": name}, "nodes": info}
+    return graphs
+
+
+def _jsonable(value):
+    if isinstance(value, Decimal):
+        return f"{value:.6f}"
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+def get_bottlenecks(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                    limit: int) -> BottleneckSummaryOut:
+    """공식 결과의 전체 구간 지표로 병목(멈춰 있는 곳)을 종류·위치·근거와 함께 순위를 매겨 돌려준다."""
+    require_project(session, principal, project_id)
+    attempt_id = _official_attempt(session, project_id, run_id)
+    run = _reload(session, project_id, run_id)
+    attempt = next(a for a in repo.attempts_of(session, project_id, run_id) if a.id == attempt_id)
+    result = attempt.result_summary or {}
+    snapshot = repo.snapshot_of(session, project_id, run_id).snapshot
+    products = {str(p.id): (p.code, p.name) for p in session.scalars(select(Product).where(Product.project_id == project_id))}
+    graphs = _graph_info(snapshot, products)
+    steps: dict[tuple[str, str], dict] = {}
+    nodes: dict[str, dict] = {}
+    assets: dict[str, dict] = {}
+    for row in repo.run_window_metrics(session, project_id, attempt_id, _BOTTLENECK_METRICS):
+        dims = row.dimensions
+        target = (steps.setdefault((dims["process_version_id"], dims["step_key"]), {}) if "step_key" in dims
+                  else nodes.setdefault(dims["node_key"], {}) if "node_key" in dims
+                  else assets.setdefault(dims["asset_key"], {}) if "asset_key" in dims else None)
+        if target is not None:
+            target[row.metric_key] = row.value
+    asset_ids = {uuid.UUID(a) for info in graphs.values() for n in info["nodes"].values() for a in n["assets"]}
+    asset_names = {str(a.id): {"code": a.code, "name": a.name} for a in session.scalars(select(Asset).where(
+        Asset.project_id == project_id, Asset.id.in_(asset_ids)))} if asset_ids else {}
+    observed = Decimal(result["end_time"]["min"]) if result.get("end_time") else Decimal(0)
+    codes = {a["code"] for a in result.get("assumptions", [])}
+    found = bottleneck_rules.analyze(steps=steps, nodes=nodes, assets=assets, graphs=graphs, asset_names=asset_names,
+                                     observed_min=observed, assumption_codes=codes)
+    out = []
+    for f in found["findings"][:limit]:
+        loc = dict(f["location"])
+        pv = loc.get("process_version_id")
+        if pv in graphs:
+            loc.update(product_id=graphs[pv]["product"]["id"], product_code=graphs[pv]["product"]["code"],
+                       product_name=graphs[pv]["product"]["name"])
+        out.append(BottleneckOut(
+            rank=f["rank"], rank_in_kind=f["rank_in_kind"], kind=f["kind"], level=f["level"],
+            stalled_item_min=f"{f['stalled']:.6f}", share=f"{f['share']:.6f}", location=BottleneckLocationOut(**loc),
+            explanation=f["explanation"], evidence=_jsonable(f["evidence"])))
+    state = result.get("state", run.status)
+    quality = {"completed": "complete", "horizon_reached": "censored"}.get(state, "incomplete")
+    return BottleneckSummaryOut(
+        run_id=run.id, quality_status=quality, observed=MinutesOut(**result["end_time"]) if result.get("end_time")
+        else MinutesOut(min="0.000000", exact="0"), definition_version=bottleneck_rules.DEFINITION_VERSION,
+        headline=found["headline"], findings=out, limitations=found["limitations"], thresholds=found["thresholds"])
