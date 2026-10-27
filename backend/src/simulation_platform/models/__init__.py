@@ -20,7 +20,15 @@ from simulation_platform.models.process import (
     StepMaterialSpec,
 )
 from simulation_platform.models.revision import AssetRevision, PortPolicy
-from simulation_platform.models.run import Job, RunAttempt, RunInputSnapshot, SimulationRun
+from simulation_platform.models.run import (
+    Job,
+    RunAttempt,
+    RunInputSnapshot,
+    RunWorkItem,
+    RunWorkItemRelation,
+    SimulationEvent,
+    SimulationRun,
+)
 from simulation_platform.models.scenario import (
     Scenario,
     ScenarioAsset,
@@ -53,10 +61,13 @@ __all__ = [
     "ResourceRequirement",
     "RunAttempt",
     "RunInputSnapshot",
+    "RunWorkItem",
+    "RunWorkItemRelation",
     "Scenario",
     "ScenarioAsset",
     "ScenarioProduct",
     "ScenarioVersion",
+    "SimulationEvent",
     "SimulationRun",
     "SpaceDetail",
     "StepMaterialSpec",

@@ -126,3 +126,60 @@ class RunInputOut(Out):
     sha256: str = Field(description="정규화 JSON의 SHA-256(= run.input_hash)")
     hash_verified: bool = Field(description="저장된 스냅샷을 다시 정규화해 해시가 맞는지 확인한 결과")
     snapshot: dict[str, JsonValue]
+
+
+class EventOut(Out):
+    event_seq: int
+    sim_time: MinutesOut
+    event_type: str
+    step_key: str | None = None
+    operation_id: str | None = None
+    asset_key: str | None = None
+    item_key: str | None = None
+    process_version_id: str | None = None
+    source: str | None = None
+    destination: str | None = None
+    reason: str | None = None
+    quantities: dict[str, JsonValue] = Field(
+        default_factory=dict, description="양·상태. 길이·무게는 decimal 문자열이며 `STATE_SNAPSHOT`은 상태 요약을 담는다")
+
+
+class WorkItemOut(Out):
+    item_key: str
+    parent_key: str | None = None
+    process_version_id: str | None = None
+    lot_key: str | None = None
+    state_code: str | None = None
+    form: str | None = None
+    length_m: str | None = Field(default=None, description="없으면 null(해당 없음 ≠ 0)")
+    weight_kg: str | None = None
+    location_key: str | None = None
+    status: Literal["active", "consumed", "completed"]
+    created_at: MinutesOut
+
+
+class LineageLinkOut(Out):
+    parent_key: str
+    child_key: str | None = Field(default=None, description="자식이 없으면(전부 잔량·폐기) null")
+    parent_length_m: str | None = None
+    child_length_m: str | None = None
+
+
+class LineageOperationOut(Out):
+    operation_key: str
+    step_key: str
+    relation_type: Literal["split", "transform", "supply", "yield"]
+    accounting_mode: Literal["physical", "abstract_yield"] = Field(
+        description="`abstract_yield`는 물량 보존 검증 대상이 아니다(03 §5)")
+    process_version_id: str | None = None
+    residual_length_m: str | None = Field(default=None, description="이 작업이 남긴 잔량(작업 단위 값)")
+    carried_in_m: str | None = Field(default=None, description="이 작업이 잔량 풀에서 이어 받은 길이")
+    balanced: bool | None = Field(default=None, description="자식 길이 합 + 잔량 = 부모 길이. 검증 대상이 아니면 null")
+    links: list[LineageLinkOut]
+
+
+class LineageOut(Out):
+    item_key: str
+    items: list[WorkItemOut] = Field(description="계보에 나온 작업물(조상·후손 전부)")
+    operations: list[LineageOperationOut] = Field(description="그 작업물을 만들거나 바꾼 작업, 이벤트 순서")
+    truncated: bool = Field(default=False, description="작업물이 너무 많아 일부만 담았다")

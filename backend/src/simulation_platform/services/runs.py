@@ -7,6 +7,7 @@
 """
 
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -20,6 +21,8 @@ from simulation_platform.domain.errors import (
     JobCancelTooLate,
     NotFoundError,
     RunNotRunnable,
+    RunResultNotAvailable,
+    ValidationFailed,
 )
 from simulation_platform.domain.pagination import (
     DEFAULT_LIMIT,
@@ -35,11 +38,17 @@ from simulation_platform.repositories import scenarios as scenario_repo
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.run import (
     AttemptOut,
+    EventOut,
+    LineageLinkOut,
+    LineageOperationOut,
+    LineageOut,
+    MinutesOut,
     RunCreate,
     RunInputOut,
     RunListItem,
     RunOut,
     RunResultOut,
+    WorkItemOut,
 )
 from simulation_platform.services.projects import require_project, require_write
 from simulation_platform.services.scenarios import collect_inputs
@@ -208,3 +217,107 @@ def cancel_run(session: Session, principal: Principal, project_id: uuid.UUID, ru
               actor_id=principal.user_id, action=action, entity_type="simulation_run", entity_id=run.id,
               before=None, after={"status": run.status}, request_id=request_id)
     return _run_out(session, _reload(session, project_id, run_id))
+
+
+# --- 이벤트·계보 조회(공식 결과 = 선택된 시도의 기록) ---------------------------------------------------------
+MAX_LINEAGE_ITEMS = 5000
+
+
+def _official_attempt(session: Session, project_id: uuid.UUID, run_id: uuid.UUID) -> uuid.UUID:
+    run = _reload(session, project_id, run_id)
+    if run.selected_attempt_id is None:
+        raise RunResultNotAvailable("이 실행에는 아직 공식 결과가 없습니다.", [ErrorDetail(
+            message=f"현재 상태는 {run.status}입니다. 끝까지 실행된(completed·stalled·horizon_reached·limit_reached) "
+                    "실행만 이벤트·계보를 조회할 수 있습니다.", field_path="/status")])
+    return run.selected_attempt_id
+
+
+def _parse_decimal(value: str | None, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation:
+        parsed = None
+    if parsed is None or not parsed.is_finite() or parsed < 0:
+        raise ValidationFailed(f"{field}는 0 이상의 숫자여야 합니다.", [ErrorDetail(
+            message="숫자 형식이 맞지 않습니다.", field_path=f"/{field}")])
+    return parsed
+
+
+def _num(value: Decimal | None) -> str | None:
+    return None if value is None else str(value)
+
+
+def _event_out(row) -> EventOut:
+    return EventOut(
+        event_seq=row.event_seq, sim_time=MinutesOut(min=str(row.sim_time_min), exact=row.sim_time_exact),
+        event_type=row.event_type, step_key=row.step_key, operation_id=row.operation_id, asset_key=row.asset_key,
+        item_key=row.item_key, process_version_id=row.process_version_id, source=row.source,
+        destination=row.destination, reason=row.reason, quantities=row.quantities)
+
+
+def list_events(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID, *,
+                limit: int | None, cursor: str | None, event_type: str | None, step_key: str | None,
+                asset_key: str | None, item_key: str | None, from_min: str | None,
+                to_min: str | None) -> tuple[list[EventOut], Page]:
+    require_project(session, principal, project_id)
+    attempt_id = _official_attempt(session, project_id, run_id)
+    limit = limit or DEFAULT_LIMIT
+    lower, upper = _parse_decimal(from_min, "from_min"), _parse_decimal(to_min, "to_min")
+    tag = make_tag("run-events", ("event_seq", False), {
+        "run": run_id, "event_type": event_type, "step_key": step_key, "asset_key": asset_key,
+        "item_key": item_key, "from_min": from_min, "to_min": to_min})
+    values = decode_cursor(cursor, tag, 1) if cursor else None
+    rows = repo.list_events(session, project_id, attempt_id, limit=limit, cursor_values=values,
+                            event_type=event_type, step_key=step_key, asset_key=asset_key, item_key=item_key,
+                            from_min=lower, to_min=upper)
+    page_rows = rows[:limit]
+    next_cursor = encode_cursor(tag, [page_rows[-1].event_seq]) if len(rows) > limit else None
+    return [_event_out(r) for r in page_rows], Page(limit=limit, next_cursor=next_cursor)
+
+
+def _item_out(row) -> WorkItemOut:
+    return WorkItemOut(
+        item_key=row.item_key, parent_key=row.parent_key, process_version_id=row.process_version_id,
+        lot_key=row.lot_key, state_code=row.state_code, form=row.form, length_m=_num(row.length_m),
+        weight_kg=_num(row.weight_kg), location_key=row.location_key, status=row.status,
+        created_at=MinutesOut(min=str(row.created_at_min), exact=row.created_at_exact))
+
+
+def get_lineage(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                item_key: str) -> LineageOut:
+    """작업물의 조상(어디서 왔나)과 후손(무엇이 되었나)을 모두 모아 돌려준다."""
+    require_project(session, principal, project_id)
+    attempt_id = _official_attempt(session, project_id, run_id)
+    if repo.get_work_item(session, project_id, attempt_id, item_key) is None:
+        raise NotFoundError("작업물을 찾을 수 없습니다.")
+    seen, rows, truncated = {item_key}, {}, False
+    for as_child in (True, False):  # 조상 방향, 후손 방향을 따로 넓힌다(형제로 번지지 않게)
+        frontier = {item_key}
+        while frontier and not truncated:
+            found = repo.relations_of(session, project_id, attempt_id, frontier, as_child=as_child)
+            frontier = set()
+            for relation in found:
+                rows[relation.seq] = relation
+                for key in (relation.parent_key, relation.child_key):
+                    if key is not None and key not in seen:
+                        seen.add(key)
+                        frontier.add(key)
+            truncated = len(seen) > MAX_LINEAGE_ITEMS
+    whole = {r.seq: r for r in repo.relations_of_operations(
+        session, project_id, attempt_id, {r.operation_key for r in rows.values()})}
+    seen.update(key for r in whole.values() for key in (r.parent_key, r.child_key) if key is not None)
+    operations: dict[tuple, dict] = {}
+    for relation in sorted(whole.values(), key=lambda r: r.seq):
+        group = operations.setdefault((relation.operation_key, relation.relation_type), {
+            "operation_key": relation.operation_key, "step_key": relation.step_key,
+            "relation_type": relation.relation_type, "accounting_mode": relation.accounting_mode,
+            "process_version_id": relation.process_version_id, "residual_length_m": _num(relation.residual_length_m),
+            "carried_in_m": _num(relation.carried_in_m), "balanced": relation.balanced, "links": []})
+        group["links"].append(LineageLinkOut(
+            parent_key=relation.parent_key, child_key=relation.child_key,
+            parent_length_m=_num(relation.parent_length_m), child_length_m=_num(relation.child_length_m)))
+    items = repo.work_items(session, project_id, attempt_id, sorted(seen)[:MAX_LINEAGE_ITEMS + 1])
+    return LineageOut(item_key=item_key, items=[_item_out(i) for i in items],
+                      operations=[LineageOperationOut(**g) for g in operations.values()], truncated=truncated)

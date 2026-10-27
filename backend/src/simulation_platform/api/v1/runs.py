@@ -14,7 +14,15 @@ from simulation_platform.api.v1.common import ERR, READ_ERRORS, WRITE_ERRORS
 from simulation_platform.auth.principal import Principal, get_principal
 from simulation_platform.db import get_session
 from simulation_platform.schemas.common import ListOut, Single
-from simulation_platform.schemas.run import RunCreate, RunInputOut, RunListItem, RunOut, RunStatus
+from simulation_platform.schemas.run import (
+    EventOut,
+    LineageOut,
+    RunCreate,
+    RunInputOut,
+    RunListItem,
+    RunOut,
+    RunStatus,
+)
 from simulation_platform.services import runs as service
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["runs"])
@@ -92,3 +100,39 @@ def cancel_run(
     """취소를 요청한다(202). 시작 전이면 바로 `cancelled`가 되고, 실행 중이면 `cancel_requested_at`만 기록되며 worker가
     확인해 멈춘 뒤 `cancelled`가 된다(요청과 실제 취소를 구분). 이미 끝났으면 409 `JOB_CANCEL_TOO_LATE`."""
     return {"data": service.cancel_run(session, principal, project_id, run_id, request_id_of(request))}
+
+
+@router.get("/runs/{run_id}/events", response_model=ListOut[EventOut], responses={**READ_ERRORS, 409: ERR})
+def list_run_events(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    limit: LimitQuery = None,
+    cursor: CursorQuery = None,
+    event_type: Annotated[str | None, Query(max_length=64, description="이벤트 종류(예: `STATE_SNAPSHOT`)")] = None,
+    step_key: Annotated[str | None, Query(max_length=64)] = None,
+    asset_key: Annotated[str | None, Query(max_length=64)] = None,
+    item_key: Annotated[str | None, Query(max_length=64)] = None,
+    from_min: Annotated[str | None, Query(description="가상 시간(분) 이상, decimal 문자열")] = None,
+    to_min: Annotated[str | None, Query(description="가상 시간(분) 미만, decimal 문자열")] = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """공식 결과(선택된 시도)의 이벤트를 `event_seq` 순서로 돌려준다(cursor). 공식 결과가 아직 없으면 409
+    `RUN_RESULT_NOT_AVAILABLE`. 하루·주·월 경계의 상태 요약은 `event_type=STATE_SNAPSHOT`으로 모아 본다."""
+    items, page = service.list_events(
+        session, principal, project_id, run_id, limit=limit, cursor=cursor, event_type=event_type,
+        step_key=step_key, asset_key=asset_key, item_key=item_key, from_min=from_min, to_min=to_min)
+    return {"data": items, "page": page}
+
+
+@router.get("/runs/{run_id}/items/{item_key}/lineage", response_model=Single[LineageOut],
+            responses={**READ_ERRORS, 409: ERR})
+def get_item_lineage(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    item_key: str,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """작업물의 조상(어디서 왔나)과 후손(무엇이 되었나), 그 작업물을 만들거나 바꾼 작업과 길이 보존 값(잔량·이월·균형)."""
+    return {"data": service.get_lineage(session, principal, project_id, run_id, item_key)}

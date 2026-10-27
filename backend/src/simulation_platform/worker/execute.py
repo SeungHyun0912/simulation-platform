@@ -22,8 +22,11 @@ class ChildOutcome:
 def _child_main(snapshot: dict, conn) -> None:  # pragma: no cover - 자식 프로세스에서 실행된다
     from simulation_platform.simulation.runner import run_snapshot
 
+    def on_batch(kind: str, rows: list[dict]) -> None:
+        conn.send(("batch", (kind, rows)))
+
     try:
-        conn.send(("ok", run_snapshot(snapshot)))
+        conn.send(("ok", run_snapshot(snapshot, on_batch)))
     except BaseException as exc:  # noqa: BLE001 - 어떤 오류든 부모에게 이유를 알린다
         conn.send(("engine_error", f"{type(exc).__name__}: {exc}"))
     finally:
@@ -31,8 +34,9 @@ def _child_main(snapshot: dict, conn) -> None:  # pragma: no cover - 자식 프�
 
 
 def run_in_child(snapshot: dict, on_tick: Callable[[], str], *, tick_seconds: float, wall_timeout_seconds: float,
-                 target=_child_main) -> ChildOutcome:
+                 on_batch: Callable[[str, list[dict]], str] | None = None, target=_child_main) -> ChildOutcome:
     """스냅샷을 자식 프로세스에서 실행한다. `on_tick`은 tick마다 부르며 CANCEL·LOST면 자식을 멈춘다.
+    자식이 이벤트·작업물·계보를 묶음으로 보내면 `on_batch(kind, rows)`가 저장하고, 마찬가지로 CANCEL·LOST를 돌려주면 멈춘다.
 
     `target`은 시험에서 느리거나 비정상인 자식을 흉내 내는 데만 바꾼다."""
     ctx = multiprocessing.get_context("spawn")
@@ -50,13 +54,18 @@ def run_in_child(snapshot: dict, on_tick: Callable[[], str], *, tick_seconds: fl
                 except EOFError:
                     process.join(5)  # 종료 코드를 알 수 있게 잠시 기다린다
                     return ChildOutcome("crashed", detail=f"자식 프로세스가 결과 없이 닫혔습니다(종료 코드 {process.exitcode}).")
-                process.join(5)
-                return ChildOutcome("ok", summary=payload) if kind == "ok" else ChildOutcome(kind, detail=payload)
-            if not process.is_alive():
+                if kind == "batch":
+                    action = CONTINUE if on_batch is None else on_batch(*payload)
+                    if action != CONTINUE:
+                        return ChildOutcome("cancelled" if action == CANCEL else "lost")
+                else:
+                    process.join(5)
+                    return ChildOutcome("ok", summary=payload) if kind == "ok" else ChildOutcome(kind, detail=payload)
+            elif not process.is_alive():
                 if receiver.poll(0):
                     continue
                 return ChildOutcome("crashed", detail=f"자식 프로세스가 종료 코드 {process.exitcode}로 끝났습니다.")
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline:  # 자식이 끊임없이 묶음을 보내도 시간 제한·임대 갱신은 건너뛰지 않는다
                 return ChildOutcome("timeout", detail=f"실행 시간 한도 {wall_timeout_seconds:g}초를 넘었습니다.")
             if time.monotonic() >= next_tick:
                 next_tick = time.monotonic() + tick_seconds

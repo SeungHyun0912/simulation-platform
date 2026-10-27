@@ -1,5 +1,6 @@
 """엔진 이벤트 표준(07 §9). event_seq는 실행 안에서 1부터 안정적으로 증가한다."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
@@ -29,6 +30,7 @@ ENTRY_WAITING = "ENTRY_WAITING"  # 설비가 아닌 위치(도착·공간·miles
 RESIDUAL_CREATED = "RESIDUAL_CREATED"
 RESIDUAL_CARRIED = "RESIDUAL_CARRIED"
 RESIDUAL_DISCARDED = "RESIDUAL_DISCARDED"
+STATE_SNAPSHOT = "STATE_SNAPSHOT"  # 하루·주·월 경계의 관측용 상태 요약(재개용 체크포인트가 아니다)
 
 # 설비의 배타적 상태(07 §9). IN 대기는 작업물 상태이며 설비 상태와 별도다.
 IDLE, RESERVED, SETUP, PROCESSING = "IDLE", "RESERVED", "SETUP", "PROCESSING"
@@ -68,16 +70,38 @@ class EventLimitReached(Exception):
 
 
 class EventLog:
-    def __init__(self, limit: int | None = None) -> None:
+    """이벤트를 번호 순서로 쌓는다. `sink`가 있으면 `batch_size`개씩 모아 넘기고(`flush`로 남은 것을 비운다),
+    `retain=False`이면 메모리에 보관하지 않는다(한 달치 규모에서 이벤트 전체를 메모리에 두지 않기 위함)."""
+
+    def __init__(self, limit: int | None = None, *, sink: Callable[[tuple[Event, ...]], None] | None = None,
+                 batch_size: int = 2000, retain: bool = True) -> None:
         self._events: list[Event] = []
         self._limit = limit
+        self._count = 0
+        self._sink, self._batch_size, self._retain = sink, batch_size, retain
+        self._batch: list[Event] = []
 
     def emit(self, sim_time: Fraction, event_type: str, **fields) -> Event:
-        if self._limit is not None and len(self._events) >= self._limit:
+        if self._limit is not None and self._count >= self._limit:
             raise EventLimitReached(self._limit)
-        event = Event(event_seq=len(self._events) + 1, sim_time=sim_time, event_type=event_type, **fields)
-        self._events.append(event)
+        self._count += 1
+        event = Event(event_seq=self._count, sim_time=sim_time, event_type=event_type, **fields)
+        if self._retain:
+            self._events.append(event)
+        if self._sink is not None:
+            self._batch.append(event)
+            if len(self._batch) >= self._batch_size:
+                self.flush()
         return event
+
+    def flush(self) -> None:
+        if self._sink is not None and self._batch:
+            batch, self._batch = tuple(self._batch), []
+            self._sink(batch)
+
+    @property
+    def count(self) -> int:
+        return self._count
 
     @property
     def events(self) -> tuple[Event, ...]:

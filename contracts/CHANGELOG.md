@@ -5,6 +5,13 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.10.0 — 2026-10-27 · scope `runs`(확장, BE-06b) · sha256 `d3af644b…b658` · 기준 commit `9b84398`
+- **호환성: 0.9.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 2개(`GET /runs/{r}/events`, `GET /runs/{r}/items/{item_key}/lineage`)와 새 오류 코드 `RUN_RESULT_NOT_AVAILABLE`(409).
+- 근거: CR be08 §4 be08b / 보드 DEC-008(사용자 '개발 이어가 줘', 2026-10-27, 권장안 승인으로 해석). 상세는 04 §5.3.
+- 핵심 규칙: 이벤트·작업물·계보는 **끝까지 실행된 시도(공식 결과)** 것만 조회된다(아니면 409). 이벤트는 `event_seq` cursor 페이지네이션이고 종류·단계·설비·작업물·가상 시간 구간으로 거른다. 하루(1,440분)마다 상태 요약 이벤트 `STATE_SNAPSHOT`이 남고 7일·30일째에는 `periods`에 week·month가 붙는다(24시간 연속 가정, 재개용 체크포인트 아님). 계보는 조상·후손 작업물과 길이 보존 값(잔량·이월·균형)을 준다.
+- **동작 변경(스키마 불변):** `GET /runs/{r}`의 `result.event_count`가 이제 저장된 이벤트 수와 같고(상태 요약 이벤트 포함) 이벤트 한도(`limit_reached`)도 그 수로 센다.
+- **프런트가 해야 할 일:** 결과 화면을 만들 때 타입 재생성. `event_type`·`quantities`는 열린 구조로 다루고(알 수 없는 종류는 무시하거나 원문 표시), 시각 표시는 `sim_time.min`, 계산·정렬은 `exact`. 이벤트는 limit 최대치 단위로 cursor를 따라 읽고 한 번에 전부 받으려 하지 않는다. 상태 요약으로 일·주·월 재공품 추이 그래프를 그릴 수 있다.
+
 ## 0.9.0 — 2026-10-27 · scope `runs`(신규, BE-06a) · sha256 `229cc091…ae74` · 기준 commit `424475f`
 - **호환성: 0.8.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 5개(`POST·GET /runs`, `GET /runs/{r}`, `GET /runs/{r}/input`, `POST /runs/{r}/cancel`)와 새 오류 코드 `RUN_NOT_RUNNABLE`(422)·`IDEMPOTENCY_CONFLICT`(409)·`JOB_CANCEL_TOO_LATE`(409), 요청 헤더 `Idempotency-Key`(필수, 없으면 428).
 - 근거: CR be08 / 보드 DEC-008(사용자 '다음 단계 이어가 줘', 2026-10-27, 권장안 승인으로 해석). 상세는 04 §5.2.
