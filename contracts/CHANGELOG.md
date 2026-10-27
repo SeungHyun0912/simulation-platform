@@ -5,6 +5,13 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.8.0 — 2026-10-27 · scope `process-versions`·`scenario-versions`(확장) · sha256 `656d57a0…cd21` · 기준 commit `416a62e`
+- **호환성: 0.7.0과 호환(operation 추가·삭제 없음).** 요청은 0.7.0 요청이 그대로 유효하다. 응답에서 달라지는 것: 시나리오 도착 객체에 `weight_kg`(null 가능)가 늘고 `length_m`이 null일 수 있다.
+- **잔량 규칙 `discard`:** `residual_rule.mode` 열거에 값 하나 추가. 단계가 남긴 길이를 그 자리에서 폐기한다(P05 절연 4,000m). 상세는 04 §4.1.3.
+- **시나리오 도착:** `length_m`을 선택으로 바꾸고 `weight_kg`를 추가했다. **둘 중 하나는 필수**(422), 값은 decimal 문자열이며 서로 환산하지 않는다. 길이가 없는 원자재(P04·P05의 2t·3.3t)는 무게만 보낸다. 사전검증은 도착 단위가 공정의 원자재 단위와 다르면 경고 `SCN-ARR-002`를 낸다.
+- 근거: 보드 DEC-010, CR be09 §9(사용자 승인 2026-10-27).
+- **프런트가 해야 할 일:** 시나리오 화면을 만들 때 타입을 재생성한다. `ArrivalDto`의 `length_m`은 `string | null`, `weight_kg`는 `string | null`이며 둘 다 null이면 서버가 거부한다. 공정 편집기의 잔량 규칙 선택지에 `discard`를 더한다(모르는 값이 와도 깨지지 않도록 열거는 열린 목록으로 다룬다).
+
 ## 0.7.0 — 2026-10-27 · scope `scenario-versions`(신규) · sha256 `d687fdfd…5b09` · 기준 commit `f776dc3`
 - **호환성: 0.6.1과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 10개(시나리오 목록·생성·조회·수정, 버전 목록·생성·조회·수정, 사전검증, 승인)와 새 오류 코드 `SCENARIO_CODE_CONFLICT`·`SCENARIO_DRAFT_EXISTS`(409)·`SCENARIO_NOT_RUNNABLE`(422).
 - 근거: CR be07 / 보드 DEC-007(사용자 권장안 승인, PR #40). 상세는 04 §5.1.

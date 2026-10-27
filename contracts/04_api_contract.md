@@ -2,7 +2,7 @@
 
 # 04. 공통 API 계약
 
-> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0, 패치 0.6.1), `scenario-versions`(§5.1, contract 0.7.0)만 승인되었다.
+> **부분 승인(PARTIALLY_APPROVED)**: scope `project-assets-ports`(§3.1, contract 0.1.0), `asset-revisions`(§3.2, contract 0.2.0), `products-materials`(§3.3, contract 0.3.0), `process-versions`(§4.1, contract 0.4.0·0.5.0·0.6.0, 패치 0.6.1, 0.8.0), `scenario-versions`(§5.1, contract 0.7.0, 0.8.0)만 승인되었다.
 > 버전별 변경과 프런트 영향은 [CHANGELOG.md](CHANGELOG.md)가 정본이다.
 > 정식 스냅샷은 [openapi.json](openapi.json)이며 버전·해시·승인 기록은 [contract-status.json](contract-status.json)이 기준이다.
 > 이 문서의 그 밖의 모든 endpoint·규칙은 **PROPOSED**이며 승인 scope 밖 기능은 Mock이어도 PROPOSED로 표시한다.
@@ -352,6 +352,13 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 **비교·복제:** `diff`는 단계의 `/material_specs/{spec_key}/…`(spec_key로 맞춤), 간선의 `/source_output_spec_key`·`/target_input_spec_key`, 헤더의 `/completion_node_key`(id가 아니라 완제품 노드의 `node_key`)를 포함한다. 새 초안 복제는 spec·간선 연결·완제품 지정을 새 id로 함께 복사한다.
 예제: `examples/first-scope/process-graph.put-with-specs`·`process-step.patch-material-specs`·`error.spec-link-invalid`.
 
+#### 4.1.3 잔량 폐기 `discard` (contract 0.8.0, 0.7.0과 호환)
+- 단계의 `residual_rule.mode`에 `discard`가 더해졌다(기존 값 `unknown`·`none`·`carry_same_product`는 그대로). **그 단계가 계획한 산출을 만들고 남은 길이를 그 자리에서 폐기한다**
+  (예: 100,000m 투입 → 24,000m × 4 산출 + 4,000m 폐기). 폐기 길이는 실행 이벤트(`RESIDUAL_DISCARDED`, 사유 `STEP_REMAINDER`)와 계보에 남고 물량 보존 검증은 그대로 맞는다
+  (자식 합 + 폐기 = 부모). `carry_same_product`와 달리 잔량을 모아 두지 않으므로 `scope`·`on_product_change`·`on_run_end`·`physical_join_mode`는 쓰지 않는다(기본 `unknown` 그대로).
+- 분할(`split_length`) 단계에만 쓸 수 있다(엔진 컴파일 `RESIDUAL_MODE_UNSUPPORTED`). 규칙이 없으면(`unknown`·`none`) 잔량이 생긴 실행은 그대로 실패한다(성공으로 덮지 않는다).
+- 근거: 보드 DEC-010, CR be09 §9(P05 절연 4,000m, 사용자 결정 2026-10-27). 03 §6 본문 반영은 조정자.
+
 ## 5. 시나리오·실행 API
 
 > 아래 표에서 시나리오 6행(목록~승인)은 §5.1로 **승인**(contract 0.7.0)되었다. 실행(`runs`)·비교 행은 PROPOSED이며
@@ -413,10 +420,10 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 | POST | /projects/{p}/scenario-versions/{v}/validate | viewer | 실행 사전검증(저장 안 함, 오류가 있어도 200) |
 | POST | /projects/{p}/scenario-versions/{v}/approve | project admin | draft → approved. 사전검증 오류가 있으면 422 `SCENARIO_NOT_RUNNABLE`. 승인 후 내용·제품·자산 고정은 DB가 동결 |
 
-- **내용:** `products[]`(제품 하나 = 실행의 공정 하나, 목록 순서 = 같은 시각 동순위 순서) — `product_id`, `process_version_id`(그 제품의 **승인됐던** 버전: approved 또는 superseded), `priority`, `arrivals[]`(`at_min` decimal ≥ 0, `count` 정수 ≥ 1, `length_m` decimal > 0, `lot`), `assumptions`(`equipment_hold`, `unbounded_buffers`, `manual_transport_minutes{node_key: 분}`, `residual_scope{node_key: machine|product|operation|lot}`). `assets[]`(`asset_id`, `asset_revision_id`: 그 자산의 승인됐던 자산 버전). `stopping_rule`: `{"mode":"drain"}` 또는 `{"mode":"fixed_horizon","horizon_min":"…"}`(`[0,H)`). `assumption_reason`, `notes`.
+- **내용:** `products[]`(제품 하나 = 실행의 공정 하나, 목록 순서 = 같은 시각 동순위 순서) — `product_id`, `process_version_id`(그 제품의 **승인됐던** 버전: approved 또는 superseded), `priority`, `arrivals[]`(`at_min` decimal ≥ 0, `count` 정수 ≥ 1, `length_m` decimal > 0 또는 null, `weight_kg` decimal > 0 또는 null(**둘 중 하나는 필수**, 0.8.0: 길이 없는 원자재는 무게만 보낸다, 서로 환산하지 않음), `lot`), `assumptions`(`equipment_hold`, `unbounded_buffers`, `manual_transport_minutes{node_key: 분}`, `residual_scope{node_key: machine|product|operation|lot}`). `assets[]`(`asset_id`, `asset_revision_id`: 그 자산의 승인됐던 자산 버전). `stopping_rule`: `{"mode":"drain"}` 또는 `{"mode":"fixed_horizon","horizon_min":"…"}`(`[0,H)`). `assumption_reason`, `notes`.
 - **저장 시 참조 오류(422 `VALIDATION_ERROR`):** `SCN-REF-001` 이 프로젝트의 제품이 아니거나 그 제품의 공정 버전이 아님, `SCN-REF-002` 승인되지 않은 공정 버전, `SCN-REF-003` 그 자산의 자산 버전이 아님, `SCN-REF-004` 승인되지 않은 자산 버전. 중복 공정 버전·자산은 422. 그 밖의 미정(도착 없음·가정 사유 없음 등)은 **초안 저장을 막지 않고** 사전검증에서 오류로 보인다.
 - **자산 버전 자동 고정:** `products`만 보내고 `assets`를 보내지 않으면, 공정이 참조하는 자산(공간 노드·설비 후보) 가운데 아직 고정되지 않은 것을 그 자산의 **현재 승인 버전**으로 채운다(이미 고정한 것은 그대로, 승인 버전이 없으면 비워 둠). `assets`를 함께 보내면 보낸 그대로다(빈 목록 = 고정 안 함).
-- **사전검증 응답:** `runnable`, `error_count`, `warning_count`, `engine_version`, `issues[]`(시나리오 수준: `SCN-PROD-001` 제품 없음, `SCN-ARR-001` 도착 없음, `SCN-ASM-001` 가정을 썼는데 사유 없음 — 오류; `SCN-ASSET-001` 공정이 쓰는 자산에 고정 버전 없음, `SCN-ASSET-002` 쓰지 않는 자산 고정 — 경고), `products[]`(제품마다 엔진 컴파일 결과: `compiled`, `compile_issues[]`, `assumptions_used[]`, `waived[]`). **엔진·도메인 실행 검증 코드(`VAL-*`, `BUFFER_POLICY_UNKNOWN`, `ENGINE_HANDLER_NOT_AVAILABLE` 등)를 번역하지 않고 그대로** 준다. `runnable`은 오류 0이고 모든 제품이 컴파일될 때만 true. 고정하지 않은 자산의 용량·배출 규칙은 모르는 값으로 판정한다(무제한으로 보지 않음).
+- **사전검증 응답:** `runnable`, `error_count`, `warning_count`, `engine_version`, `issues[]`(시나리오 수준: `SCN-PROD-001` 제품 없음, `SCN-ARR-001` 도착 없음, `SCN-ASM-001` 가정을 썼는데 사유 없음 — 오류; `SCN-ASSET-001` 공정이 쓰는 자산에 고정 버전 없음, `SCN-ASSET-002` 쓰지 않는 자산 고정, `SCN-ARR-002` 도착의 단위(길이·무게)가 공정의 원자재 단위와 다름(0.8.0) — 경고), `products[]`(제품마다 엔진 컴파일 결과: `compiled`, `compile_issues[]`, `assumptions_used[]`, `waived[]`). **엔진·도메인 실행 검증 코드(`VAL-*`, `BUFFER_POLICY_UNKNOWN`, `ENGINE_HANDLER_NOT_AVAILABLE` 등)를 번역하지 않고 그대로** 준다. `runnable`은 오류 0이고 모든 제품이 컴파일될 때만 true. 고정하지 않은 자산의 용량·배출 규칙은 모르는 값으로 판정한다(무제한으로 보지 않음).
 - 예제: `examples/first-scope/scenario.create`·`scenario-version.patch`·`scenario-version.validate`·`error.scenario-not-runnable`.
 
 ## 6. LLM·위키 API
