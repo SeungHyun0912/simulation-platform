@@ -93,6 +93,17 @@ class _OpTrace:
     started_at: Fraction | None = None
 
 
+def windows(end_time: Fraction):
+    """지표 구간: (종류, 시작, 끝, 걸친 날 번호). 전체(run) 하나와 하루·주(7일)·월(30일) 구간, 마지막 구간은 종료 시각까지."""
+    yield "run", Fraction(0), end_time, range(_day(end_time) + 1)
+    last = _last_day(end_time)
+    for size, kind in ((1, "day"), (WEEK_DAYS, "week"), (MONTH_DAYS, "month")):
+        for first in range(0, last + 1, size):
+            start, end = first * DAY, min((first + size) * DAY, end_time)
+            if end > start:
+                yield kind, start, end, range(first, min(first + size, last + 1))
+
+
 def dimensions_hash(dimensions: dict) -> str:
     return hashlib.sha256(json.dumps(dimensions, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
 
@@ -305,13 +316,7 @@ class MetricCollector:
         return rows
 
     def _windows(self, end_time: Fraction):
-        yield "run", Fraction(0), end_time, range(_day(end_time) + 1)
-        last = _last_day(end_time)
-        for size, kind in ((1, "day"), (WEEK_DAYS, "week"), (MONTH_DAYS, "month")):
-            for first in range(0, last + 1, size):
-                start, end = first * DAY, min((first + size) * DAY, end_time)
-                if end > start:
-                    yield kind, start, end, range(first, min(first + size, last + 1))
+        return windows(end_time)
 
     def _sum(self, key: str, dim: str, days) -> Fraction:
         series = self._add.get((key, dim))

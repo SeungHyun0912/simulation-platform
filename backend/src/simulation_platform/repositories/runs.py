@@ -3,7 +3,7 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from simulation_platform.models import (
@@ -129,3 +129,36 @@ def run_window_metrics(session: Session, project_id: uuid.UUID, attempt_id: uuid
     return list(session.scalars(select(MetricResult).where(
         MetricResult.project_id == project_id, MetricResult.attempt_id == attempt_id,
         MetricResult.window_kind == "run", MetricResult.metric_key.in_(list(keys)))))
+
+
+_STATE_TIME_METRICS = ("processing_time_min", "setup_time_min", "reserved_time_min", "blocked_time_min")
+
+
+def asset_state_metrics(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID,
+                        window_kind: str) -> list[MetricResult]:
+    """설비별 상태 시간 지표(한 구간 종류 전부). 설비 수 × 구간 수 × 4행이라 작다."""
+    return list(session.scalars(select(MetricResult).where(
+        MetricResult.project_id == project_id, MetricResult.attempt_id == attempt_id,
+        MetricResult.window_kind == window_kind, MetricResult.metric_key.in_(_STATE_TIME_METRICS))))
+
+
+def last_state_change_at_or_before(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID, asset_key: str,
+                                   at: Decimal) -> int | None:
+    """그 시각에 유효한 설비 상태가 시작된 이벤트 번호(그 시각 이전의 마지막 상태 전이)."""
+    return session.scalar(select(func.max(SimulationEvent.event_seq)).where(
+        SimulationEvent.project_id == project_id, SimulationEvent.attempt_id == attempt_id,
+        SimulationEvent.asset_key == asset_key, SimulationEvent.event_type == "ASSET_STATE_CHANGED",
+        SimulationEvent.sim_time_min <= at))
+
+
+def asset_state_events(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID, asset_key: str, *,
+                       after_seq: int | None, from_seq: int | None, limit: int) -> list[SimulationEvent]:
+    """설비 하나의 상태 전이 이벤트(번호 순). after_seq 초과 또는 from_seq 이상부터 limit건."""
+    stmt = select(SimulationEvent).where(
+        SimulationEvent.project_id == project_id, SimulationEvent.attempt_id == attempt_id,
+        SimulationEvent.asset_key == asset_key, SimulationEvent.event_type == "ASSET_STATE_CHANGED")
+    if after_seq is not None:
+        stmt = stmt.where(SimulationEvent.event_seq > after_seq)
+    elif from_seq is not None:
+        stmt = stmt.where(SimulationEvent.event_seq >= from_seq)
+    return list(session.scalars(stmt.order_by(SimulationEvent.event_seq).limit(limit)))

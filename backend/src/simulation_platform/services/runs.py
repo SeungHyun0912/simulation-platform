@@ -8,6 +8,7 @@
 
 import uuid
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -45,6 +46,10 @@ from simulation_platform.repositories import runs as repo
 from simulation_platform.repositories import scenarios as scenario_repo
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.run import (
+    AssetStateSegmentOut,
+    AssetTimelineBucketOut,
+    AssetTimelineOut,
+    AssetUseOut,
     AttemptOut,
     BottleneckLocationOut,
     BottleneckOut,
@@ -67,6 +72,8 @@ from simulation_platform.services.projects import require_project, require_write
 from simulation_platform.services.scenarios import collect_inputs
 from simulation_platform.services.unit_of_work import audit, transaction
 from simulation_platform.settings import get_settings
+from simulation_platform.simulation.metrics import windows as metric_windows
+from simulation_platform.simulation.numbers import format_decimal
 
 RUN_NOT_FOUND = "실행을 찾을 수 없습니다."
 
@@ -472,3 +479,136 @@ def get_bottlenecks(session: Session, principal: Principal, project_id: uuid.UUI
         run_id=run.id, quality_status=quality, observed=MinutesOut(**result["end_time"]) if result.get("end_time")
         else MinutesOut(min="0.000000", exact="0"), definition_version=bottleneck_rules.DEFINITION_VERSION,
         headline=found["headline"], findings=out, limitations=found["limitations"], thresholds=found["thresholds"])
+
+
+# --- 설비 상태 타임라인(CR be11) ---------------------------------------------------------------------------
+_STATE_FIELDS = {"processing_time_min": "processing_min", "setup_time_min": "setup_min",
+                 "reserved_time_min": "reserved_min", "blocked_time_min": "blocked_min"}
+
+
+def _official_result(session: Session, project_id: uuid.UUID, run_id: uuid.UUID):
+    attempt_id = _official_attempt(session, project_id, run_id)
+    attempt = next(a for a in repo.attempts_of(session, project_id, run_id) if a.id == attempt_id)
+    snapshot = repo.snapshot_of(session, project_id, run_id).snapshot
+    return attempt_id, attempt.result_summary or {}, snapshot
+
+
+def _asset_uses(snapshot: dict) -> tuple[dict[str, list[AssetUseOut]], dict[str, str | None]]:
+    """스냅샷의 공정 그래프에서 설비 → (제품·단계) 목록과 공정 버전 → 제품 코드."""
+    uses: dict[str, list[AssetUseOut]] = {}
+    codes: dict[str, str | None] = {}
+    for product in snapshot["products"]:
+        pv = product["process_version"]["id"]
+        codes[pv] = (product.get("product") or {}).get("code")
+        for node in product["graph"]["nodes"]:
+            step = node.get("step") or {}
+            for requirement in step.get("resources", []):
+                for candidate in requirement.get("candidates", []):
+                    uses.setdefault(str(candidate["asset_id"]), []).append(AssetUseOut(
+                        process_version_id=pv, product_code=codes[pv], step_key=node["node_key"],
+                        step_label=node.get("label")))
+    return uses, codes
+
+
+def _fill_codes(session: Session, project_id: uuid.UUID, snapshot: dict, codes: dict[str, str | None]) -> None:
+    """이전 run(스냅샷에 제품 코드가 없음)은 현재 제품 목록으로 보충한다."""
+    if all(codes.values()):
+        return
+    current = {str(p.id): p.code for p in session.scalars(select(Product).where(Product.project_id == project_id))}
+    for product in snapshot["products"]:
+        pv = product["process_version"]["id"]
+        if codes.get(pv) is None:
+            codes[pv] = current.get(product["product_id"])
+
+
+def _dec6(value) -> str:
+    return f"{Decimal(value):.6f}"
+
+
+def asset_timeline(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID, *,
+                   window: str, asset_id: uuid.UUID | None, limit: int | None,
+                   cursor: str | None) -> tuple[list[AssetTimelineOut], Page]:
+    """설비마다 구간별 상태 시간 구성(처리·준비·예약·막힘·유휴). 공정의 후보 설비 전체를 보여 준다(쓰이지 않았으면 used=false)."""
+    require_project(session, principal, project_id)
+    attempt_id, result, snapshot = _official_result(session, project_id, run_id)
+    end_time = Fraction(result["end_time"]["exact"]) if result.get("end_time") else Fraction(0)
+    spans = [(start, end) for kind, start, end, _ in metric_windows(end_time) if kind == window]
+    uses, codes = _asset_uses(snapshot)
+    _fill_codes(session, project_id, snapshot, codes)
+    for items in uses.values():
+        for use in items:
+            use.product_code = use.product_code or codes.get(use.process_version_id)
+    values: dict[tuple[str, str], dict[str, Decimal]] = {}
+    for row in repo.asset_state_metrics(session, project_id, attempt_id, window):
+        values.setdefault((row.dimensions["asset_key"], row.window_start_exact), {})[row.metric_key] = row.value
+    used = {asset for asset, _ in values}
+    ids = set(uses) | used
+    if asset_id is not None:
+        ids &= {str(asset_id)}
+    names = {str(a.id): a for a in session.scalars(select(Asset).where(
+        Asset.project_id == project_id, Asset.id.in_({uuid.UUID(i) for i in ids})))} if ids else {}
+    ordered = sorted(ids, key=lambda i: ((names[i].code if i in names else "~"), i))
+    limit = limit or DEFAULT_LIMIT
+    tag = make_tag("asset-timeline", ("code", False), {"run": run_id, "window": window, "asset": asset_id})
+    if cursor:
+        last = decode_cursor(cursor, tag, 1)[0]
+        ordered = ordered[ordered.index(last) + 1:] if last in ordered else []
+    page, more = ordered[:limit], len(ordered) > limit
+    out = []
+    for asset in page:
+        buckets = []
+        for start, end in spans:
+            m = values.get((asset, str(start)), {})
+            parts = {field: Decimal(m.get(metric) or 0) for metric, field in _STATE_FIELDS.items()}
+            length = Decimal(format_decimal(end - start))
+            idle = max(length - sum(parts.values(), Decimal(0)), Decimal(0))
+            buckets.append(AssetTimelineBucketOut(
+                start=MinutesOut(min=format_decimal(start), exact=str(start)),
+                end=MinutesOut(min=format_decimal(end), exact=str(end)),
+                **{k: _dec6(v) for k, v in parts.items()}, idle_min=_dec6(idle),
+                utilization=None if length <= 0 else _dec6(parts["processing_min"] / length)))
+        row = names.get(asset)
+        out.append(AssetTimelineOut(asset_id=asset, asset_code=None if row is None else row.code,
+                                    asset_name=None if row is None else row.name, used=asset in used,
+                                    uses=uses.get(asset, []), buckets=buckets))
+    next_cursor = encode_cursor(tag, [page[-1]]) if more and page else None
+    return out, Page(limit=limit, next_cursor=next_cursor)
+
+
+def asset_states(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                 asset_id: uuid.UUID, *, from_min: str | None, to_min: str | None, limit: int | None,
+                 cursor: str | None) -> tuple[list[AssetStateSegmentOut], Page]:
+    """설비 하나의 상태 구간(간트). 길이 0인 전이는 빼고 마지막 구간은 실행 종료 시각까지다."""
+    require_project(session, principal, project_id)
+    attempt_id, result, snapshot = _official_result(session, project_id, run_id)
+    lower, upper = _parse_decimal(from_min, "from_min"), _parse_decimal(to_min, "to_min")
+    end_exact = result["end_time"]["exact"] if result.get("end_time") else "0"
+    _, codes = _asset_uses(snapshot)
+    _fill_codes(session, project_id, snapshot, codes)
+    key, limit = str(asset_id), limit or DEFAULT_LIMIT
+    tag = make_tag("asset-states", ("event_seq", False), {"run": run_id, "asset": key, "from": from_min, "to": to_min})
+    after = decode_cursor(cursor, tag, 1)[0] if cursor else None
+    start_seq = None
+    if after is None and lower is not None:
+        start_seq = repo.last_state_change_at_or_before(session, project_id, attempt_id, key, lower)
+    events = repo.asset_state_events(session, project_id, attempt_id, key, after_seq=after,
+                                     from_seq=start_seq, limit=limit + 1)
+    segments, last_seq = [], None
+    for index, event in enumerate(events[:limit]):
+        if upper is not None and event.sim_time_min >= upper:
+            events = []  # 구간 끝을 넘었다: 더 볼 것이 없다
+            break
+        end = events[index + 1] if index + 1 < len(events) else None
+        end_min, end_exact_value = ((end.sim_time_min, end.sim_time_exact) if end is not None
+                                    else (Decimal(result["end_time"]["min"]), end_exact))
+        last_seq = event.event_seq
+        if Fraction(end_exact_value) == Fraction(event.sim_time_exact):
+            continue  # 같은 시각의 연속 전이(예: 배정 직후 처리 시작)는 길이가 없다
+        segments.append(AssetStateSegmentOut(
+            state=event.quantities.get("state"), start=MinutesOut(min=str(event.sim_time_min), exact=event.sim_time_exact),
+            end=MinutesOut(min=str(end_min), exact=end_exact_value),
+            duration_min=format_decimal(Fraction(end_exact_value) - Fraction(event.sim_time_exact)),
+            operation_id=event.operation_id, step_key=event.step_key, process_version_id=event.process_version_id,
+            product_code=codes.get(event.process_version_id)))
+    more = len(events) > limit and last_seq is not None
+    return segments, Page(limit=limit, next_cursor=encode_cursor(tag, [last_seq]) if more else None)
