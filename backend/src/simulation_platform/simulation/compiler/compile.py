@@ -290,11 +290,20 @@ class _Compiler:
             return None  # 이름이 없거나 지원 목록 밖이면 도메인 검증(VAL-HANDLER-001·UNSUPPORTED_HANDLER)이 이미 막았다.
         transport_minutes = self._transport_minutes(key, handler, step)
         timing = TimingModel("none") if handler.name == TRANSPORT else self._timing(key, step, handler)
-        setup = Fraction(0) if handler.name == TRANSPORT else self._setup(key, step)
+        setup_rule = (Fraction(0), "per_operation") if handler.name == TRANSPORT else self._setup(key, step)
+        setup, setup_trigger = (None, "per_operation") if setup_rule is None else setup_rule
         delay = None if handler.name == TRANSPORT else self._delay(key, step)
         output = self._output(key, step, handler)
         inputs, consume_policy = self._inputs(key, step, handler, in_edges or [])
         candidates, allocation, worker_unlimited = self._resources(key, step, handler)
+        if setup_trigger == "on_product_change" and setup and not candidates:
+            self.issue("SETUP_TRIGGER_UNSUPPORTED",
+                       f"{key}: 제품 전환 준비는 설비의 직전 작업 제품을 보므로 설비가 있는 단계에만 쓸 수 있습니다.", key)
+        if handler.batch and timing is not None and timing.kind == "speed" and output is not None \
+                and output.unit_length_m is None:
+            self.issue("TIMING_UNSUPPORTED",
+                       f"{key}: 선속으로 시간을 재려면 산출 길이가 필요한데 이 단계의 산출은 길이가 없습니다"
+                       "(단위당 시간을 쓰세요).", key)
         self._check_hold_policy(key, handler, output, candidates)
         residual = self._residual(key, step, handler, candidates)
         out_policies = self._out_policies(key, candidates, (by_key or {}).get(next_key) if next_key else None)
@@ -309,7 +318,7 @@ class _Compiler:
             worker_unlimited=worker_unlimited, setup_minutes=setup, timing=timing, output=output,
             handoff=handoff, residual_mode=step["residual_rule"]["mode"],
             transport_minutes=transport_minutes, residual=residual, out_policies=out_policies,
-            inputs=inputs, consume_policy=consume_policy, delay=delay)
+            inputs=inputs, consume_policy=consume_policy, delay=delay, setup_trigger=setup_trigger)
 
     def _transport_minutes(self, key: str, handler: HandlerDef, step: dict) -> Fraction | None:
         """수동 운반의 이동 시간(보빈 하나가 한 번 옮겨지는 시간, 상하차 포함은 값에 담는다).
@@ -365,15 +374,17 @@ class _Compiler:
             return None
         return timing
 
-    def _setup(self, key: str, step: dict) -> Fraction | None:
+    def _setup(self, key: str, step: dict) -> tuple[Fraction, str] | None:
+        """준비 시간(분)과 발생 시점. 지원: 작업마다(per_operation), 제품이 바뀔 때(on_product_change, 설비의 직전 작업
+        제품이 다를 때만), 0분(발생 시점 무관)."""
         setup = step["timing_rule"]["setup"]
         duration = setup["duration_min"]
         if setup["trigger"] == "not_applicable":
-            return Fraction(0)
+            return Fraction(0), "per_operation"
         if duration["mode"] == "known" and to_fraction(duration["value"]) == 0:
-            return Fraction(0)
-        if setup["trigger"] == "per_operation" and duration["mode"] == "known":
-            return to_fraction(duration["value"])
+            return Fraction(0), "per_operation"
+        if setup["trigger"] in ("per_operation", "on_product_change") and duration["mode"] == "known":
+            return to_fraction(duration["value"]), setup["trigger"]
         self.issue("SETUP_TRIGGER_UNSUPPORTED",
                    f"{key}: 준비 시점 {setup['trigger']}은(는) 아직 실행하지 않습니다(per_operation과 0분만 지원).", key)
         return None
@@ -444,11 +455,12 @@ class _Compiler:
         if handler.needs_output_length and length["mode"] != "known":
             return None  # VAL-OUT-002가 이미 막았다
         count = out["unit_count"]
-        if handler.batch and out["mode"] == "configured_units":
+        weight = out.get("weight_kg") or {"mode": "unknown"}
+        if handler.batch and out["mode"] in ("configured_units", "fixed_mass_units"):
             if out["quantity_basis"] != "per_operation":
                 self.issue("OUTPUT_BASIS_UNSUPPORTED",
                            f"{key}: 지정 산출은 작업 한 번의 산출(per_operation)만 실행합니다(현재 {out['quantity_basis']}).", key)
-            if out["accounting_mode"] != "abstract_yield":
+            if handler.abstract_yield_only and out["accounting_mode"] != "abstract_yield":
                 self.issue("OUTPUT_ACCOUNTING_UNSUPPORTED",
                            f"{key}: 지정 산출은 투입 길이와 맞추는 물리 규칙이 없어 abstract_yield로만 실행합니다"
                            f"(현재 {out['accounting_mode']}, 03 §5).", key)
@@ -458,6 +470,8 @@ class _Compiler:
         return OutputModel(
             mode=out["mode"],
             unit_length_m=to_fraction(length["value"]) if length["mode"] == "known" else None,
+            unit_weight_kg=(to_fraction(weight["value"])
+                            if out["mode"] == "fixed_mass_units" and weight["mode"] == "known" else None),
             unit_count=count["value"] if count["mode"] == "known" else None,
             quantity_basis=out["quantity_basis"], accounting_mode=out["accounting_mode"],
             state_code=None if spec is None else spec["state_code"], form=None if spec is None else spec["form"])

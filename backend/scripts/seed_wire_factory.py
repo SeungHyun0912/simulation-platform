@@ -10,6 +10,9 @@
   모든 인계 보빈별, 값이 없는 준비·대기 시간 0분, 120분 준비는 제품이 바뀔 때(`on_product_change`), 싱글-12 대기 120분은 작업 시간,
   P01~P03 검사 작업자 무제한 10분/보빈·완제품은 쉬스 완료, P04·P05 원자재 길이 해당 없음, P05 출발 공간 ST-005,
   운반은 보빈 1개씩 이동 3분 + 상하차 1분(운반 자원 무제한).
+- **2차 반영(2026-10-27)**: P01 쉬스 잔량은 같은 제품이 이어지면 유지하고 다른 제품이 그 설비에서 시작되면 모두 폐기
+  (범위 `machine`·제품 전환 `discard`), 태신선·멀티신선(과 싱글 메인)은 입력 여러 개를 한 번에 받아 산출을 **순차로 하나씩**
+  만든다(스트림 1, 순차), 싱글 메인의 공급 입력은 싱글-12가 준비한 12보빈(1보빈 = 1가닥, 03 §12)이다.
 - 단계별 투입·산출 수량·12가닥 공급은 단계의 재료 spec, 간선은 spec 연결, 완제품 시점은 milestone 지정으로 만든다(계약 0.6.0).
   계약에 필드가 없는 값(폐기량 등)은 버전 메모(notes)에 문서 근거와 함께 남긴다.
 - 시험 데이터(`seed_demo_data.py`, "[시험]" 이름)와 분리된 별도 프로젝트이며 재실행해도 중복 생성하지 않는다(멱등).
@@ -109,7 +112,7 @@ def count(value: int) -> dict:
 UNKNOWN = {"mode": "unknown"}
 NOT_APPLICABLE = {"mode": "not_applicable"}
 NA = "n/a"  # 길이 없음(해당 없음). 값이 정해지지 않은 unknown과 다르다
-INTAKE_MARK = "정리 반영(2026-10-27)"
+INTAKE_MARK = "정리 반영(2026-10-27 2차)"
 TRANSPORT_MINUTES = 4  # 이동 3분 + 상하차 1분(사용자 결정, 해석은 CR be09 §6-⑥)
 
 
@@ -298,7 +301,7 @@ def inspect_op(r: Route, *, worker: bool, handoff: str, setup=SETUP_NONE, delay=
 def silicon(assets, *, raw_len, bobbins, sheath_len, sheath_units, carry) -> dict:
     r = Route(assets)
     residual = ({"mode": "carry_same_product", "on_product_change": "discard", "on_run_end": "unknown",
-                 "scope": "unknown", "physical_join_mode": "abstract_length_pool"} if carry else None)
+                 "scope": "machine", "physical_join_mode": "abstract_length_pool"} if carry else None)
     bobbin = {"length_m": "1000", "unit_count": 1}
     final = {"length_m": str(sheath_len), "unit_count": 1}
     chain = [
@@ -332,7 +335,7 @@ def p04(assets) -> dict:
     N = {"handoff": "per_output_unit", "delay": DELAY_NONE}
     b4000 = {"length_m": "4000", "unit_count": 1}
     src = r.source("원자재 (개당 2t)", "ST-017")
-    multi = r.op("multi", "AL 멀티신선", "output_units_by_time", codes(89), processing=speed(100, single_stream=False),
+    multi = r.op("multi", "AL 멀티신선", "output_units_by_time", codes(89), processing=speed(100),
                  setup=setup_minutes(120), output=out_units(40000, 12),
                  specs=io({"weight_kg": "2000", "length_m": NA, "unit_count": 2},
                           {"length_m": "40000", "unit_count": 12},
@@ -353,10 +356,10 @@ def p04(assets) -> dict:
                 specs=[msp("in", "input", "더블 집합 후", length_m="4000", unit_count=12),
                        msp("out", "output", "공급 준비", form="가닥", strand_count=12)])
     main = r.op("single-main", "싱글 메인 집합", "configured_yield", codes(96),
-                processing=speed(32, single_stream=False), setup=SETUP_NONE,
+                processing=speed(32), setup=SETUP_NONE,
                 output=out_units(4000, 10, "abstract_yield"),
                 specs=[msp("pre", "input", "선행 가공 후", **b4000),
-                       msp("feed", "input", "공급 준비", form="가닥", strand_count=12),
+                       msp("feed", "input", "공급 준비", form="가닥", strand_count=12, unit_count=12),
                        msp("out", "output", "싱글 집합 후", length_m="4000", unit_count=10)], **N)
     r.input_keys["single-main"] = {"single-pre": "pre", "single-feed": "feed"}
     st020, fork = r.space("ST-020"), r.transport("forklift", "지게차", "ST-020", "ST-021")
@@ -391,12 +394,12 @@ def p05(assets) -> dict:
     # 출발 공간 ST-005(CU 도체 원자재 보관 장소, 태신선 대기 공간)는 사용자가 확정했다(2026-10-27).
     chain = [
         r.source("원자재 (3.3t/보빈)", "ST-005"),
-        r.op("draw", "CU 태신선", "output_units_by_time", codes(13), processing=per_unit(22),
+        r.op("draw", "CU 태신선", "output_units_by_time", codes(13), processing=per_unit(22, "sequential_units"),
              output=out_mass(1000, 36),
              specs=io({"weight_kg": "3300", "length_m": NA, "unit_count": 11},
                       {"weight_kg": "1000", "unit_count": 36}, src_state="원자재", dst_state="태신선 후"), **N),
         r.space("ST-006"),
-        r.op("multi", "CU 멀티신선", "output_units_by_time", codes(14), processing=speed(60, single_stream=False),
+        r.op("multi", "CU 멀티신선", "output_units_by_time", codes(14), processing=speed(60),
              output=out_units(100000, 9),
              specs=io({"weight_kg": "1000", "unit_count": 24}, {"length_m": "100000", "unit_count": 9},
                       src_state="태신선 후", dst_state="멀티신선 후"), **{**N, "setup": setup_minutes(120)}),
@@ -500,6 +503,13 @@ def legacy_notes_head(product) -> str:
     return f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft)이며 문서의 미정 값은 unknown으로 두었다."
 
 
+def previous_notes_heads(product) -> tuple[str, ...]:
+    """이전 세대의 시드 메모 머리말(사람이 고치지 않은 시드 메모인지 알아보는 데만 쓴다)."""
+    first = (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). 정리 반영(2026-10-27): 사용자가 확정한 값은 문서 값과 구분해 "
+             "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
+    return legacy_notes_head(product), first
+
+
 def notes_head(product) -> str:
     return (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). {INTAKE_MARK}: 사용자가 확정한 값은 문서 값과 구분해 "
             "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
@@ -523,7 +533,7 @@ def definitions(assets: dict[str, str]) -> dict[str, dict]:
     return {
         "P01": {"raw": _spec(length_m=3000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=300),
                 "notes": _notes("P01", [("절연 후 1,000m×3보빈, 쉬스 후 300m×10보빈/1롤분(잔량 이월: 동일 제품 연속 생산 때 이월, "
-                                        "다른 제품 투입 시 폐기, 잔량 범위·생산 종료 처리·물리적 접속 방법 미정)."), *si_notes]),
+                                        "다른 제품이 쉬스 압출기에서 시작되면 폐기, 잔량 범위 = 설비(사용자 확정 2026-10-27), 생산 종료 처리·물리적 접속 방법 미정)."), *si_notes]),
                 "graph": silicon(assets, raw_len=3000, bobbins=3, sheath_len=300, sheath_units=10, carry=True)},
         "P02": {"raw": _spec(length_m=4000, weight_kg=2000, unit_count=1), "finished": _spec(length_m=500),
                 "notes": _notes("P02", ["절연 후 1,000m×4보빈, 쉬스 후 500m×8보빈/1롤분.", *si_notes]),
@@ -538,8 +548,9 @@ def definitions(assets: dict[str, str]) -> dict[str, dict]:
                     "재권취 완료가 완제품(완제품 milestone 지정)이고 검사·적재는 별도 상태. 검사 작업자는 무제한 가용(확정), 10분/보빈.",
                     ("사용자 확정: 원자재는 길이가 없고(해당 없음) 멀티신선을 거치며 길이가 생긴다, 싱글-12의 대기 120분은 재료를 걸어 두는 "
                      "작업이라 작업 시간 2시간(작업마다·설비 점유), 싱글-12·싱글-1은 메인 작업 동안 점유하지 않는다."),
-                    ("미정: 멀티신선 12보빈을 동시에 만드는지 순차인지(선속의 스트림 기준). GRP-001(EQ-094~096 연계 그룹)은 "
-                     "계약 밖(그룹 미도입)."),
+                    ("사용자 확정: 멀티신선은 원자재 2개를 한 번에 받아 12보빈을 순차로 하나씩 만든다(보빈당 40,000m ÷ 100m/min). "
+                     "싱글 메인도 같은 순차 산출로 두었다(07 §4 예시 125분/보빈, 확인 대기). 싱글 메인의 공급 입력은 "
+                     "싱글-12가 준비한 12보빈이다(03 §12). GRP-001(EQ-094~096 연계 그룹)은 계약 밖(그룹 미도입)."),
                     TRANSPORT_NOTE, *INTAKE_NOTES,
                     "운반 경로: ST-020→ST-021 지게차, ST-021→ST-008 AMR."]),
                 "graph": p04(assets)},
@@ -688,7 +699,7 @@ def _apply_intake(seeder, project, code, spec, listed) -> bool:
         return False
     base = f"{API}/projects/{project}/process-versions/{listed['id']}"
     version = _get(seeder, base)
-    if not (version["notes"] or "").startswith(legacy_notes_head(code)):
+    if not (version["notes"] or "").startswith(previous_notes_heads(code)):
         return False
     graph = _get(seeder, f"{base}/graph")
     wanted = spec["graph"]

@@ -1,8 +1,9 @@
 """실제 기준정보(DEMO-WIRE) 공정 6종을 엔진에 통과시켜 **지금 어디까지 실행되고 어디서 막히는지**를 고정한다.
 
-사용자가 6묶음 미정을 정리한 뒤(CR be09, 2026-10-27) P02·P03·P06은 엔진에서 끝까지 실행된다. P01은 잔량 이월 범위,
-P04·P05는 멀티신선 시간 기준과 엔진 미구현(일괄 확보 handler, 제품 전환 준비)이 남아 컴파일이 이유와 함께 막힌다.
-입고 수량(원자재 24개)과 공간 용량 가정(`unbounded_buffers`)은 시나리오 쪽 값이며 문서의 사실이 아니다.
+사용자가 6묶음 미정을 정리하고(CR be09, 2026-10-27) 잔량 규칙·멀티신선 순차 산출을 정한 뒤 **6종 모두 컴파일**된다.
+P01·P02·P03·P06은 끝까지 실행되고, P04는 원자재 24개 기준 입력 부족(싱글-12가 12개 필요한데 9개 남음)으로, P05는 절연
+4,000m 잔량의 처리 정책이 없어 그 시점에 이유와 함께 멈춘다. 입고 수량(24개)과 공간 용량 가정(`unbounded_buffers`)은
+시나리오 쪽 값이며 문서의 사실이 아니다.
 """
 
 import sys
@@ -25,6 +26,7 @@ from simulation_platform.simulation.runtime import Arrival, Lane, run_model, run
 
 API = "/api/v1"
 RAW_LENGTH_M = {"P01": "3000", "P02": "4000", "P03": "5000", "P06": "2000"}
+RAW_WEIGHT_KG = {"P04": "2000", "P05": "3300"}  # 원자재에 길이가 없다(해당 없음): 무게만으로 입고한다
 RAW_COUNT = 24  # 시나리오 기본값: 월 1회 월초 24개(사용자 지정, 바꿔 가며 반복 실행할 시험값)
 
 
@@ -57,16 +59,20 @@ def compiled(client, wire, code):
 
 # --- 끝까지 실행되는 공정 -------------------------------------------------------------------------
 
-@pytest.mark.parametrize("code", ["P02", "P03", "P06"])
-def test_these_real_processes_compile_with_the_stated_scenario_assumptions(client, wire, code):
+@pytest.mark.parametrize("code", ["P01", "P02", "P03", "P04", "P05", "P06"])
+def test_all_six_real_processes_compile_with_the_stated_scenario_assumptions(client, wire, code):
     result = compiled(client, wire, code)
     assert result.ok, result.issues
     assert {a.code for a in result.assumptions} == {"UNBOUNDED_BUFFERS", "EQUIPMENT_HOLD_FOR_OPERATION"}
     model = result.require_model()
     assert model.completion_key == "complete"
     for step in model.steps.values():  # 사용자 확정값이 모든 단계에 들어갔다
-        assert step.handoff == "per_output_unit"
-        assert step.setup_minutes == 0 and step.consume_policy == "consume"
+        assert step.handoff in ("per_output_unit", "total_batch")  # 싱글-12만 전체 준비 후 공급
+        assert step.consume_policy in ("consume", "transfer")  # 싱글-12(공급)만 transfer
+        if (code, step.key) in {("P04", "multi"), ("P05", "multi"), ("P05", "strand")}:
+            assert (step.setup_minutes, step.setup_trigger) == (120, "on_product_change")  # 제품이 바뀔 때만 120분
+        else:
+            assert step.setup_minutes == 0  # 값이 없으면 0분(사용자 확정)
         if len(step.candidates) > 1:
             assert step.allocation == "first_available"
 
@@ -101,26 +107,41 @@ def test_the_three_runnable_processes_share_equipment_and_the_first_free_machine
     assert result.end_time > Fraction(10 * 1440)  # 실리콘 편조(1.5m/min, 8대)가 병목이라 약 13일 걸린다
 
 
-# --- 아직 막히는 공정(이유를 숨기지 않는다) ------------------------------------------------------
+# --- 끝까지 가지 못하는 공정(이유를 숨기지 않는다) -------------------------------------------------------
 
-def test_p01_is_blocked_only_by_the_residual_scope_of_its_carry_rule(client, wire):
-    result = compiled(client, wire, "P01")
-    assert rules(result) == {"RESIDUAL_SCOPE_UNKNOWN"}  # 쉬스 잔량 이월 범위(machine·product·operation·lot)는 사용자 결정
-
-
-def test_p04_blockers_are_the_multi_drawing_time_basis_and_unbuilt_engine_parts(client, wire):
-    result = compiled(client, wire, "P04")
-    found = rules(result)
-    # 멀티신선 12보빈을 동시에 만드는지 순차인지 미정, 일괄 확보 handler 미구현, 싱글 메인 공급 입력의 개수(가닥 수만 있음)
-    assert {"VAL-TIME-003", "ENGINE_HANDLER_NOT_AVAILABLE", "INPUT_COUNT_UNKNOWN"} <= found
-    assert not found & {"NONLINEAR_EDGE_UNSUPPORTED", "BRANCH_UNSUPPORTED", "JOIN_UNSUPPORTED",
-                        "VAL-INPUT-001", "VAL-RES-004", "VAL-HANDOFF-001", "TRANSPORT_DURATION_UNKNOWN"}
+def test_p01_carries_the_sheath_residual_so_ten_300m_bobbins_come_from_each_3000m_roll(client, wire):
+    model = compiled(client, wire, "P01").require_model()
+    result = run_model(model, [Arrival("3000", count=RAW_COUNT)])
+    assert (result.state, result.reason) == ("completed", None)
+    assert len(result.of_type("SINK_REACHED")) == 240  # 3,000m → 300m × 10(1,000m 보빈 3개: 3+3+4)
+    assert [e.quantities["length_m"] for e in result.of_type("RESIDUAL_CARRIED")][:2] == [100, 200]
+    assert not result.of_type("RESIDUAL_DISCARDED") and result.residuals == ()  # 같은 제품이라 버리지 않고 남는 것도 없다
 
 
-def test_p05_blockers_are_the_batch_handlers_and_the_product_change_setup(client, wire):
-    found = rules(compiled(client, wire, "P05"))
-    assert {"VAL-TIME-003", "ENGINE_HANDLER_NOT_AVAILABLE", "SETUP_TRIGGER_UNSUPPORTED"} <= found
-    assert not found & {"VAL-INPUT-001", "VAL-RES-004", "VAL-HANDOFF-001", "TRANSPORT_DURATION_UNKNOWN"}
+def test_p04_runs_for_months_and_stops_with_insufficient_input_for_the_last_supply_batch(client, wire):
+    """24개 입고 → 멀티신선 12회 → 4,000m 보빈 1,440개 → 싱글 메인은 13개(싱글-1 1 + 공급 12)씩 → 110회 1,100개, 10개 남는다.
+    남은 9개는 싱글-12가 12개를 못 채워 기다리는 것(입력 부족)이다."""
+    model = compiled(client, wire, "P04").require_model()
+    result = run_model(model, [Arrival(weight_kg=RAW_WEIGHT_KG["P04"], count=RAW_COUNT)])
+    assert (result.state, result.reason) == ("stalled", "INSUFFICIENT_INPUT")
+    assert len(result.of_type("SINK_REACHED")) == 1100
+    assert [(f["step"], f["waiting"], f["needed"]) for f in result.shortfalls] == [("single-feed", 9, 12)]
+    assert result.end_time > Fraction(90 * 1440)  # 싱글-1(4.4m/min, 1대)이 병목이라 한 달 입고를 석 달 가까이 걸려 처리한다
+    # 멀티신선: 원자재 2개를 한 번에 받아 12보빈을 순차로 하나씩(40,000m ÷ 100m/min = 400분마다)
+    multi = [e.sim_time for e in result.of_type("OUTPUT_UNIT_READY") if e.step_key == "multi"][:3]
+    assert multi == [400, 800, 1200]
+    assert not any(e.quantities.get("length_m") is not None for e in result.of_type("MATERIAL_ARRIVED"))
+
+
+def test_p05_stops_at_the_insulation_residual_whose_policy_is_still_undecided(client, wire):
+    model = compiled(client, wire, "P05").require_model()
+    result = run_model(model, [Arrival(weight_kg=RAW_WEIGHT_KG["P05"], count=RAW_COUNT)])
+    assert (result.state, result.reason) == ("failed", "RESIDUAL_POLICY_UNKNOWN")
+    terminated = result.of_type("RUN_TERMINATED")[-1]
+    assert terminated.step_key == "insulate" and "4000m" in terminated.quantities["message"]
+    # 태신선은 11개씩 2회(36보빈 × 2), 멀티신선은 24보빈을 한 번에 받아 9보빈(100,000m)을 순차로 만든 뒤 연선까지 갔다
+    started = Counter(e.step_key for e in result.of_type("PROCESS_STARTED"))
+    assert started["draw"] == 2 and started["multi"] == 1 and started["strand"] == 1
 
 
 def test_a_scenario_that_does_not_state_the_unknowns_stays_blocked(client, wire):

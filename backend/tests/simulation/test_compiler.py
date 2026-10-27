@@ -139,12 +139,15 @@ def test_parallel_streams_are_never_auto_selected():
     assert rules_of(compile_snapshot(aggregate, OK)) == {"TIMING_UNSUPPORTED"}
 
 
-def test_registered_but_unimplemented_handler_is_reported_as_engine_gap():
-    snap = edit(single_insulation(), "insulate", lambda n: n["step"].update(operation_type="output_units_by_time"))
+def test_registered_but_unimplemented_handler_is_reported_as_engine_gap(monkeypatch):
+    """등록은 됐지만 엔진에 없는 handler는 이유와 함께 막는다(지금 등록된 handler는 모두 구현되어 새 이름으로 흉내 낸다)."""
+    from simulation_platform.domain import process as domain_rules
+
+    monkeypatch.setattr(domain_rules, "SUPPORTED_HANDLERS", domain_rules.SUPPORTED_HANDLERS | {"future_handler"})
+    snap = edit(single_insulation(), "insulate", lambda n: n["step"].update(operation_type="future_handler"))
     result = compile_snapshot(snap, OK)
     assert "ENGINE_HANDLER_NOT_AVAILABLE" in rules_of(result)
-    assert "output_units_by_time" in next(
-        i for i in result.issues if i.rule_id == "ENGINE_HANDLER_NOT_AVAILABLE").message
+    assert "future_handler" in next(i for i in result.issues if i.rule_id == "ENGINE_HANDLER_NOT_AVAILABLE").message
 
 
 def test_unknown_handler_name_is_blocked_by_domain_validation():
@@ -157,12 +160,16 @@ def test_handler_output_mode_must_match():
     assert "OUTPUT_MODE_MISMATCH" in rules_of(compile_snapshot(snap, OK))
 
 
-def test_setup_only_per_operation_or_zero_is_supported():
+def test_setup_supports_per_operation_and_product_change_and_zero():
     five = single_insulation(setup={"duration_min": known("5"), "trigger": "per_operation"})
-    assert compile_snapshot(five, OK).require_model().steps["insulate"].setup_minutes == Fraction(5)
+    step_model = compile_snapshot(five, OK).require_model().steps["insulate"]
+    assert (step_model.setup_minutes, step_model.setup_trigger) == (Fraction(5), "per_operation")
     change = single_insulation(setup={"duration_min": known("5"), "trigger": "on_product_change"})
-    assert rules_of(compile_snapshot(change, OK)) == {"SETUP_TRIGGER_UNSUPPORTED"}
-    zero = single_insulation(setup={"duration_min": known("0"), "trigger": "on_product_change"})
+    step_model = compile_snapshot(change, OK).require_model().steps["insulate"]
+    assert (step_model.setup_minutes, step_model.setup_trigger) == (Fraction(5), "on_product_change")
+    shift = single_insulation(setup={"duration_min": known("5"), "trigger": "on_shift_start"})
+    assert rules_of(compile_snapshot(shift, OK)) == {"SETUP_TRIGGER_UNSUPPORTED"}  # 근무 달력이 없어 지원하지 않는다
+    zero = single_insulation(setup={"duration_min": known("0"), "trigger": "on_shift_start"})
     assert compile_snapshot(zero, OK).require_model().steps["insulate"].setup_minutes == 0
 
 

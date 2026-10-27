@@ -15,6 +15,7 @@ class TimingModel:
 class OutputModel:
     mode: str  # split_length | pass_through
     unit_length_m: Fraction | None = None
+    unit_weight_kg: Fraction | None = None  # fixed_mass_units(무게 단위 산출)
     unit_count: int | None = None
     quantity_basis: str = "unknown"
     accounting_mode: str = "unknown"
@@ -86,6 +87,7 @@ class StepModel:
     out_policies: dict[str, OutPolicy] = field(default_factory=dict)  # 하류가 막힐 수 있을 때만 채운다
     inputs: tuple[InputModel, ...] = ()  # 입력별 확보 수(합류 단계는 여럿)
     consume_policy: str = "consume"  # consume(시작 때 소비) | transfer(작업 동안 쓰고 끝날 때 소비·공급은 그대로 전달)
+    setup_trigger: str = "per_operation"  # per_operation(작업마다) | on_product_change(설비의 직전 작업 제품이 다를 때만)
     delay: DelayModel | None = None
 
 

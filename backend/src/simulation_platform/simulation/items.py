@@ -7,7 +7,7 @@ from fractions import Fraction
 @dataclass
 class WorkItem:
     key: str
-    length_m: Fraction
+    length_m: Fraction | None  # None = 길이 없음(해당 없음): 길이가 생기기 전의 원자재·태신선 산출
     form: str | None = None
     state: str | None = None  # 재료 상태(예: 단계 출력 spec의 state_code)
     location: str | None = None  # 현재 노드 key
@@ -16,6 +16,7 @@ class WorkItem:
     lot: str | None = None
     created_at: Fraction = Fraction(0)
     process_version_id: str | None = None  # 이 작업물이 흐르는 공정 버전
+    weight_kg: Fraction | None = None  # 무게로만 다루는 작업물(길이와 서로 환산하지 않는다)
 
 
 @dataclass(frozen=True)
@@ -27,8 +28,8 @@ class LineageRecord:
     relation: str  # split | transform | supply(같은 작업물이 공급 상태로) | yield(지정 산출, abstract_yield)
     parent_key: str
     child_keys: tuple[str, ...]
-    parent_length_m: Fraction
-    child_lengths_m: tuple[Fraction, ...]
+    parent_length_m: Fraction | None
+    child_lengths_m: tuple[Fraction | None, ...]
     residual_length_m: Fraction = Fraction(0)
     process_version_id: str | None = None
     carried_in_m: Fraction = Fraction(0)  # 잔량 풀에서 이어 받은 길이
@@ -37,8 +38,10 @@ class LineageRecord:
 
     @property
     def balanced(self) -> bool | None:
-        """자식 길이 합 + 잔량 = 부모 길이(물량 보존). abstract_yield는 보존을 주장하지 않으므로 None(검증 대상 아님)."""
-        if self.accounting_mode == "abstract_yield":
+        """자식 길이 합 + 잔량 = 부모 길이(물량 보존). abstract_yield이거나 길이가 없는 쪽이 있으면(무게↔길이는 환산하지
+        않는다) 보존을 주장하지 않으므로 None(검증 대상 아님)."""
+        if self.accounting_mode == "abstract_yield" or self.parent_length_m is None \
+                or any(length is None for length in self.child_lengths_m):
             return None
         return (sum(self.child_lengths_m, Fraction(0)) + self.residual_length_m
                 == self.parent_length_m + self.carried_in_m)
