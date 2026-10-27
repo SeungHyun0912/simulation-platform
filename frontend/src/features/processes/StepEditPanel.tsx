@@ -85,6 +85,8 @@ function EnumSelect<T extends string>({
           {labels[k]}
         </option>
       ))}
+      {/* 서버가 열거를 늘려도 화면이 값을 다른 것으로 보이게 하거나 지우지 않는다(열린 목록) */}
+      {value !== undefined && !(value in labels) && <option value={value}>{`알 수 없는 값 (${value})`}</option>}
     </SelectField>
   );
 }

@@ -79,7 +79,7 @@ export const ACCOUNTING_LABELS = { unknown: "미정", physical: "물리 수량",
 export const ACQUIRE_SCOPE_LABELS = { unknown: "미정", per_operation: "작업마다", per_lot: "로트마다" } as const;
 export const CONSUME_POLICY_LABELS = { unknown: "미정", reserve: "예약", consume: "소모", transfer: "이전" } as const;
 export const HANDOFF_LABELS = { unknown: "미정", per_output_unit: "산출 단위마다", total_batch: "일괄" } as const;
-export const RESIDUAL_MODE_LABELS = { unknown: "미정", none: "없음", carry_same_product: "같은 제품에 이월" } as const;
+export const RESIDUAL_MODE_LABELS = { unknown: "미정", none: "없음", carry_same_product: "같은 제품에 이월", discard: "그 자리에서 폐기" } as const;
 export const RESIDUAL_SCOPE_LABELS = {
   unknown: "미정",
   machine: "설비",
