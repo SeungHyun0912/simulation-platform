@@ -118,3 +118,46 @@ def test_a_horizon_run_reports_what_was_still_in_progress_at_the_end():
     assert result.state == "horizon_reached"
     assert value(rows, "wip_items") == 1 and value(rows, "wip_length_m") == 60000  # 아직 산출 전: 부모가 설비 안에 있다
     assert value(rows, "completed_items") == 0 and value(rows, "utilization") == 1
+
+
+# --- CR be10: 단계별 지표·병목 판정 근거(설비 대기·공간 대기·적체) ------------------------------------------------
+
+def step_value(rows, key, kind="run", start=None):
+    found = [r for r in rows if r["metric_key"] == key and r["window_kind"] == kind and "step_key" in r["dimensions"]
+             and (start is None or r["window_start_min"]["exact"] == str(start))]
+    assert len(found) == 1, (key, len(found))
+    return None if found[0]["value"] is None else Fraction(found[0]["value"])
+
+
+def test_a_second_job_waits_for_the_only_machine_and_that_wait_is_counted_per_step():
+    """원자재 2개가 동시에 들어오고 설비는 한 대: 첫 작업은 바로, 둘째는 첫 작업이 끝나는 200/3분에 설비를 받는다."""
+    result, rows = measure(SHORT, Arrival("2000", count=2))
+    assert result.end_time == Fraction(400, 3)
+    assert step_value(rows, "step_operations") == 2
+    assert step_value(rows, "step_processing_time_min") == Fraction("133.333333")  # 200/3 × 2
+    assert step_value(rows, "step_equipment_wait_item_min") == Fraction("66.666667")  # 둘째 작업물 하나가 200/3분
+    assert step_value(rows, "step_equipment_wait_avg_min") == Fraction("33.333333")  # 작업물 2개 평균
+    assert step_value(rows, "step_equipment_wait_max_min") == Fraction("66.666667")
+    assert step_value(rows, "step_peak_concurrency") == 1  # 설비가 한 대라 동시에 하나만 진행
+    assert step_value(rows, "step_blocked_item_min") == 0
+    # 대기 공간에는 둘이 한꺼번에 쌓였다(적체 근거)
+    queue = [r for r in rows if r["window_kind"] == "run" and r["dimensions"].get("node_key") == "wait_in"]
+    peak = next(r for r in queue if r["metric_key"] == "buffer_peak_items")
+    assert Fraction(peak["value"]) == 2
+    item_min = next(r for r in queue if r["metric_key"] == "buffer_item_min")
+    assert Fraction(item_min["value"]) == Fraction("66.666667")  # 첫 작업물은 즉시, 둘째는 200/3분 머문다
+
+
+def test_a_step_that_never_waits_reports_zero_waiting_and_null_average():
+    _, rows = measure(SHORT, Arrival("2000"))
+    assert step_value(rows, "step_equipment_wait_item_min") == 0 and step_value(rows, "step_equipment_wait_avg_min") == 0
+    assert step_value(rows, "step_equipment_wait_max_min") == 0  # 기다린 작업물이 있었고 0분이었다
+
+
+def test_peak_concurrency_survives_days_without_events_and_waits_add_up_across_windows():
+    # 60,000m 작업이 2,000분 동안 설비를 쥐고 있다: 이벤트가 없는 날에도 동시 진행 수는 1이다
+    _, rows = measure(LONG, Arrival("60000"), Arrival("60000", at=100))
+    assert step_value(rows, "step_peak_concurrency", "day", 0) == 1 and step_value(rows, "step_peak_concurrency", "day", 1440) == 1
+    assert step_value(rows, "step_peak_concurrency") == 1
+    parts = [step_value(rows, "step_equipment_wait_item_min", "day", s) for s in (0, 1440, 2880)]
+    assert sum(parts) == step_value(rows, "step_equipment_wait_item_min") and step_value(rows, "step_equipment_wait_item_min") > 0

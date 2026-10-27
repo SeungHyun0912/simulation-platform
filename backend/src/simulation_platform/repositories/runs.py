@@ -111,14 +111,21 @@ def relations_of_operations(session: Session, project_id: uuid.UUID, attempt_id:
 
 def list_metrics(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID, *, limit: int,
                  cursor_values: list | None, metric_key: str | None, window_kind: str,
-                 dimension: tuple[str, str] | None) -> list[MetricResult]:
-    """저장된 순서(id)대로. limit+1건 반환. `dimension`은 (차원 이름, 값) 하나로 거른다."""
+                 dimensions: list[tuple[str, str]]) -> list[MetricResult]:
+    """저장된 순서(id)대로. limit+1건 반환. `dimensions`의 (차원 이름, 값)을 모두 만족하는 행만(AND)."""
     stmt = select(MetricResult).where(
         MetricResult.project_id == project_id, MetricResult.attempt_id == attempt_id,
         MetricResult.window_kind == window_kind)
     if metric_key is not None:
         stmt = stmt.where(MetricResult.metric_key == metric_key)
-    if dimension is not None:
-        stmt = stmt.where(MetricResult.dimensions[dimension[0]].as_string() == dimension[1])
+    for name, value in dimensions:
+        stmt = stmt.where(MetricResult.dimensions[name].as_string() == value)
     stmt = apply_keyset(stmt, [MetricResult.id], False, cursor_values)
     return list(session.scalars(stmt.limit(limit + 1)))
+
+
+def run_window_metrics(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID, keys) -> list[MetricResult]:
+    """전체(run) 구간의 지정한 지표 행 전부(병목 요약용, 행 수가 작다)."""
+    return list(session.scalars(select(MetricResult).where(
+        MetricResult.project_id == project_id, MetricResult.attempt_id == attempt_id,
+        MetricResult.window_kind == "run", MetricResult.metric_key.in_(list(keys)))))

@@ -33,6 +33,7 @@ class ProductInput:
     graph: dict  # nodes·edges·completion_node_id (그래프 응답 모양)
     arrivals: list[dict]
     assumptions: dict  # AssumptionsDto 모양
+    product: dict | None = None  # {code, name}: 실행 당시의 제품 표시 코드·이름(스냅샷에 고정, 결과 화면용)
 
 
 @dataclass

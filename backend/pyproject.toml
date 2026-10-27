@@ -42,6 +42,7 @@ target-version = "py312"
 "tests/integration/test_api_runs.py" = ["F811"]
 "tests/integration/test_api_run_events.py" = ["F811"]
 "tests/integration/test_api_run_metrics.py" = ["F811"]
+"tests/integration/test_api_run_bottlenecks.py" = ["F811"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI의 의존성·파라미터 선언 관용구는 기본값 호출 경고에서 제외한다.
