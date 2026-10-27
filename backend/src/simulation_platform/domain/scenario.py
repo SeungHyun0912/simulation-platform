@@ -81,7 +81,8 @@ def engine_assumptions(assumptions: dict) -> ScenarioAssumptions:
 
 def assumptions_used(assumptions: dict) -> bool:
     return bool(assumptions.get("equipment_hold") or assumptions.get("unbounded_buffers")
-                or assumptions.get("manual_transport_minutes") or assumptions.get("residual_scope"))
+                or assumptions.get("manual_transport_minutes") or assumptions.get("residual_scope")
+                or assumptions.get("out_release") or assumptions.get("carrier_empty_move_minutes") is not None)
 
 
 def precheck(products: list[ProductInput], pinned_assets: dict[str, dict],

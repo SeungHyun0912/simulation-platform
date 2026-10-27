@@ -89,6 +89,8 @@ class StepModel:
     consume_policy: str = "consume"  # consume(시작 때 소비) | transfer(작업 동안 쓰고 끝날 때 소비·공급은 그대로 전달)
     setup_trigger: str = "per_operation"  # per_operation(작업마다) | on_product_change(설비의 직전 작업 제품이 다를 때만)
     delay: DelayModel | None = None
+    # 운반 단계의 운반 자원이 다른 곳에 있으면 일을 받은 곳까지 빈 차로 옮겨 가는 시간(분). None이면 위치를 따지지 않는다.
+    carrier_move_minutes: Fraction | None = None
 
 
 @dataclass(frozen=True)

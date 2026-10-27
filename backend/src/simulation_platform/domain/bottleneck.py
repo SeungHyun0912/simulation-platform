@@ -153,9 +153,14 @@ def _limitations(assumption_codes: set[str], findings: list[dict], nodes: Mappin
     if "UNBOUNDED_BUFFERS" in assumption_codes:
         notes.append("대기 공간 용량을 무제한으로 가정한 실행이라 공간 부족(space_full)으로 멈춘 곳은 평가되지 않습니다. "
                      "공간 용량을 확정한 뒤 다시 실행해야 합니다.")
-    notes.append("지게차·AMR 같은 운반 자원은 엔진이 대수를 모델링하지 않습니다(운반 자원 무제한 가정). 운반 병목은 "
-                 "대기 자재의 적체와 운반 단계의 동시 운반 수(필요한 대수)로만 추정합니다. 동시 운반 수는 공정 단계별 값이라 "
-                 "같은 지게차·AMR을 여러 공정이 쓰면 합쳐서 봐야 합니다.")
+    if "CARRIER_EMPTY_MOVE" in assumption_codes:
+        notes.append("운반 자원(지게차·AMR)은 지정된 대수와 위치로 계산했습니다(다음 명령이 없으면 목적지에서 기다리고, 다른 곳의 일은 "
+                     "빈 차 이동 시간을 시나리오 가정으로 더함). 운반 자원이 지정되지 않은 운반 단계는 무제한입니다. 운반을 기다린 "
+                     "시간은 운반 단계의 설비 대기(equipment_busy)로 나타납니다.")
+    else:
+        notes.append("지게차·AMR 같은 운반 자원은 엔진이 대수를 모델링하지 않습니다(운반 자원 무제한 가정). 운반 병목은 "
+                     "대기 자재의 적체와 운반 단계의 동시 운반 수(필요한 대수)로만 추정합니다. 동시 운반 수는 공정 단계별 값이라 "
+                     "같은 지게차·AMR을 여러 공정이 쓰면 합쳐서 봐야 합니다.")
     notes.append("가동 달력이 없어 24시간 연속 기준이며, 멈춘 양은 작업물·분이고 종류가 다르면 겹치므로 합산하지 않습니다.")
     if not findings:
         notes.append("멈춘 곳이 관측되지 않았습니다.")

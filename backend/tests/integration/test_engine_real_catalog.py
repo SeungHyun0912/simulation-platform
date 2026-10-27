@@ -63,7 +63,10 @@ def compiled(client, wire, code):
 def test_all_six_real_processes_compile_with_the_stated_scenario_assumptions(client, wire, code):
     result = compiled(client, wire, code)
     assert result.ok, result.issues
-    assert {a.code for a in result.assumptions} == {"UNBOUNDED_BUFFERS", "EQUIPMENT_HOLD_FOR_OPERATION"}
+    codes = {a.code for a in result.assumptions}
+    # 공간 용량 미정(UNBOUNDED_BUFFERS)과 단계 사이 직접 인계(UNBOUNDED_HANDOFFS, P06 외 5종에 있음)는 따로 보고한다
+    assert {"UNBOUNDED_BUFFERS", "EQUIPMENT_HOLD_FOR_OPERATION"} <= codes
+    assert codes <= {"UNBOUNDED_BUFFERS", "UNBOUNDED_HANDOFFS", "EQUIPMENT_HOLD_FOR_OPERATION"}
     model = result.require_model()
     assert model.completion_key == "complete"
     for step in model.steps.values():  # 사용자 확정값이 모든 단계에 들어갔다
