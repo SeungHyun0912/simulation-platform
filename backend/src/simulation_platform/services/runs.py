@@ -42,6 +42,8 @@ from simulation_platform.schemas.run import (
     LineageLinkOut,
     LineageOperationOut,
     LineageOut,
+    MetricOut,
+    MetricWindowOut,
     MinutesOut,
     RunCreate,
     RunInputOut,
@@ -321,3 +323,35 @@ def get_lineage(session: Session, principal: Principal, project_id: uuid.UUID, r
     items = repo.work_items(session, project_id, attempt_id, sorted(seen)[:MAX_LINEAGE_ITEMS + 1])
     return LineageOut(item_key=item_key, items=[_item_out(i) for i in items],
                       operations=[LineageOperationOut(**g) for g in operations.values()], truncated=truncated)
+
+
+# --- 지표 조회 -------------------------------------------------------------------------------------
+def _metric_out(row) -> MetricOut:
+    return MetricOut(
+        metric_key=row.metric_key, dimensions=row.dimensions, value=_num(row.value), unit=row.unit,
+        definition_version=row.definition_version, quality_status=row.quality_status,
+        window=MetricWindowOut(
+            kind=row.window_kind, start=MinutesOut(min=str(row.window_start_min), exact=row.window_start_exact),
+            end=MinutesOut(min=str(row.window_end_min), exact=row.window_end_exact)))
+
+
+def list_metrics(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID, *,
+                 limit: int | None, cursor: str | None, metric_key: str | None, window: str,
+                 process_version_id: str | None, asset_key: str | None,
+                 node_key: str | None) -> tuple[list[MetricOut], Page]:
+    require_project(session, principal, project_id)
+    attempt_id = _official_attempt(session, project_id, run_id)
+    chosen = [(name, value) for name, value in (("process_version_id", process_version_id),
+                                                 ("asset_key", asset_key), ("node_key", node_key)) if value is not None]
+    if len(chosen) > 1:
+        raise ValidationFailed("차원 필터는 하나만 쓸 수 있습니다.", [ErrorDetail(
+            message="process_version_id, asset_key, node_key 중 하나만 보내세요.", field_path="/asset_key")])
+    limit = limit or DEFAULT_LIMIT
+    tag = make_tag("run-metrics", ("id", False), {"run": run_id, "metric_key": metric_key, "window": window,
+                                                  "dimension": chosen})
+    values = decode_cursor(cursor, tag, 1) if cursor else None
+    rows = repo.list_metrics(session, project_id, attempt_id, limit=limit, cursor_values=values,
+                             metric_key=metric_key, window_kind=window, dimension=chosen[0] if chosen else None)
+    page_rows = rows[:limit]
+    next_cursor = encode_cursor(tag, [page_rows[-1].id]) if len(rows) > limit else None
+    return [_metric_out(r) for r in page_rows], Page(limit=limit, next_cursor=next_cursor)

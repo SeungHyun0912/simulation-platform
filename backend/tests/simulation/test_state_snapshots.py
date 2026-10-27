@@ -37,8 +37,8 @@ def test_a_snapshot_is_left_at_every_day_boundary_before_the_events_after_it():
     times = [e.sim_time for e in result.events]
     assert times == sorted(times)
     state = found[0].quantities
-    assert set(state) == {"periods", "day_index", "wip", "operations_in_progress", "busy_assets", "space_used",
-                          "completed", "residual_pools"}
+    assert set(state) == {"periods", "day_index", "wip", "in_machine", "wip_total", "operations_in_progress",
+                          "busy_assets", "space_used", "completed", "residual_pools"}
     assert state["operations_in_progress"] == 0 and state["busy_assets"] == []  # 첫 작업은 이미 끝났다
 
 
@@ -88,3 +88,29 @@ def test_the_event_limit_counts_streamed_events_and_snapshots_too():
     result = run(Arrival("2000", at=10 * DAY), daily_snapshots=True, event_limit=5, retain_events=False,
                  event_sink=lambda batch: None)
     assert result.state == "limit_reached" and result.event_count == 5
+
+
+def test_wip_includes_the_material_being_processed_inside_the_machine():
+    # 60,000m 원자재가 설비 안에서 30,000m 보빈 둘이 되는 2,000분 작업. 1일차 경계(1,440분)에는 보빈 하나(1,000분에 나옴)가
+    # 이미 나왔고 부모는 남은 30,000m가 설비 안에 있다 — 부모가 소비됐다고 재공품에서 빠지지 않는다.
+    result = run(Arrival("60000"), model=build(unit=30000), daily_snapshots=True)
+    state = snapshots(result)[0].quantities
+    assert state["in_machine"] == [{"process_version_id": MODEL_VERSION_OF(result), "step_key": "insulate",
+                                    "items": 1, "length_m": "30000.000000"}]
+    total = {t["process_version_id"]: t for t in state["wip_total"]}[MODEL_VERSION_OF(result)]
+    assert total["length_m"] == "30000.000000" and total["items"] >= 1
+    final = result.of_type("RUN_TERMINATED")[0].quantities["wip_total"]  # 끝나면 재공품이 없다
+    assert [(t["items"], t["length_m"]) for t in final] == [(0, "0.000000")]
+
+
+def MODEL_VERSION_OF(result):
+    return result.process_version_ids[0]
+
+
+def test_a_snapshot_shows_the_state_before_the_events_that_happen_at_the_boundary_itself():
+    # 정확히 1,440분에 도착하는 원자재는 1일차 경계 상태에 없다(경계 직전 상태). 경계 이벤트가 그 도착 이벤트보다 먼저 놓인다
+    result = run(Arrival("2000", at=DAY), daily_snapshots=True)
+    first = snapshots(result)[0]
+    assert first.sim_time == Fraction(DAY) and first.quantities["wip"] == []
+    assert [t["items"] for t in first.quantities["wip_total"]] == [0]
+    assert [e.event_type for e in result.events][:3] == ["STATE_SNAPSHOT", "MATERIAL_ARRIVED", "BUFFER_ENTERED"]

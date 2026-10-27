@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from fractions import Fraction
 
 import simpy
+from simpy.core import StopSimulation
 from simpy.events import URGENT
 
 from simulation_platform.simulation import ENGINE_VERSION
@@ -139,6 +140,16 @@ def _measures(item: WorkItem, **extra) -> dict:
 
 
 @dataclass
+class _Held:
+    """설비 안에서 처리 중인 작업의 소비된 부모(분할·지정 산출). 산출이 나올 때마다 남은 길이가 줄어든다."""
+
+    version: str
+    step_key: str
+    parents: tuple[WorkItem, ...]
+    produced_m: Fraction = Fraction(0)
+
+
+@dataclass
 class _PoolEntry:
     """잔량 풀의 한 덩어리. 어느 공정에서 나왔고 실행 종료 때 어떻게 처리할지를 함께 기억한다."""
 
@@ -183,6 +194,7 @@ class _Run:
         self.env = simpy.Environment(initial_time=Fraction(0))
         self.log = EventLog(event_limit, sink=event_sink, retain=retain_events, batch_size=batch_size)
         self._next_snapshot = DAY_MIN if daily_snapshots else None
+        self._machine: dict[str, _Held] = {}  # 작업 id → 설비 안에서 처리 중인 소비된 부모
         self._completed: dict[str, list] = {}  # 공정 버전 → [완제품 수, 완제품 길이 합]
         self.factory = ItemFactory()
         self.items: list[WorkItem] = []
@@ -221,10 +233,7 @@ class _Run:
                 self.env.process(self._arrive(lane, lane.arrivals[index]))
         state, reason = COMPLETED, None
         try:
-            if self.horizon is None:
-                self.env.run()
-            else:
-                self.env.run(until=_Horizon(self.env, self.horizon))
+            self._run(None if self.horizon is None else _Horizon(self.env, self.horizon))
             state, reason = self._final_state()
         except RunFailure as failure:
             state, reason = FAILED, failure.reason
@@ -238,7 +247,7 @@ class _Run:
             self.emit(ev.RUN_TERMINATED, reason=reason, quantities={
                 "residual_pools": len(residuals),
                 "state": state, "wip_items": sum(1 for i in self.items if i.status == "active"),
-                "operations_in_progress": self.in_progress})
+                "operations_in_progress": self.in_progress, "wip_total": self._wip_total()})
         self.log.flush()
         return RunResult(
             state=state, reason=reason, censored=state == HORIZON_REACHED, end_time=self.env.now,
@@ -281,11 +290,9 @@ class _Run:
         return starving if starving and held == active and self.in_progress == 0 else []
 
     def emit(self, event_type: str, **fields) -> Event:
-        self._snapshots_until(self.env.now)
         return self._note(self.log.emit(self.env.now, event_type, **fields))
 
     def emit_for(self, lane: _Lane, event_type: str, **fields) -> Event:
-        self._snapshots_until(self.env.now)
         return self._note(self.log.emit(self.env.now, event_type, process_version_id=lane.version, **fields))
 
     def _note(self, event: Event) -> Event:
@@ -296,30 +303,90 @@ class _Run:
         return event
 
     # --- 관측용 상태 요약(하루·주·월 경계) --------------------------------------------------------
-    def _snapshots_until(self, now: Fraction) -> None:
-        """경계 시각 이하의 이벤트가 나오기 전에 그 경계의 상태를 남긴다. 경계 사이에는 상태가 바뀌지 않으므로
-        "이벤트가 나오기 직전 상태"가 곧 그 경계의 상태다(SimPy 이벤트를 더하지 않아 실행 순서가 바뀌지 않는다)."""
+    def _run(self, until) -> None:
+        """SimPy를 실행한다. 상태 요약을 켜면 한 단계씩 진행하며, 다음 이벤트의 시각이 경계 이상일 때 **그 이벤트를
+        처리하기 전에** 경계의 상태를 남긴다(경계 사이에는 상태가 바뀌지 않으므로 그 순간이 곧 경계의 상태이고, SimPy
+        이벤트를 더하지 않아 실행 순서가 바뀌지 않는다). `env.run`과 같은 종료 규칙을 따른다."""
+        if self._next_snapshot is None:
+            self.env.run(until=until)
+            return
+        if until is not None:
+            until.callbacks.append(StopSimulation.callback)
+        try:
+            while True:
+                upcoming = self.env.peek()
+                if upcoming == float("inf"):
+                    return
+                self._snapshots_through(upcoming)
+                self.env.step()
+        except StopSimulation:
+            return
+
+    def _snapshots_through(self, now: Fraction) -> None:
         while self._next_snapshot is not None and self._next_snapshot <= now:
             at = self._next_snapshot
             self._next_snapshot += DAY_MIN
             self._note(self.log.emit(at, ev.STATE_SNAPSHOT, quantities=self._state_at(at)))
 
+    def _wip_total(self) -> list[dict]:
+        """공정 버전별 재공품(미완료 작업물): 작업물 수·길이·무게를 따로 센다. 활성 작업물(위치 없는 것 포함)과
+        설비 안에서 처리 중인 소비된 부모(남은 길이)를 함께 센다. 길이·무게가 하나도 알려지지 않으면 null."""
+        total: dict[str, list] = {lane.version: [0, Fraction(0), False, Fraction(0), False] for lane in self.lanes}
+        for item in self.items:
+            if item.status == "active":
+                cell = total[item.process_version_id]
+                cell[0] += 1
+                if item.length_m is not None:
+                    cell[1] += item.length_m
+                    cell[2] = True
+                if item.weight_kg is not None:
+                    cell[3] += item.weight_kg
+                    cell[4] = True
+        for held in self._machine.values():
+            cell = total[held.version]
+            for parent in held.parents:
+                cell[0] += 1
+            lengths = [p.length_m for p in held.parents if p.length_m is not None]
+            if lengths:
+                cell[1] += max(sum(lengths, Fraction(0)) - held.produced_m, Fraction(0))
+                cell[2] = True
+            weights = [p.weight_kg for p in held.parents if p.weight_kg is not None]
+            if weights:
+                cell[3] += sum(weights, Fraction(0))
+                cell[4] = True
+        return [{"process_version_id": v, "items": n,
+                 "length_m": format_decimal(length) if known or not n else None,
+                 "weight_kg": format_decimal(weight) if w_known or not n else None}
+                for v, (n, length, known, weight, w_known) in sorted(total.items())]
+
     def _state_at(self, at: Fraction) -> dict:
         day = int(at / DAY_MIN)
         periods = ["day"] + (["week"] if day % 7 == 0 else []) + (["month"] if day % 30 == 0 else [])
-        wip: dict[tuple[str, str], list] = defaultdict(lambda: [0, Fraction(0), False])
+        wip: dict[tuple[str, str | None], list] = defaultdict(lambda: [0, Fraction(0), False])
         for item in self.items:
-            if item.status == "active" and item.location is not None:
+            if item.status == "active":  # 위치가 없으면(설비 OUT에서 인계 대기 등) node_key는 null
                 cell = wip[(item.process_version_id, item.location)]
                 cell[0] += 1
                 if item.length_m is not None:
                     cell[1] += item.length_m
                     cell[2] = True
+        machine: dict[tuple[str, str], list] = defaultdict(lambda: [0, Fraction(0), False])
+        for held in self._machine.values():
+            cell = machine[(held.version, held.step_key)]
+            cell[0] += len(held.parents)
+            lengths = [p.length_m for p in held.parents if p.length_m is not None]
+            if lengths:
+                cell[1] += max(sum(lengths, Fraction(0)) - held.produced_m, Fraction(0))
+                cell[2] = True
         return {
             "periods": periods, "day_index": day,
             "wip": [{"process_version_id": v, "node_key": k, "items": n,
                      "length_m": format_decimal(length) if known else None}
-                    for (v, k), (n, length, known) in sorted(wip.items())],
+                    for (v, k), (n, length, known) in sorted(wip.items(), key=lambda kv: (kv[0][0], kv[0][1] or ""))],
+            "in_machine": [{"process_version_id": v, "step_key": k, "items": n,
+                            "length_m": format_decimal(length) if known else None}
+                           for (v, k), (n, length, known) in sorted(machine.items())],
+            "wip_total": self._wip_total(),
             "operations_in_progress": self.in_progress,
             "busy_assets": sorted(self.allocator.busy),
             "space_used": {k: n for k, n in sorted(self.spaces.used.items()) if n},
@@ -512,6 +579,9 @@ class _Run:
             parent = items[planned.ordinal - 1] if plan.relation == "supply" else item
             child = self._make_output(lane, step, parent, plan.relation, planned.length_m, planned.weight_kg)
             children.append(child)
+            held_now = self._machine.get(op_id)
+            if held_now is not None and plan.relation == "split" and child.length_m is not None:
+                held_now.produced_m += child.length_m
             self.emit_for(lane, ev.OUTPUT_UNIT_READY, step_key=step.key, operation_id=op_id,
                           asset_key=asset, item_key=child.key, source=parent.key,
                           quantities=_measures(child, ordinal=planned.ordinal))
@@ -540,6 +610,7 @@ class _Run:
             self._asset_state(lane, step, op_id, asset, ev.IDLE)
             self.last_version[asset] = lane.version
             self.allocator.release(asset)
+        self._machine.pop(op_id, None)
         self.in_progress -= 1
 
     def _product_changed(self, lane: _Lane, asset: str | None) -> bool:
@@ -560,6 +631,8 @@ class _Run:
                           asset_key=asset, quantities=_measures(consumed))
             if relation in ("split", "yield"):
                 consumed.status = "consumed"
+        if relation in ("split", "yield"):
+            self._machine[op_id] = _Held(lane.version, step.key, items)
 
     def _record_lineage(self, lane: _Lane, step: StepModel, op_id: str, items: tuple[WorkItem, ...],
                         children: list[WorkItem], plan) -> None:

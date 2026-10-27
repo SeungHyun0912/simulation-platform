@@ -183,3 +183,33 @@ class LineageOut(Out):
     items: list[WorkItemOut] = Field(description="계보에 나온 작업물(조상·후손 전부)")
     operations: list[LineageOperationOut] = Field(description="그 작업물을 만들거나 바꾼 작업, 이벤트 순서")
     truncated: bool = Field(default=False, description="작업물이 너무 많아 일부만 담았다")
+
+
+MetricWindowKind = Literal["run", "day", "week", "month"]
+MetricQuality = Literal["complete", "censored", "incomplete"]
+
+
+class MetricWindowOut(Out):
+    kind: MetricWindowKind = Field(description="run: 실행 전체, day: 1,440분, week: 7일, month: 30일(24시간 연속 기준)")
+    start: MinutesOut
+    end: MinutesOut = Field(description="마지막 구간은 실행이 끝난 시각까지로 잘린다(관측 시간 = end − start)")
+
+
+class MetricOut(Out):
+    metric_key: str
+    dimensions: dict[str, str] = Field(
+        description="차원: `process_version_id`(공정 버전별) 또는 `asset_key`(설비) 또는 `node_key`(대기 공간)")
+    window: MetricWindowOut
+    value: str | None = Field(description="decimal 문자열. 분모가 0이거나 해당 없으면 null(0이 아니다)")
+    unit: str
+    definition_version: str
+    quality_status: MetricQuality = Field(
+        description="complete: 끝까지 실행, censored: 고정 지평선에서 끊긴 관측, incomplete: 입력 부족·한도 등으로 끝나지 못함")
+
+
+class MetricDefinitionOut(Out):
+    metric_key: str
+    unit: str
+    dimension: Literal["process_version_id", "asset_key", "node_key"]
+    description: str
+    definition_version: str

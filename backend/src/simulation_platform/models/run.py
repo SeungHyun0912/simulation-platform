@@ -261,5 +261,37 @@ class RunWorkItemRelation(Base):
     balanced: Mapped[bool | None] = mapped_column(Boolean)
 
 
-__all__ = ["ATTEMPT_STATES", "JOB_STATES", "RUN_STATUSES", "TERMINAL_RUN_STATUSES", "Job", "RunAttempt",
-           "RunInputSnapshot", "RunWorkItem", "RunWorkItemRelation", "SimulationEvent", "SimulationRun"]
+class MetricResult(Base):
+    """이벤트로 계산한 지표 한 값: 지표 × 차원 × 구간(전체·일·주·월). 분모가 0이거나 해당 없으면 value는 null."""
+
+    __tablename__ = "metric_result"
+    __table_args__ = (
+        _attempt_fk("metric_result"),
+        UniqueConstraint("attempt_id", "metric_key", "dimensions_hash", "window_kind", "window_start_exact",
+                         name="uq_metric_result_series"),
+        CheckConstraint("window_kind IN ('run', 'day', 'week', 'month')", name="ck_metric_result_window"),
+        CheckConstraint("quality_status IN ('complete', 'censored', 'incomplete')", name="ck_metric_result_quality"),
+        CheckConstraint("window_end_min >= window_start_min AND window_start_min >= 0", name="ck_metric_result_range"),
+        CheckConstraint("jsonb_typeof(dimensions) = 'object'", name="ck_metric_result_dimensions"),
+        Index("ix_metric_result_window", "attempt_id", "window_kind", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    metric_key: Mapped[str] = mapped_column(Text)
+    dimensions: Mapped[dict] = mapped_column(JSONB)
+    dimensions_hash: Mapped[str] = mapped_column(Text)
+    window_kind: Mapped[str] = mapped_column(Text)
+    window_start_min: Mapped[Decimal] = mapped_column(_AMOUNT)
+    window_start_exact: Mapped[str] = mapped_column(Text)
+    window_end_min: Mapped[Decimal] = mapped_column(_AMOUNT)
+    window_end_exact: Mapped[str] = mapped_column(Text)
+    value: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    unit: Mapped[str] = mapped_column(Text)
+    definition_version: Mapped[str] = mapped_column(Text)
+    quality_status: Mapped[str] = mapped_column(Text)
+
+
+__all__ = ["ATTEMPT_STATES", "JOB_STATES", "RUN_STATUSES", "TERMINAL_RUN_STATUSES", "Job", "MetricResult",
+           "RunAttempt", "RunInputSnapshot", "RunWorkItem", "RunWorkItemRelation", "SimulationEvent", "SimulationRun"]
