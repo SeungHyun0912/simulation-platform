@@ -168,8 +168,9 @@ export function useProcessEditor(args: {
     if (kind === "state") void writer.fetchLatest(version.id).catch(() => {});
   }
 
-  async function save() {
-    if (busy || !dirty) return;
+  /** 저장한다. 성공하면 true, 실패(충돌·검증 거부·오류)나 저장할 것이 없으면 false를 돌려준다. */
+  async function save(): Promise<boolean> {
+    if (busy || !dirty) return false;
     const { base: b, draft: d } = entry;
     setBusy("saving");
     clearMessages();
@@ -196,8 +197,10 @@ export function useProcessEditor(args: {
       }
       setEntry(null);
       show({ hints: [], conflict: false, mergeBlocked: false, notice: "공정을 저장했습니다." });
+      return true;
     } catch (e) {
       handleFailure(e, phase, sent);
+      return false;
     } finally {
       setBusy(null);
     }

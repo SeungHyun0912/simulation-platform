@@ -11,7 +11,8 @@ import type { FakeRequest, FakeResponse, FakeState } from "./fakeApi";
  */
 type Version = Schemas["ProcessVersionOut"];
 type Graph = { nodes: Schemas["GraphNode"][]; edges: Schemas["GraphEdge"][]; completion_node_id?: string | null };
-export type ProcessState = { versions: Version[]; graphs: Record<string, Graph> };
+export type EditorStateRow = { positions: Record<string, { x: number; y: number }>; viewport: { x: number; y: number; zoom: number } | null; row_version: number };
+export type ProcessState = { versions: Version[]; graphs: Record<string, Graph>; /** 화면 좌표(0.5.0): 버전별 공용, 자체 ETag(저장 전 0) */ editorStates: Record<string, EditorStateRow> };
 
 export type Helpers = {
   errorBody: (status: number, code: string, message: string, details?: unknown[]) => FakeResponse;
@@ -199,6 +200,7 @@ export function seedProcesses(): ProcessState {
       baseVersion(3, 3, 1, "draft"),
       baseVersion(4, 4, 1, "draft", { row_version: 2 }),
     ],
+    editorStates: {},
     graphs: {
       [processVersionId(1)]: linear(0),
       [processVersionId(2)]: linear(100),
@@ -408,6 +410,32 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
   const { method, path } = req;
   const P = state.processes;
   const my = (productId: string) => P.versions.filter((v) => v.product_id === productId);
+
+  const es = /^\/projects\/([^/]+)\/process-versions\/([^/]+)\/editor-state$/.exec(path);
+  if (es) {
+    if (es[1] !== h.project) return h.notFound();
+    const v = P.versions.find((x) => x.id === es[2]);
+    if (!v) return h.notFound();
+    const row = P.editorStates[v.id] ?? { positions: {}, viewport: null, row_version: 0 };
+    const out = () => ({ process_version_id: v.id, node_positions: row.positions, viewport: row.viewport, row_version: row.row_version, updated_at: null, updated_by: null });
+    if (method === "GET") return { status: 200, headers: h.etag(row.row_version), body: { data: out() } };
+    if (method === "PUT") {
+      if (state.role === "viewer") return h.forbidden();
+      const im = req.headers["If-Match"];
+      if (im === undefined) return h.missingIfMatch();
+      if (im !== `"${row.row_version}"`) return h.staleVersion(row.row_version);
+      const b = req.body ?? {};
+      const nodes = new Set((P.graphs[v.id]?.nodes ?? []).map((n) => n.id));
+      for (const [id, pt] of Object.entries(b.node_positions ?? {}) as [string, { x: unknown; y: unknown }][]) {
+        if (!nodes.has(id)) return h.invalid(`/node_positions/${id}`, "VAL-REF-005: 이 버전의 노드가 아닙니다.");
+        if (typeof pt.x !== "number" || typeof pt.y !== "number" || Math.abs(pt.x) > 1_000_000 || Math.abs(pt.y) > 1_000_000) return h.invalid(`/node_positions/${id}`, "좌표는 절댓값 1,000,000 이하의 숫자여야 합니다.");
+      }
+      // 버전 상태와 무관하게 저장된다(승인본 포함). 공정 버전의 row_version은 바뀌지 않는다.
+      P.editorStates[v.id] = { positions: clone(b.node_positions ?? {}), viewport: b.viewport ?? null, row_version: row.row_version + 1 };
+      const saved = P.editorStates[v.id]!;
+      return { status: 200, headers: h.etag(saved.row_version), body: { data: { process_version_id: v.id, node_positions: saved.positions, viewport: saved.viewport, row_version: saved.row_version, updated_at: null, updated_by: null } } };
+    }
+  }
 
   const list = /^\/projects\/([^/]+)\/products\/([^/]+)\/process-versions$/.exec(path);
   if (list) {

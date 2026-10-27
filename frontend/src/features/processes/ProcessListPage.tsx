@@ -78,7 +78,11 @@ export function ProcessListPage() {
       key: "action",
       header: "작업",
       render: (p) =>
-        p.latestProcessVersion ? null : (
+        p.latestProcessVersion ? (
+          <Link to={`/projects/${projectId}/products/${p.id}/flow`} aria-label={`${p.code} 공정 플로우차트 보기`}>
+            플로우차트
+          </Link>
+        ) : (
           <Link to={`/projects/${projectId}/products/${p.id}`} aria-label={`${p.code} 공정 만들기`}>
             제품에서 공정 만들기
           </Link>

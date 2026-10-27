@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
 import { classifyError } from "../../shared/api/errors";
-import { Button } from "../../shared/components/Button";
+import { Button, LinkButton } from "../../shared/components/Button";
 import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
 import { ConflictNotice } from "../../shared/components/ConflictNotice";
 import { DataTable, type Column } from "../../shared/components/DataTable";
@@ -357,6 +357,7 @@ function ProcessEditor({
         renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
         actions={
           <>
+            <LinkButton to={`/projects/${projectId}/products/${productId}/flow?version=${version.id}`}>플로우차트로 보기</LinkButton>
             <Button
               disabled={!editor.dirty || !editable || busy}
               onClick={() => {
