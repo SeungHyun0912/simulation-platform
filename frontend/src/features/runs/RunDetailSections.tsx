@@ -7,6 +7,7 @@ import { SelectField, TextField } from "../../shared/components/Fields";
 import { FilterBar, Note, Section } from "../../shared/components/Layout";
 import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
 import { StateNotice } from "../../shared/components/StateNotice";
+import { useProductOptions } from "../scenarios/queries";
 import { useMetricDefinitions, useRunEvents, useRunInput, useRunMetrics } from "./queries";
 import { minutesText, type RunResult } from "./runView";
 
@@ -21,9 +22,25 @@ function ResultErrorNotice({ error, subject, onRetry }: { error: unknown; subjec
 
 /* ---------------- 결과 요약 ---------------- */
 
-export function RunResultSection({ result }: { result: RunResult }) {
+/**
+ * 결과 요약. 결과 응답에는 제품 id만 있어(표시 코드 추가는 Backend 계약 후보) 제품 목록으로 코드·이름을 찾아 보인다.
+ * 목록에 없으면(보관·접근 불가 등) id 앞 8자를 그대로 보이고 코드를 만들어 내지 않는다.
+ */
+export function RunResultSection({ result, projectId }: { result: RunResult; projectId: string }) {
+  const options = useProductOptions(projectId);
+  const byProduct = options.status === "success" ? options.data.byId : new Map<string, { code: string; name: string }>();
+  const productOf = new Map((result.products ?? []).map((p) => [p.process_version_id, p.product_id]));
+  const pvLabel = (processVersionId: string) => {
+    const pid = productOf.get(processVersionId);
+    const prod = pid ? byProduct.get(pid) : undefined;
+    return (
+      <>
+        {prod ? `${prod.code} ${prod.name}` : pid ? `제품 ${pid.slice(0, 8)}` : "제품 알 수 없음"} <code>{processVersionId.slice(0, 8)}</code>
+      </>
+    );
+  };
   const productCols: Column<NonNullable<RunResult["products"]>[number]>[] = [
-    { key: "pv", header: "공정 버전", render: (p) => <code>{p.process_version_id.slice(0, 8)}</code> },
+    { key: "pv", header: "제품 · 공정 버전", render: (p) => pvLabel(p.process_version_id) },
     { key: "items", header: "완제품 수", align: "end", render: (p) => p.completed_items },
     { key: "len", header: "완제품 길이(m)", align: "end", render: (p) => p.completed_length_m },
     { key: "first", header: "최초 완료", render: (p) => minutesText(p.first_completion) },
@@ -36,6 +53,12 @@ export function RunResultSection({ result }: { result: RunResult }) {
       {stalled && (
         <StateNotice kind="conflict" title="입력이 부족해 더 진행할 수 없습니다">
           실행 실패가 아니라 관측 결과입니다. 아래 "부족한 입력"을 확인하세요.
+        </StateNotice>
+      )}
+      {(result.assumptions ?? []).length > 0 && (
+        <StateNotice kind="conflict" title="가정 위의 결과입니다">
+          이 결과는 시나리오가 정한 가정(아래 "이 실행에 쓰인 가정") 위에서 얻은 값입니다.
+          {(result.assumptions ?? []).some((a) => a.code === "UNBOUNDED_BUFFERS") && " 특히 용량을 모르는 대기 공간을 제한 없이 대기하는 것으로 가정했으므로 대기 공간 용량 때문에 생기는 지연·막힘은 반영되지 않았습니다."}
         </StateNotice>
       )}
       {result.censored && <Note>고정 지평선에서 끊긴 관측입니다. 지평선 이후의 일은 결과에 포함되지 않습니다.</Note>}
@@ -83,7 +106,7 @@ export function RunResultSection({ result }: { result: RunResult }) {
           <DataTable
             caption="부족한 입력"
             columns={[
-              { key: "pv", header: "공정 버전", render: (s) => <code>{s.process_version_id.slice(0, 8)}</code> },
+              { key: "pv", header: "제품 · 공정 버전", render: (s) => pvLabel(s.process_version_id) },
               { key: "step", header: "단계", render: (s) => s.step ?? "" },
               { key: "pool", header: "풀", render: (s) => s.pool },
               { key: "needed", header: "필요", align: "end", render: (s) => s.needed },
@@ -101,7 +124,7 @@ export function RunResultSection({ result }: { result: RunResult }) {
           <DataTable
             caption="잔량"
             columns={[
-              { key: "pv", header: "공정 버전", render: (r) => <code>{r.process_version_id.slice(0, 8)}</code> },
+              { key: "pv", header: "제품 · 공정 버전", render: (r) => pvLabel(r.process_version_id) },
               { key: "pool", header: "풀", render: (r) => r.pool },
               { key: "len", header: "길이(m)", align: "end", render: (r) => r.length_m },
               { key: "disp", header: "처리", render: (r) => r.disposition },

@@ -127,7 +127,7 @@ export function RunDetailPage() {
       <ConfirmDialog open={confirm} title="실행을 취소할까요?" confirmLabel="취소 요청" cancelLabel="닫기" onConfirm={() => void cancel()} onCancel={() => setConfirm(false)}>
         대기 중이면 바로 취소되고, 실행 중이면 취소를 요청하며 worker가 멈춘 뒤 취소됩니다. 이미 끝난 실행은 취소할 수 없습니다.
       </ConfirmDialog>
-      {r.result && <RunResultSection result={r.result} />}
+      {r.result && <RunResultSection result={r.result} projectId={projectId} />}
       <RunInputSection projectId={projectId} runId={runId} />
       <RunMetricsSection projectId={projectId} runId={runId} enabled={!active && r.result !== null} />
       <RunEventsSection projectId={projectId} runId={runId} enabled={!active && r.result !== null} />
