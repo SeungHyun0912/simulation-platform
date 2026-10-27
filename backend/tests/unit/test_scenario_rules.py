@@ -32,3 +32,17 @@ def test_an_empty_scenario_is_not_runnable_and_counts_errors():
     result = rules.precheck([], {}, None)
     assert not result.runnable and result.error_count == 1
     assert [i.rule_id for i in result.issues] == ["SCN-PROD-001"]
+
+
+def test_arrival_unit_must_match_the_raw_material_unit_of_the_process():
+    def item(length_mode, arrivals):
+        return rules.ProductInput("p", {"id": "v", "raw_unit_spec": {"length_m": {"mode": length_mode}}},
+                                  graph(), arrivals, {})
+
+    assert rules._arrival_unit_warnings(0, item("known", [{"length_m": "2000"}])) == []
+    missing = rules._arrival_unit_warnings(0, item("known", [{"weight_kg": "2000"}]))
+    assert [(w.rule_id, w.severity, w.field_path) for w in missing] == [("SCN-ARR-002", "warning", "/products/0/arrivals/0")]
+    extra = rules._arrival_unit_warnings(0, item("not_applicable", [{"length_m": "5"}]))
+    assert [w.rule_id for w in extra] == ["SCN-ARR-002"]
+    assert rules._arrival_unit_warnings(0, item("not_applicable", [{"weight_kg": "3300"}])) == []
+    assert rules._arrival_unit_warnings(0, item("unknown", [{"weight_kg": "1"}])) == []  # 미정이면 판단하지 않는다

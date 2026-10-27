@@ -42,12 +42,22 @@ ResidualScope = Literal["machine", "product", "operation", "lot"]
 
 
 class ArrivalDto(StrictIn):
-    """지정 시각 도착(시나리오 시작 기준 분). 같은 시각에 count개가 도착한다. 길이 단위 작업물만(중량 도착 제외)."""
+    """지정 시각 도착(시나리오 시작 기준 분). 같은 시각에 count개가 도착한다.
+
+    원자재에 길이가 없는 공정(예: 2t·3.3t 원자재)은 `length_m`을 비우고 `weight_kg`만 보낸다(해당 없음 ≠ 0, 0.8.0).
+    길이와 무게는 서로 환산하지 않으며 둘 중 하나는 있어야 한다."""
 
     at_min: NonNegativeDecimal = "0"
     count: Annotated[int, Field(ge=1, le=100_000, strict=True)]
-    length_m: PositiveDecimal
+    length_m: PositiveDecimal | None = None
+    weight_kg: PositiveDecimal | None = None
     lot: Code | None = None
+
+    @model_validator(mode="after")
+    def _has_an_amount(self):
+        if self.length_m is None and self.weight_kg is None:
+            raise ValueError("도착에는 길이(length_m) 또는 무게(weight_kg)가 있어야 합니다.")
+        return self
 
 
 class AssumptionsDto(StrictIn):

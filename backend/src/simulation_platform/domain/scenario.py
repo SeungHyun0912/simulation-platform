@@ -99,6 +99,7 @@ def precheck(products: list[ProductInput], pinned_assets: dict[str, dict],
         if not item.arrivals:
             issues.append(Issue("error", "SCN-ARR-001", f"/products/{i}/arrivals",
                                 "도착 계획이 없습니다. 원자재가 들어오지 않으면 실행할 것이 없습니다."))
+        issues.extend(_arrival_unit_warnings(i, item))
         referenced |= referenced_assets(item.graph)
     if any(assumptions_used(p.assumptions) for p in products) and not assumption_reason:
         issues.append(Issue("error", "SCN-ASM-001", "/assumption_reason",
@@ -127,6 +128,23 @@ def precheck(products: list[ProductInput], pinned_assets: dict[str, dict],
                               for a in compiled.assumptions],
             waived=[_issue_dict(i) for i in compiled.waived]))
     return PrecheckResult(issues, results)
+
+
+def _arrival_unit_warnings(index: int, item: ProductInput) -> list[Issue]:
+    """도착의 단위가 공정의 원자재 단위와 다르면 알린다(길이 있는 원자재에 길이 없는 도착, 길이 없는 원자재에 길이 있는 도착).
+    실행은 길이 단계에 길이 없는 작업물이 오면 이유와 함께 멈추므로 사전에 경고한다."""
+    length_mode = (item.version.get("raw_unit_spec") or {}).get("length_m", {}).get("mode")
+    found: list[Issue] = []
+    for j, arrival in enumerate(item.arrivals):
+        has_length = arrival.get("length_m") is not None
+        path = f"/products/{index}/arrivals/{j}"
+        if length_mode == "known" and not has_length:
+            found.append(Issue("warning", "SCN-ARR-002", path,
+                               "공정의 원자재는 길이가 있는데 도착에 길이가 없습니다. 길이로 계산하는 단계에서 실행이 멈춥니다."))
+        elif length_mode == "not_applicable" and has_length:
+            found.append(Issue("warning", "SCN-ARR-002", path,
+                               "공정의 원자재는 길이가 없는(해당 없음) 것인데 도착에 길이가 있습니다. 공정과 같은 단위로 입고하세요."))
+    return found
 
 
 def _issue_dict(issue) -> dict:

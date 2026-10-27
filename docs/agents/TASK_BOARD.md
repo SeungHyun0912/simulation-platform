@@ -22,6 +22,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-05a | 시나리오 버전·실행 사전검증 API(migration 0007, 계약 0.7.0, DEC-007) | Backend | **구현완료·검증대기** | BE-C0-07, DEC-007 | 22f5c1f 이후 / contract 0.7.0 | HANDOFF-backend-20261027-BE-05a |
 | BE-07 | 실제 공정 6종에 사용자 정리 결과 반영(공정 draft 값, 데이터 기반 운반 시간) | Backend | **구현완료·검증대기** | BE-05a, CR be09 | 3225fd5 이후 / contract 0.7.0(변경 없음) | HANDOFF-backend-20261027-BE-07-intake |
 | BE-08 | 2차 결정 반영(일괄 확보 순차 산출, 길이 없는 원자재, 제품 전환 준비, 잔량 폐기, 입력 부족 진단) | Backend | **구현완료·검증대기** | BE-07 | PR #43 위 / contract 0.7.0(변경 없음) | HANDOFF-backend-20261027-BE-08-batch-engine |
+| BE-09 | P05 절연 잔량 폐기와 계약 0.8.0(잔량 `discard`·도착 `weight_kg`) | Backend | **구현완료·검증대기** | BE-08, CR be09 §9 | e250b48 이후 / contract 0.8.0 | HANDOFF-backend-20261027-BE-09-discard |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |

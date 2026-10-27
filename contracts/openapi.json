@@ -21,7 +21,7 @@
       },
       "ArrivalDto": {
         "additionalProperties": false,
-        "description": "지정 시각 도착(시나리오 시작 기준 분). 같은 시각에 count개가 도착한다. 길이 단위 작업물만(중량 도착 제외).",
+        "description": "지정 시각 도착(시나리오 시작 기준 분). 같은 시각에 count개가 도착한다.\n\n원자재에 길이가 없는 공정(예: 2t·3.3t 원자재)은 `length_m`을 비우고 `weight_kg`만 보낸다(해당 없음 ≠ 0, 0.8.0).\n길이와 무게는 서로 환산하지 않으며 둘 중 하나는 있어야 한다.",
         "properties": {
           "at_min": {
             "default": "0",
@@ -35,8 +35,15 @@
             "type": "integer"
           },
           "length_m": {
-            "title": "Length M",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
           },
           "lot": {
             "anyOf": [
@@ -50,11 +57,21 @@
               }
             ],
             "title": "Lot"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
           }
         },
         "required": [
-          "count",
-          "length_m"
+          "count"
         ],
         "title": "ArrivalDto",
         "type": "object"
@@ -4018,7 +4035,8 @@
             "enum": [
               "unknown",
               "none",
-              "carry_same_product"
+              "carry_same_product",
+              "discard"
             ],
             "title": "Mode",
             "type": "string"
