@@ -170,8 +170,7 @@ export function ProductListPage() {
         </SampleDataNotice>
       ) : (
         <SampleDataNotice>
-          제품 정보는 서버에서 불러온 데이터입니다. 공정 버전 열은 서버가 알려 주는 요약이며, 공정 화면은 아직 정적
-          예시라 연결되어 있지 않습니다.
+          제품 정보는 서버에서 불러온 데이터입니다. 공정 버전 열은 서버가 알려 주는 요약이며, 버전은 제품 상세 또는 공정 메뉴에서 엽니다.
         </SampleDataNotice>
       )}
       <FilterBar>
