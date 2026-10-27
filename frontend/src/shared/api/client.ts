@@ -13,6 +13,8 @@ export type RequestOptions = {
   body?: unknown;
   /** 수정(PATCH)·전이(POST) 요청의 row_version. 누락하면 서버가 428을 준다. */
   ifMatch?: number;
+  /** 추가 요청 헤더(예: 실행 요청의 `Idempotency-Key`). 인증 헤더는 넣지 않는다(Vite proxy가 붙인다). */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
 };
 
@@ -61,7 +63,7 @@ export function createApiClient(config: ApiClientConfig = {}) {
 
   async function request<B>(method: string, path: string, opts: RequestOptions = {}): Promise<ApiResult<B>> {
     const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}${buildQuery(opts.query)}`;
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
     let body: string | undefined;
     if (opts.body !== undefined) {
       headers["Content-Type"] = "application/json";

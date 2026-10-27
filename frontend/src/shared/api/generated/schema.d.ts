@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.9.0, openapi_sha256 229cc091b84e00810e2883455e84257066d3954091e82bc84f9ed86f164aae74
+// 기준 계약: version 0.11.0, openapi_sha256 d6189bb841e61e26c59485e28d1d6af098b505f21f708a7f051a647215455d49
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
@@ -36,6 +36,26 @@ export interface paths {
          * @description 인증 사용자와 허용된 조직·프로젝트.
          */
         get: operations["get_me_api_v1_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metric-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Metric Definitions
+         * @description 지표 정의(key·단위·차원·설명). 지표 값을 해석하는 기준이며 정의가 바뀌면 `definition_version`이 바뀐다.
+         */
+        get: operations["list_metric_definitions_api_v1_metric_definitions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -625,6 +645,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Run Events
+         * @description 공식 결과(선택된 시도)의 이벤트를 `event_seq` 순서로 돌려준다(cursor). 공식 결과가 아직 없으면 409
+         *     `RUN_RESULT_NOT_AVAILABLE`. 하루·주·월 경계의 상태 요약은 `event_type=STATE_SNAPSHOT`으로 모아 본다.
+         */
+        get: operations["list_run_events_api_v1_projects__project_id__runs__run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/runs/{run_id}/input": {
         parameters: {
             query?: never;
@@ -637,6 +678,47 @@ export interface paths {
          * @description 실행을 요청한 당시의 입력 스냅샷(불변)과 해시. 과거 실행을 현재 설정이 아니라 이 입력으로 설명해야 한다.
          */
         get: operations["get_run_input_api_v1_projects__project_id__runs__run_id__input_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/items/{item_key}/lineage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Item Lineage
+         * @description 작업물의 조상(어디서 왔나)과 후손(무엇이 되었나), 그 작업물을 만들거나 바꾼 작업과 길이 보존 값(잔량·이월·균형).
+         */
+        get: operations["get_item_lineage_api_v1_projects__project_id__runs__run_id__items__item_key__lineage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Run Metrics
+         * @description 공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.
+         *     공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 하나만 쓸 수 있다.
+         */
+        get: operations["list_run_metrics_api_v1_projects__project_id__runs__run_id__metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1300,6 +1382,37 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** EventOut */
+        EventOut: {
+            /** Asset Key */
+            asset_key?: string | null;
+            /** Destination */
+            destination?: string | null;
+            /** Event Seq */
+            event_seq: number;
+            /** Event Type */
+            event_type: string;
+            /** Item Key */
+            item_key?: string | null;
+            /** Operation Id */
+            operation_id?: string | null;
+            /** Process Version Id */
+            process_version_id?: string | null;
+            /**
+             * Quantities
+             * @description 양·상태. 길이·무게는 decimal 문자열이며 `STATE_SNAPSHOT`은 상태 요약을 담는다
+             */
+            quantities?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Reason */
+            reason?: string | null;
+            sim_time: components["schemas"]["MinutesOut"];
+            /** Source */
+            source?: string | null;
+            /** Step Key */
+            step_key?: string | null;
+        };
         /** FailureOut */
         FailureOut: {
             /** Message */
@@ -1495,6 +1608,78 @@ export interface components {
             severity: "error" | "warning";
         };
         JsonValue: unknown;
+        /** LineageLinkOut */
+        LineageLinkOut: {
+            /**
+             * Child Key
+             * @description 자식이 없으면(전부 잔량·폐기) null
+             */
+            child_key?: string | null;
+            /** Child Length M */
+            child_length_m?: string | null;
+            /** Parent Key */
+            parent_key: string;
+            /** Parent Length M */
+            parent_length_m?: string | null;
+        };
+        /** LineageOperationOut */
+        LineageOperationOut: {
+            /**
+             * Accounting Mode
+             * @description `abstract_yield`는 물량 보존 검증 대상이 아니다(03 §5)
+             * @enum {string}
+             */
+            accounting_mode: "physical" | "abstract_yield";
+            /**
+             * Balanced
+             * @description 자식 길이 합 + 잔량 = 부모 길이. 검증 대상이 아니면 null
+             */
+            balanced?: boolean | null;
+            /**
+             * Carried In M
+             * @description 이 작업이 잔량 풀에서 이어 받은 길이
+             */
+            carried_in_m?: string | null;
+            /** Links */
+            links: components["schemas"]["LineageLinkOut"][];
+            /** Operation Key */
+            operation_key: string;
+            /** Process Version Id */
+            process_version_id?: string | null;
+            /**
+             * Relation Type
+             * @enum {string}
+             */
+            relation_type: "split" | "transform" | "supply" | "yield";
+            /**
+             * Residual Length M
+             * @description 이 작업이 남긴 잔량(작업 단위 값)
+             */
+            residual_length_m?: string | null;
+            /** Step Key */
+            step_key: string;
+        };
+        /** LineageOut */
+        LineageOut: {
+            /** Item Key */
+            item_key: string;
+            /**
+             * Items
+             * @description 계보에 나온 작업물(조상·후손 전부)
+             */
+            items: components["schemas"]["WorkItemOut"][];
+            /**
+             * Operations
+             * @description 그 작업물을 만들거나 바꾼 작업, 이벤트 순서
+             */
+            operations: components["schemas"]["LineageOperationOut"][];
+            /**
+             * Truncated
+             * @description 작업물이 너무 많아 일부만 담았다
+             * @default false
+             */
+            truncated: boolean;
+        };
         /** ListOut[AssetOut] */
         ListOut_AssetOut_: {
             /** Data */
@@ -1507,10 +1692,28 @@ export interface components {
             data: components["schemas"]["AssetRevisionOut"][];
             page: components["schemas"]["Page"];
         };
+        /** ListOut[EventOut] */
+        ListOut_EventOut_: {
+            /** Data */
+            data: components["schemas"]["EventOut"][];
+            page: components["schemas"]["Page"];
+        };
         /** ListOut[MaterialOut] */
         ListOut_MaterialOut_: {
             /** Data */
             data: components["schemas"]["MaterialOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[MetricDefinitionOut] */
+        ListOut_MetricDefinitionOut_: {
+            /** Data */
+            data: components["schemas"]["MetricDefinitionOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[MetricOut] */
+        ListOut_MetricOut_: {
+            /** Data */
+            data: components["schemas"]["MetricOut"][];
             page: components["schemas"]["Page"];
         };
         /** ListOut[ProcessVersionListItem] */
@@ -1687,6 +1890,62 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** MetricDefinitionOut */
+        MetricDefinitionOut: {
+            /** Definition Version */
+            definition_version: string;
+            /** Description */
+            description: string;
+            /**
+             * Dimension
+             * @enum {string}
+             */
+            dimension: "process_version_id" | "asset_key" | "node_key";
+            /** Metric Key */
+            metric_key: string;
+            /** Unit */
+            unit: string;
+        };
+        /** MetricOut */
+        MetricOut: {
+            /** Definition Version */
+            definition_version: string;
+            /**
+             * Dimensions
+             * @description 차원: `process_version_id`(공정 버전별) 또는 `asset_key`(설비) 또는 `node_key`(대기 공간)
+             */
+            dimensions: {
+                [key: string]: string;
+            };
+            /** Metric Key */
+            metric_key: string;
+            /**
+             * Quality Status
+             * @description complete: 끝까지 실행, censored: 고정 지평선에서 끊긴 관측, incomplete: 입력 부족·한도 등으로 끝나지 못함
+             * @enum {string}
+             */
+            quality_status: "complete" | "censored" | "incomplete";
+            /** Unit */
+            unit: string;
+            /**
+             * Value
+             * @description decimal 문자열. 분모가 0이거나 해당 없으면 null(0이 아니다)
+             */
+            value: string | null;
+            window: components["schemas"]["MetricWindowOut"];
+        };
+        /** MetricWindowOut */
+        MetricWindowOut: {
+            /** @description 마지막 구간은 실행이 끝난 시각까지로 잘린다(관측 시간 = end − start) */
+            end: components["schemas"]["MinutesOut"];
+            /**
+             * Kind
+             * @description run: 실행 전체, day: 1,440분, week: 7일, month: 30일(24시간 연속 기준)
+             * @enum {string}
+             */
+            kind: "run" | "day" | "week" | "month";
+            start: components["schemas"]["MinutesOut"];
         };
         /** MinutesOut */
         MinutesOut: {
@@ -2797,6 +3056,10 @@ export interface components {
         Single_GraphOut_: {
             data: components["schemas"]["GraphOut"];
         };
+        /** Single[LineageOut] */
+        Single_LineageOut_: {
+            data: components["schemas"]["LineageOut"];
+        };
         /** Single[MaterialOut] */
         Single_MaterialOut_: {
             data: components["schemas"]["MaterialOut"];
@@ -2989,6 +3252,36 @@ export interface components {
             /** Zoom */
             zoom: number;
         };
+        /** WorkItemOut */
+        WorkItemOut: {
+            created_at: components["schemas"]["MinutesOut"];
+            /** Form */
+            form?: string | null;
+            /** Item Key */
+            item_key: string;
+            /**
+             * Length M
+             * @description 없으면 null(해당 없음 ≠ 0)
+             */
+            length_m?: string | null;
+            /** Location Key */
+            location_key?: string | null;
+            /** Lot Key */
+            lot_key?: string | null;
+            /** Parent Key */
+            parent_key?: string | null;
+            /** Process Version Id */
+            process_version_id?: string | null;
+            /** State Code */
+            state_code?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "consumed" | "completed";
+            /** Weight Kg */
+            weight_kg?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -3036,6 +3329,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Single_MeOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_metric_definitions_api_v1_metric_definitions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_MetricDefinitionOut_"];
                 };
             };
             /** @description Unauthorized */
@@ -6006,6 +6337,79 @@ export interface operations {
             };
         };
     };
+    list_run_events_api_v1_projects__project_id__runs__run_id__events_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+                /** @description 이벤트 종류(예: `STATE_SNAPSHOT`) */
+                event_type?: string | null;
+                step_key?: string | null;
+                asset_key?: string | null;
+                item_key?: string | null;
+                /** @description 가상 시간(분) 이상, decimal 문자열 */
+                from_min?: string | null;
+                /** @description 가상 시간(분) 미만, decimal 문자열 */
+                to_min?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_EventOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_run_input_api_v1_projects__project_id__runs__run_id__input_get: {
         parameters: {
             query?: never;
@@ -6038,6 +6442,140 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_item_lineage_api_v1_projects__project_id__runs__run_id__items__item_key__lineage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+                item_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LineageOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_run_metrics_api_v1_projects__project_id__runs__run_id__metrics_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+                /** @description 지표 key(`GET /metric-definitions` 참조) */
+                metric_key?: string | null;
+                /** @description 구간 종류: run(전체, 기본)·day·week·month */
+                window?: "run" | "day" | "week" | "month";
+                /** @description 공정 버전 차원 필터 */
+                process_version_id?: string | null;
+                /** @description 설비 차원 필터 */
+                asset_key?: string | null;
+                /** @description 대기 공간 차원 필터 */
+                node_key?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_MetricOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

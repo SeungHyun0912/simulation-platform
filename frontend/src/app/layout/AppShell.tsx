@@ -9,13 +9,13 @@ import contractMeta from "../../shared/api/generated/CONTRACT.json";
 import { Button } from "../../shared/components/Button";
 import styles from "./AppShell.module.css";
 
-const MENU = [
+const MENU: { to: string; label: string; pending?: boolean }[] = [
   { to: "assets", label: "설비·공간" },
   { to: "products", label: "제품" },
   { to: "materials", label: "재료" },
   { to: "processes", label: "공정" },
-  { to: "scenarios", label: "시나리오", pending: true },
-  { to: "runs", label: "실행 결과", pending: true },
+  { to: "scenarios", label: "시나리오" },
+  { to: "runs", label: "실행 결과" },
 ];
 
 export function AppShell() {
@@ -56,7 +56,7 @@ export function AppShell() {
       <div className={styles.banner} role="note" data-source={source}>
         {source === "static"
           ? "정적 예시 화면입니다. 서버에 연결되어 있지 않으며 표시된 데이터는 실제 데이터가 아닙니다."
-          : `API 연동 모드입니다(계약 ${contractMeta.contract_version}). 프로젝트 생성, 자산(기본 정보·용량·규칙 버전), 제품 기본 정보, 재료(기본 정보·기본 규격), 공정(버전·그래프 구조·단계·검토 요청)의 저장은 연결되어 있습니다.`}
+          : `API 연동 모드입니다(계약 ${contractMeta.contract_version}). 프로젝트 생성, 자산(기본 정보·용량·규칙 버전), 제품 기본 정보, 재료(기본 정보·기본 규격), 공정(버전·그래프 구조·단계·검토 요청), 시나리오(버전·사전검증·승인), 실행(요청·취소·결과·지표·이벤트)이 연결되어 있습니다.`}
       </div>
       <header className={styles.top}>
         <strong>시뮬레이션 플랫폼</strong>

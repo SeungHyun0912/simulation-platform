@@ -1,5 +1,6 @@
 import type { Schemas } from "../src/shared/api/types";
 import { materialRoute, seedMaterials } from "./fakeMaterials";
+import { scenarioRoute, seedScenarios, type ScenarioState } from "./fakeScenarios";
 import { processProductId, processRoute, processSummaries, processVersionId, seedProcesses, type ProcessState } from "./fakeProcess";
 
 /**
@@ -218,6 +219,8 @@ export type FakeState = {
   materials: Schemas["MaterialOut"][];
   /** 공정 버전·그래프(fakeProcess). 테스트에서 "다른 사용자가 먼저 수정함"을 만들 때 직접 바꾼다. */
   processes: ProcessState;
+  /** 시나리오·실행(fakeScenarios). 테스트에서 직접 바꿀 수 있다. */
+  scenarios: ScenarioState;
   /** 현재 요청자의 프로젝트 역할. editor/viewer는 승인·반려(admin 전용)나 쓰기에서 403을 받는다. */
   role: "admin" | "editor" | "viewer";
 };
@@ -226,6 +229,7 @@ export const freshState = (): FakeState => ({
   products: structuredClone(PRODUCTS),
   materials: seedMaterials(),
   processes: seedProcesses(),
+  scenarios: seedScenarios(),
   revisions: structuredClone(REVISIONS_OF_ASSET_1),
   role: "admin",
 });
@@ -661,6 +665,8 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
   if (mr) return mr;
   const pr = processRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
   if (pr) return pr;
+  const sr = scenarioRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
+  if (sr) return sr;
   return notFound();
 }
 
