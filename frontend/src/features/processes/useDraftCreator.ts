@@ -13,13 +13,14 @@ export function useDraftCreator(projectId: string, productId: string, onOpen: (v
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  async function create() {
+  /** 기준 버전(승인본·대체됨)을 주면 그 버전을 복사하고, 생략하면 서버가 현재 승인본을 복사한다. */
+  async function create(baseVersionId?: string) {
     if (busy) return; // 연속 클릭으로 중복 생성하지 않는다
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const v = await writer.createDraft(productId);
+      const v = await writer.createDraft(productId, baseVersionId);
       onOpen(v.id);
     } catch (e) {
       if (e instanceof ApiError && e.code === "PROCESS_DRAFT_EXISTS") {

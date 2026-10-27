@@ -29,10 +29,12 @@ function ResultErrorNotice({ error, subject, onRetry }: { error: unknown; subjec
 export function RunResultSection({ result, projectId }: { result: RunResult; projectId: string }) {
   const options = useProductOptions(projectId);
   const byProduct = options.status === "success" ? options.data.byId : new Map<string, { code: string; name: string }>();
-  const productOf = new Map((result.products ?? []).map((p) => [p.process_version_id, p.product_id]));
+  const productOf = new Map((result.products ?? []).map((p) => [p.process_version_id, p]));
   const pvLabel = (processVersionId: string) => {
-    const pid = productOf.get(processVersionId);
-    const prod = pid ? byProduct.get(pid) : undefined;
+    const r = productOf.get(processVersionId);
+    const pid = r?.product_id;
+    // 0.12.0부터 결과가 실행 당시 제품 코드·이름을 준다(스냅샷 값이라 이후 이름이 바뀌어도 그대로). 없으면 제품 목록으로 찾는다.
+    const prod = r?.product_code ? { code: r.product_code, name: r.product_name ?? "" } : pid ? byProduct.get(pid) : undefined;
     return (
       <>
         {prod ? `${prod.code} ${prod.name}` : pid ? `제품 ${pid.slice(0, 8)}` : "제품 알 수 없음"} <code>{processVersionId.slice(0, 8)}</code>
@@ -183,7 +185,7 @@ export function RunInputSection({ projectId, runId }: { projectId: string; runId
               <code>{input.data.sha256}</code>
             </dd>
             <dt>저장본 해시 검증</dt>
-            <dd>{input.data.hash_verified ? "✓ 일치" : "✕ 불일치(저장본이 변경되었을 수 있습니다)"}</dd>
+            <dd>{input.data.hash_verified ? "✓ 일치" : "! 불일치(저장본이 변경되었을 수 있습니다)"}</dd>
             <dt>스키마 버전</dt>
             <dd>{input.data.schema_version}</dd>
           </dl>

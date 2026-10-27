@@ -6,33 +6,38 @@ import { ApiOnlyNotice } from "../../shared/components/ApiOnlyNotice";
 import { Button } from "../../shared/components/Button";
 import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
 import { ConflictNotice } from "../../shared/components/ConflictNotice";
-import { SelectField, TextField } from "../../shared/components/Fields";
+import { CheckboxField, SelectField, TextField } from "../../shared/components/Fields";
 import { Block, DirtyIndicator, FilterBar, Note } from "../../shared/components/Layout";
 import { PageHeader } from "../../shared/components/PageHeader";
 import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
+import { ReasonDialog } from "../../shared/components/ReasonDialog";
 import { SaveErrorNotice } from "../../shared/components/SaveErrorNotice";
 import { StateNotice } from "../../shared/components/StateNotice";
 import { ValidationPanel, type ValidationIssue } from "../../shared/components/ValidationPanel";
 import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { useMaterialOptions, type MaterialOptions } from "../materials/queries";
-import { canEdit, projectRoleLabel } from "../projects/projectView";
+import { canApprove, canEdit, projectRoleLabel } from "../projects/projectView";
 import { useCurrentProject } from "../projects/useCurrentProject";
 import { useProductOptions } from "../scenarios/queries";
 import { FlowCanvas } from "./FlowCanvas";
+import { FlowTabs } from "./FlowTabs";
 import { EdgeEditForm, NodeEditForm } from "./GraphForms";
 import { clampZoom, effectivePositions, fitViewport, NODE, startViewport, type Point, type Viewport } from "./flowLayout";
 import { connectedEdges, linkedSpecKeys, nextLocationOf, operationsInOrder, parseLinear, stepOf, type NodeKind } from "./processDoc";
 import { edgeProblem, validateGraphStructure } from "./processGraph";
-import { issuesByEntity, NODE_KIND_LABELS, resourcesText, validateStepInput, type ProcessGraphView, type ProcessVersionView } from "./processView";
+import { isOpenProcessStatus, issuesByEntity, NODE_KIND_LABELS, resourcesText, validateStepInput, type ProcessGraphView, type ProcessVersionView } from "./processView";
 import { useAssetOptions, useEditorState, useProcessDetail, useProcessVersions, type AssetOptions, type EditorStateView } from "./queries";
 import { StepEditPanel } from "./StepEditPanel";
+import { useDraftCreator } from "./useDraftCreator";
 import { useProcessEditor } from "./useProcessEditor";
 import { useProcessWriter } from "./writer";
 import styles from "./ProcessFlowPage.module.css";
 
 const ADDABLE: NodeKind[] = ["operation", "buffer", "join", "milestone", "source", "sink"];
 const STATUS_TEXT: Record<string, string> = { draft: "초안", in_review: "검토 중", approved: "승인", superseded: "대체됨" };
+/** 단계 자동 저장: 마지막 입력 뒤 이만큼 기다렸다가 그 단계만 PATCH한다(입력마다 보내지 않는다). */
+export const AUTO_SAVE_MS = 1200;
 
 /**
  * 공정 플로우차트: 제품을 고르면 그 제품의 공정 버전 전체(노드·간선)를 서버에서 받아 한 화면의 순서도로 보여 주고,
@@ -50,11 +55,14 @@ export function ProcessFlowPage() {
   const versions = useProcessVersions(projectId, productId);
 
   const head = (title = "공정 플로우차트") => (
-    <PageHeader
-      title={title}
-      breadcrumbs={[{ label: "프로젝트", to: "/" }, { label: projectLabel }, { label: "공정", to: `/projects/${projectId}/processes` }, { label: "플로우차트" }]}
-      renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
-    />
+    <>
+      <PageHeader
+        title={title}
+        breadcrumbs={[{ label: "프로젝트", to: "/" }, { label: projectLabel }, { label: "공정", to: `/projects/${projectId}/processes` }, { label: "플로우차트" }]}
+        renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
+      />
+      {source === "api" && <FlowTabs projectId={projectId} productId={productId || undefined} />}
+    </>
   );
 
   // 제품을 고르지 않았으면 공정이 있는 첫 제품으로 이동한다.
@@ -184,6 +192,16 @@ function FlowLoader({ projectId, productId, versionId }: { projectId: string; pr
 
 type Selection = { kind: "node"; id: string } | { kind: "edge"; id: string } | null;
 
+function stepStatusText(saving: boolean, state: "clean" | "changed" | "new", auto: boolean, hasError: boolean): string {
+  if (saving) return "이 단계를 저장하는 중입니다…";
+  if (state === "new") return "새로 추가한 단계는 위의 '저장'으로 공정과 함께 저장합니다.";
+  if (state === "changed") {
+    if (!auto) return "이 단계에 저장하지 않은 변경이 있습니다.";
+    return hasError ? "입력 오류를 고치면 이 단계만 자동으로 저장합니다." : "입력을 멈추면 잠시 뒤 이 단계만 자동으로 저장합니다.";
+  }
+  return auto ? "자동 저장: 이 단계를 고치면 이 단계만 서버에 저장합니다." : "";
+}
+
 function FlowEditor({
   projectId,
   productId,
@@ -205,7 +223,11 @@ function FlowEditor({
 }) {
   const { project } = useCurrentProject();
   const role = project?.role;
+  const navigate = useNavigate();
   const writer = useProcessWriter(projectId);
+  const versions = useProcessVersions(projectId, productId);
+  const drafts = useDraftCreator(projectId, productId, (id) => navigate(`/projects/${projectId}/products/${productId}/flow?version=${id}`));
+  const openOther = versions.status === "success" ? (versions.data.find((v) => isOpenProcessStatus(v.status) && v.id !== version.id) ?? null) : null;
   const editor = useProcessEditor({ projectId, productId, version, graph, previewConflict: false });
   const mayEdit = canEdit(role);
   const editable = version.status === "draft" && mayEdit;
@@ -229,6 +251,9 @@ function FlowEditor({
   const [layoutConflict, setLayoutConflict] = useState(false);
   const [layoutError, setLayoutError] = useState<unknown>(null);
   const [layoutNotice, setLayoutNotice] = useState<string | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [autoSave, setAutoSave] = useState(true);
+  const [autoStopped, setAutoStopped] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const positions = useMemo(() => effectivePositions(doc, saved?.positions ?? {}, moved), [doc, saved, moved]);
@@ -249,6 +274,37 @@ function FlowEditor({
 
   const node = selection?.kind === "node" ? (doc.nodes.find((n) => n.id === selection.id) ?? null) : null;
   const edge = selection?.kind === "edge" ? (doc.edges.find((e) => e.id === selection.id) ?? null) : null;
+
+  // 단계 자동 저장: 고른 단계의 이름·내용이 바뀌면 잠시 뒤 그 단계만 PATCH한다. 입력 오류가 있으면 보내지 않는다.
+  // 실패하면(충돌·거부·오류) 자동 저장을 멈추고 알린다. 다른 노드를 고르면 남은 변경을 바로 저장한다.
+  const stepNodeId = node?.kind === "operation" ? node.id : null;
+  const stepJson = node?.kind === "operation" ? JSON.stringify([node.label, node.step]) : "";
+  const stepHasError = stepNodeId ? (byEntity.get(stepNodeId) ?? []).some((i) => i.severity === "error") : false;
+  const autoActive = autoSave && editable;
+  const { saveStep, stepState } = editor;
+  const runAutoSave = useCallback(
+    (id: string) => {
+      void saveStep(id).then((ok) => {
+        if (ok === false) {
+          setAutoSave(false);
+          setAutoStopped(true);
+        }
+      });
+    },
+    [saveStep],
+  );
+  useEffect(() => {
+    if (!autoActive || !stepNodeId || stepHasError || editor.busy !== null || stepState(stepNodeId) !== "changed") return;
+    const t = setTimeout(() => runAutoSave(stepNodeId), AUTO_SAVE_MS);
+    return () => clearTimeout(t);
+    // stepJson: 같은 단계를 계속 고치면 타이머를 다시 건다
+  }, [autoActive, stepNodeId, stepJson, stepHasError, editor.busy, stepState, runAutoSave]);
+  const prevStep = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevStep.current;
+    prevStep.current = stepNodeId;
+    if (prev && prev !== stepNodeId && autoActive && stepState(prev) === "changed") runAutoSave(prev);
+  }, [stepNodeId, autoActive, stepState, runAutoSave]);
 
   const summaryOf = (n: (typeof doc.nodes)[number]) => {
     if (n.kind === "operation") return resourcesText(stepOf(n), assetCode);
@@ -373,10 +429,57 @@ function FlowEditor({
         )}
       </ConfirmDialog>
 
+      <ReasonDialog
+        open={rejectOpen}
+        title="이 공정 버전을 반려할까요?"
+        label="반려 사유"
+        confirmLabel="반려"
+        maxLength={1000}
+        busy={editor.busy === "transition"}
+        onCancel={() => setRejectOpen(false)}
+        onConfirm={(reason) => {
+          setRejectOpen(false);
+          void editor.transition("reject", reason);
+        }}
+      >
+        반려하면 이 버전은 초안으로 돌아가며, 사유가 작성자에게 표시됩니다.
+      </ReasonDialog>
       <p>
         버전 상태: <VersionStatusBadge status={version.status} /> · 내 역할: {role ? projectRoleLabel(role) : "알 수 없음"} ·{" "}
         <Link to={`/projects/${projectId}/products/${productId}/processes/${version.id}`}>표·상세 편집 화면으로</Link>
       </p>
+      {version.rejectionReason && version.status === "draft" && <Note>반려 사유: {version.rejectionReason}</Note>}
+      <div className={styles.toolbar} role="group" aria-label="버전 상태 전환">
+        {mayEdit && version.status === "draft" && (
+          <Button disabled={editor.dirty || busy} onClick={() => void editor.transition("submit")} title={editor.dirty ? "먼저 저장해야 검토를 요청할 수 있습니다" : undefined}>
+            {editor.busy === "transition" ? "처리 중…" : "검토 요청"}
+          </Button>
+        )}
+        {canApprove(role) && version.status === "in_review" && (
+          <>
+            <Button disabled={busy} onClick={() => void editor.transition("approve")}>
+              {editor.busy === "transition" ? "처리 중…" : "승인"}
+            </Button>
+            <Button disabled={busy} onClick={() => setRejectOpen(true)}>
+              반려
+            </Button>
+          </>
+        )}
+        {mayEdit && (version.status === "approved" || version.status === "superseded") && (
+          <Button
+            disabled={!!openOther || drafts.busy || versions.status !== "success"}
+            onClick={() => void drafts.create(version.id)}
+            title={openOther ? "이미 열린 버전이 있습니다(제품당 하나)" : undefined}
+          >
+            {drafts.busy ? "만드는 중…" : "이 버전으로 새 초안 만들기"}
+          </Button>
+        )}
+        {openOther && (version.status === "approved" || version.status === "superseded") && (
+          <Link to={`/projects/${projectId}/products/${productId}/flow?version=${openOther.id}`}>열린 버전(v{openOther.versionNo}) 열기</Link>
+        )}
+      </div>
+      {drafts.error != null && <SaveErrorNotice error={drafts.error} />}
+      {drafts.notice && <p role="status">{drafts.notice}</p>}
       {!editable && (
         <Block>
           <Note>
@@ -467,6 +570,18 @@ function FlowEditor({
             자동 배치
           </Button>
         </div>
+        {editable && (
+          <div className={styles.group}>
+            <CheckboxField
+              label="단계 변경 자동 저장"
+              checked={autoSave}
+              onChange={(e) => {
+                setAutoSave(e.target.checked);
+                setAutoStopped(false);
+              }}
+            />
+          </div>
+        )}
         <div className={styles.group}>
           <Button
             disabled={!dirty || busy}
@@ -513,6 +628,20 @@ function FlowEditor({
           />
         </div>
         <aside className={styles.panel} aria-label="선택한 항목 수정">
+          {node && node.kind === "operation" && editable && (
+            <div className={styles.hint} role="status" aria-label="단계 저장 상태">
+              {stepStatusText(editor.busy === "step", stepState(node.id), autoActive, stepHasError)}
+              {!autoActive && stepState(node.id) === "changed" && (
+                <>
+                  {" "}
+                  <Button disabled={busy || stepHasError} onClick={() => void editor.saveStep(node.id)}>
+                    이 단계만 저장
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+          {autoStopped && <Note>단계 자동 저장을 멈췄습니다(저장 실패). 위의 안내를 확인한 뒤 다시 켜거나 직접 저장하세요.</Note>}
           {node && node.kind === "operation" && (
             <StepEditPanel
               node={node}
@@ -558,7 +687,7 @@ function FlowEditor({
 
       <ul className={styles.legend} aria-label="범례">
         <li>둥근 모서리 사각형: 공정 단계 · 알약 모양: 시작·합류·완료 기준·끝 · 점선 테두리: 대기 공간</li>
-        <li>실선: 물류 · 점선(긴): 선후 관계 · 점선(짧은): 공급 · ★: 완제품 판정 노드 · 굵은 붉은 테두리: 오류</li>
+        <li>실선: 물류 · 점선(긴): 선후 관계 · 점선(짧은): 공급 · ● 완제품: 완제품 판정 노드 · 굵은 붉은 테두리: 오류</li>
       </ul>
     </>
   );

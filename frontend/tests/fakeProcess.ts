@@ -448,7 +448,10 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
       if (state.role === "viewer") return h.forbidden();
       if (my(product.id).some((v) => v.status === "draft" || v.status === "in_review"))
         return h.errorBody(409, "PROCESS_DRAFT_EXISTS", "이미 진행 중인 공정 버전이 있습니다.", [{ message: "초안 또는 검토 중인 버전이 제품당 하나만 있을 수 있습니다.", severity: "error" }]);
-      const approved = my(product.id).find((v) => v.status === "approved");
+      // 0.5.0: 본문 base_version_id로 복사할 버전을 고른다(같은 제품의 버전만). 생략하면 현재 승인본.
+      const wanted = req.body?.base_version_id as string | undefined;
+      const approved = wanted ? my(product.id).find((v) => v.id === wanted) : my(product.id).find((v) => v.status === "approved");
+      if (wanted && !approved) return h.notFound();
       const no = Math.max(0, ...my(product.id).map((v) => v.version_no)) + 1;
       const n = P.versions.length + 1;
       const v = baseVersion(n, 0, no, "draft", {
@@ -517,6 +520,32 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
     if ("notes" in b) version.notes = b.notes;
     done();
     return { status: 200, headers: h.etag(version.row_version), body: { data: version } };
+  }
+
+  if (sub?.startsWith("steps/") && method === "PATCH") {
+    const g = guardWrite();
+    if (g) return g;
+    if (version.status !== "draft") return immutable();
+    if (stale()) return h.staleVersion(version.row_version);
+    const stepId = sub.slice("steps/".length);
+    const graph = P.graphs[version.id]!;
+    const n = graph.nodes.find((x) => x.id === stepId);
+    if (!n || n.kind !== "operation") return h.notFound();
+    const b = req.body ?? {};
+    const allowed = ["label", "operation_type", "handler_version", "timing_rule", "input_rule", "output_rule", "handoff_rule", "residual_rule", "resources", "material_specs"];
+    for (const k of Object.keys(b)) if (!allowed.includes(k)) return h.invalid(`/${k}`, "허용되지 않는 필드입니다.");
+    if ("material_specs" in b) {
+      const keys = new Set(((b.material_specs ?? []) as { spec_key: string }[]).map((x) => x.spec_key));
+      const linked = graph.edges.flatMap((e) => [e.from_node_id === stepId ? e.source_output_spec_key : null, e.to_node_id === stepId ? e.target_input_spec_key : null]).filter((x): x is string => !!x);
+      const lost = linked.find((k) => !keys.has(k));
+      if (lost) return h.errorBody(422, "VALIDATION_ERROR", "간선이 연결한 spec은 제거할 수 없습니다.", [{ severity: "error", rule_id: "VAL-SPEC-005", message: `간선이 연결한 spec ${lost}을 제거할 수 없습니다.`, field_path: "/material_specs" }]);
+    }
+    // 보낸 최상위 필드만 통째로 교체한다(다른 노드·간선은 그대로)
+    const { label, ...stepFields } = b;
+    if (label !== undefined) n.label = label;
+    n.step = { ...(n.step ?? {}), ...clone(stepFields) };
+    done();
+    return { status: 200, headers: h.etag(version.row_version), body: { data: { id: n.id, label: n.label, row_version: version.row_version, step: n.step } } };
   }
 
   if (sub === "graph" && method === "GET") {

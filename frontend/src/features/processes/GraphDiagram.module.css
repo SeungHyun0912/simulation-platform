@@ -54,6 +54,12 @@
   stroke-width: 3;
 }
 
+.highlight rect {
+  stroke: var(--status-warning-fg);
+  stroke-width: 3.5;
+  stroke-dasharray: none;
+}
+
 .error rect {
   stroke: var(--status-danger-fg);
   stroke-width: 3;
