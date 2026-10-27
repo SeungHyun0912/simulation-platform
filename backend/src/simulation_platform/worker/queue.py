@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, func, insert, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from simulation_platform.models import (
@@ -164,7 +164,8 @@ def write_batch(session: Session, claim: Claim, kind: str, rows: list[dict], lea
     if leased is None:
         session.rollback()
         raise LeaseLost(str(claim.job_id))
-    session.execute(insert(model), [convert(claim, row) for row in rows])
+    # Core 삽입이다: ORM 벌크 삽입(`insert(model)`)은 이벤트 2,000행에 16초가 걸려 한 달치 실행을 못 담았다(Core는 0.2초).
+    session.execute(model.__table__.insert(), [convert(claim, row) for row in rows])
     session.execute(update(RunAttempt).where(
         RunAttempt.id == claim.attempt_id, RunAttempt.fencing_token == claim.fencing_token,
         RunAttempt.state == "running").values(heartbeat_at=func.now()))
