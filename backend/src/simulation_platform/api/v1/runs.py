@@ -20,8 +20,10 @@ from simulation_platform.schemas.run import (
     BottleneckSummaryOut,
     EventOut,
     LineageOut,
+    MetricComparisonOut,
     MetricOut,
     MetricWindowKind,
+    RunComparisonOut,
     RunCreate,
     RunInputOut,
     RunListItem,
@@ -215,4 +217,39 @@ def list_asset_states(
     종료 시각까지. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`."""
     items, page = service.asset_states(session, principal, project_id, run_id, asset_id, from_min=from_min,
                                        to_min=to_min, limit=limit, cursor=cursor)
+    return {"data": items, "page": page}
+
+
+@router.get("/runs/{run_id}/compare/{other_run_id}", response_model=Single[RunComparisonOut],
+            responses={**READ_ERRORS, 409: ERR})
+def compare_runs(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    other_run_id: uuid.UUID,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """두 실행 비교 요약: 비교 가능 여부·주의, 입력 스냅샷 차이, 제품별 핵심 지표(기준·비교·차이·비율), 양쪽 병목 상위 5개.
+    `run_id`가 기준, `other_run_id`가 비교 대상이다. 같은 프로젝트여야 하고 둘 다 공식 결과가 있어야 한다."""
+    return {"data": service.compare_runs(session, principal, project_id, run_id, other_run_id)}
+
+
+@router.get("/runs/{run_id}/compare/{other_run_id}/metrics", response_model=ListOut[MetricComparisonOut],
+            responses={**READ_ERRORS, 409: ERR})
+def compare_run_metrics(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    other_run_id: uuid.UUID,
+    limit: LimitQuery = None,
+    cursor: CursorQuery = None,
+    metric_key: Annotated[str | None, Query(max_length=64, description="지표 하나만(일·주·월 구간이면 필수)")] = None,
+    window: Annotated[MetricWindowKind, Query(description="구간 종류: run(기본)·day·week·month")] = "run",
+    changed_only: Annotated[bool, Query(description="값이 다른 행만(한쪽에만 있는 행 포함)")] = False,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """지표별 기준값·비교값·차이(비교 − 기준)·비율(비교 ÷ 기준). 공정 버전이 달라도 같은 제품이면 맞춘다(차원의 공정 버전을
+    제품 id로 바꿈). 한쪽에만 있는 행은 다른 쪽 값이 null이다."""
+    items, page = service.compare_metrics(session, principal, project_id, run_id, other_run_id, metric_key=metric_key,
+                                          window=window, changed_only=changed_only, limit=limit, cursor=cursor)
     return {"data": items, "page": page}

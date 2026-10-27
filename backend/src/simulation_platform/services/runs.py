@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from simulation_platform.auth.principal import Principal
 from simulation_platform.domain import bottleneck as bottleneck_rules
+from simulation_platform.domain import comparison as compare_rules
 from simulation_platform.domain import run as rules
 from simulation_platform.domain.errors import (
     DomainError,
@@ -54,13 +55,19 @@ from simulation_platform.schemas.run import (
     BottleneckLocationOut,
     BottleneckOut,
     BottleneckSummaryOut,
+    ComparisonBottlenecksOut,
     EventOut,
+    InputChangeOut,
     LineageLinkOut,
     LineageOperationOut,
     LineageOut,
+    MetricComparisonOut,
     MetricOut,
+    MetricPairOut,
     MetricWindowOut,
     MinutesOut,
+    ProductComparisonOut,
+    RunComparisonOut,
     RunCreate,
     RunInputOut,
     RunListItem,
@@ -612,3 +619,131 @@ def asset_states(session: Session, principal: Principal, project_id: uuid.UUID, 
             product_code=codes.get(event.process_version_id)))
     more = len(events) > limit and last_seq is not None
     return segments, Page(limit=limit, next_cursor=encode_cursor(tag, [last_seq]) if more else None)
+
+
+# --- 두 실행 비교(CR be12) -------------------------------------------------------------------------------
+_PRODUCT_KEYS = ("completed_items", "completed_length_m", "throughput_items_per_day", "lead_time_avg_min",
+                 "lead_time_max_min", "wip_items", "discarded_length_m")
+
+
+def _pair_sides(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                other_id: uuid.UUID):
+    require_project(session, principal, project_id)
+    if run_id == other_id:
+        raise ValidationFailed("같은 실행끼리는 비교할 수 없습니다.", [ErrorDetail(
+            message="다른 실행을 고르세요.", field_path="/other_run_id")])
+    sides = []
+    for rid in (run_id, other_id):
+        attempt_id, result, snapshot = _official_result(session, project_id, rid)
+        _fill_snapshot_codes(session, project_id, snapshot)
+        sides.append((_reload(session, project_id, rid), attempt_id, result, snapshot))
+    return sides
+
+
+def _fill_snapshot_codes(session: Session, project_id: uuid.UUID, snapshot: dict) -> None:
+    """이전 run(스냅샷에 제품 코드가 없음)은 현재 제품 목록으로 보충한다(응답용, 저장된 스냅샷은 바꾸지 않는다)."""
+    if all(p.get("product") for p in snapshot["products"]):
+        return
+    current = {str(p.id): p for p in session.scalars(select(Product).where(Product.project_id == project_id))}
+    for product in snapshot["products"]:
+        if not product.get("product") and product["product_id"] in current:
+            row = current[product["product_id"]]
+            product["product"] = {"code": row.code, "name": row.name}
+
+
+def _num_out(value: Decimal | None) -> str | None:
+    return None if value is None else f"{value:.6f}"
+
+
+def compare_runs(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                 other_id: uuid.UUID) -> RunComparisonOut:
+    """두 실행의 입력 차이·제품별 핵심 지표·병목을 나란히 놓는다(저장 없이, 불변 입력·지표만 읽음)."""
+    (run_a, attempt_a, result_a, snap_a), (run_b, attempt_b, result_b, snap_b) = _pair_sides(
+        session, principal, project_id, run_id, other_id)
+    comparable, notes = compare_rules.warnings(snap_a, snap_b, run_a.status, run_b.status)
+    changes = compare_rules.input_changes(snap_a, snap_b)
+    left, right = compare_rules.product_index(snap_a), compare_rules.product_index(snap_b)
+
+    def by_product(attempt_id, index):
+        pv_to_product = {info["process_version_id"]: pid for pid, info in index.items()}
+        values: dict[str, dict] = {}  # 제품 id → 지표 key → 지표 행
+        for row in repo.run_window_metrics(session, project_id, attempt_id, _PRODUCT_KEYS):
+            pid = pv_to_product.get(row.dimensions.get("process_version_id"))
+            if pid is not None and set(row.dimensions) == {"process_version_id"}:
+                values.setdefault(pid, {})[row.metric_key] = row
+        return values
+
+    values_a, values_b = by_product(attempt_a, left), by_product(attempt_b, right)
+    last_a = {p.get("product_id"): p.get("last_completion") for p in result_a.get("products", [])}
+    last_b = {p.get("product_id"): p.get("last_completion") for p in result_b.get("products", [])}
+    products = []
+    for pid in sorted(set(left) & set(right), key=lambda p: left[p]["order"]):
+        pairs = []
+        for key in _PRODUCT_KEYS:
+            a, b = values_a.get(pid, {}).get(key), values_b.get(pid, {}).get(key)
+            d, r = compare_rules.delta(None if a is None else a.value, None if b is None else b.value)
+            pairs.append(MetricPairOut(metric_key=key, unit=(a or b).unit if (a or b) else None,
+                                       base=_num_out(None if a is None else a.value),
+                                       other=_num_out(None if b is None else b.value),
+                                       delta=_num_out(d), ratio=_num_out(r)))
+        products.append(ProductComparisonOut(
+            product_id=pid, product_code=left[pid]["code"] or right[pid]["code"],
+            product_name=left[pid]["name"] or right[pid]["name"],
+            base_process_version_id=left[pid]["process_version_id"],
+            other_process_version_id=right[pid]["process_version_id"], metrics=pairs,
+            base_last_completion=last_a.get(pid), other_last_completion=last_b.get(pid)))
+    top = ComparisonBottlenecksOut(
+        base=get_bottlenecks(session, principal, project_id, run_id, 5).findings,
+        other=get_bottlenecks(session, principal, project_id, other_id, 5).findings)
+    return RunComparisonOut(
+        base_run_id=run_a.id, other_run_id=run_b.id, comparable=comparable, warnings=notes,
+        base_status=run_a.status, other_status=run_b.status,
+        base_end_time=result_a.get("end_time"), other_end_time=result_b.get("end_time"),
+        input_changes=[InputChangeOut(**c) for c in changes], products=products, bottlenecks=top)
+
+
+def compare_metrics(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                    other_id: uuid.UUID, *, metric_key: str | None, window: str, changed_only: bool,
+                    limit: int | None, cursor: str | None) -> tuple[list[MetricComparisonOut], Page]:
+    """같은 지표·차원·구간끼리 기준값·비교값·차이·비율. 공정 버전이 달라도 같은 제품이면 맞춘다."""
+    if window != "run" and metric_key is None:
+        raise ValidationFailed("일·주·월 구간 비교는 지표를 하나 골라야 합니다.", [ErrorDetail(
+            message="metric_key를 보내세요(행이 많아 구간 비교는 지표 하나씩 본다).", field_path="/metric_key")])
+    (_, attempt_a, _, snap_a), (_, attempt_b, _, snap_b) = _pair_sides(session, principal, project_id, run_id, other_id)
+    left, right = compare_rules.product_index(snap_a), compare_rules.product_index(snap_b)
+    map_a = {info["process_version_id"]: pid for pid, info in left.items()}
+    map_b = {info["process_version_id"]: pid for pid, info in right.items()}
+    codes = {pid: (left.get(pid) or right.get(pid))["code"] for pid in set(left) | set(right)}
+    merged: dict[tuple, list] = {}
+    for side, attempt_id, mapping in ((0, attempt_a, map_a), (1, attempt_b, map_b)):
+        for row in repo.window_metrics(session, project_id, attempt_id, window, metric_key):
+            key = (row.metric_key, compare_rules.align_dimensions(row.dimensions, mapping), row.window_start_exact)
+            merged.setdefault(key, [None, None])[side] = row
+    out = []
+    for key in sorted(merged, key=lambda k: (k[0], k[1], Fraction(k[2]))):
+        a, b = merged[key]
+        d, r = compare_rules.delta(None if a is None else a.value, None if b is None else b.value)
+        if changed_only and a is not None and b is not None and a.value == b.value:
+            continue  # 같은 값(둘 다 null인 '해당 없음' 포함)은 바뀌지 않은 것이다
+        either = a or b
+        dims = dict(key[1])
+        if "product_id" in dims:
+            dims["product_code"] = codes.get(dims["product_id"]) or ""
+        out.append(MetricComparisonOut(
+            metric_key=key[0], unit=either.unit, dimensions={k: str(v) for k, v in dims.items()},
+            base_process_version_id=None if a is None else a.dimensions.get("process_version_id"),
+            other_process_version_id=None if b is None else b.dimensions.get("process_version_id"),
+            window=MetricWindowOut(kind=either.window_kind,
+                                   start=MinutesOut(min=str(either.window_start_min), exact=either.window_start_exact),
+                                   end=MinutesOut(min=str(either.window_end_min), exact=either.window_end_exact)),
+            base=_num_out(None if a is None else a.value), other=_num_out(None if b is None else b.value),
+            delta=_num_out(d), ratio=_num_out(r)))
+    limit = limit or DEFAULT_LIMIT
+    tag = make_tag("run-compare", ("order", False), {"run": run_id, "other": other_id, "metric_key": metric_key,
+                                                      "window": window, "changed_only": changed_only})
+    offset = decode_cursor(cursor, tag, 1)[0] if cursor else 0
+    if not isinstance(offset, int) or offset < 0:
+        offset = 0
+    page = out[offset:offset + limit]
+    next_cursor = encode_cursor(tag, [offset + limit]) if offset + limit < len(out) else None
+    return page, Page(limit=limit, next_cursor=next_cursor)

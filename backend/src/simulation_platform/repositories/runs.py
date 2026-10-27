@@ -162,3 +162,13 @@ def asset_state_events(session: Session, project_id: uuid.UUID, attempt_id: uuid
     elif from_seq is not None:
         stmt = stmt.where(SimulationEvent.event_seq >= from_seq)
     return list(session.scalars(stmt.order_by(SimulationEvent.event_seq).limit(limit)))
+
+
+def window_metrics(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID, window_kind: str,
+                   metric_key: str | None) -> list[MetricResult]:
+    """한 구간 종류의 지표 행 전부(비교용). 일 구간은 지표를 하나로 좁혀 부른다."""
+    stmt = select(MetricResult).where(MetricResult.project_id == project_id, MetricResult.attempt_id == attempt_id,
+                                      MetricResult.window_kind == window_kind)
+    if metric_key is not None:
+        stmt = stmt.where(MetricResult.metric_key == metric_key)
+    return list(session.scalars(stmt.order_by(MetricResult.id)))

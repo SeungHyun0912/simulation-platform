@@ -290,3 +290,62 @@ class AssetStateSegmentOut(Out):
     step_key: str | None = None
     process_version_id: str | None = None
     product_code: str | None = None
+
+
+class InputChangeOut(Out):
+    path: str = Field(description="바뀐 입력의 위치(예: `products.P04.arrivals`, `assets.{asset_id}`, `seed`)")
+    base: JsonValue = None
+    other: JsonValue = None
+    note: str | None = None
+
+
+class MetricPairOut(Out):
+    metric_key: str
+    unit: str | None = None
+    base: str | None = None
+    other: str | None = None
+    delta: str | None = Field(default=None, description="비교 − 기준. 한쪽이 없으면 null")
+    ratio: str | None = Field(default=None, description="비교 ÷ 기준. 한쪽이 없거나 기준이 0이면 null")
+
+
+class ProductComparisonOut(Out):
+    product_id: str
+    product_code: str | None = None
+    product_name: str | None = None
+    base_process_version_id: str
+    other_process_version_id: str
+    metrics: list[MetricPairOut]
+    base_last_completion: MinutesOut | None = None
+    other_last_completion: MinutesOut | None = None
+
+
+class ComparisonBottlenecksOut(Out):
+    base: list[BottleneckOut]
+    other: list[BottleneckOut]
+
+
+class RunComparisonOut(Out):
+    base_run_id: uuid.UUID
+    other_run_id: uuid.UUID
+    comparable: bool = Field(description="엔진 버전이 같아 결과 차이를 입력 차이로 설명할 수 있는가")
+    warnings: list[str]
+    base_status: str
+    other_status: str
+    base_end_time: MinutesOut | None = None
+    other_end_time: MinutesOut | None = None
+    input_changes: list[InputChangeOut]
+    products: list[ProductComparisonOut] = Field(description="두 실행에 모두 있는 제품(제품 id로 맞춤)의 핵심 지표 비교")
+    bottlenecks: ComparisonBottlenecksOut = Field(description="양쪽 병목 요약 상위 5개")
+
+
+class MetricComparisonOut(Out):
+    metric_key: str
+    unit: str | None = None
+    dimensions: dict[str, str] = Field(description="공정 버전 대신 `product_id`(+`product_code`)로 맞춘 차원")
+    base_process_version_id: str | None = None
+    other_process_version_id: str | None = None
+    window: MetricWindowOut
+    base: str | None = None
+    other: str | None = None
+    delta: str | None = None
+    ratio: str | None = None
