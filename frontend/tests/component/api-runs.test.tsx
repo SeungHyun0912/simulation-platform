@@ -90,6 +90,30 @@ describe("API 모드: 실행 상세(진행·결과)", () => {
     expect(screen.getByText("입력 해시")).toBeInTheDocument();
   });
 
+  it("결과의 제품은 id 대신 제품 목록의 코드·이름으로 보이고, 목록에 없으면 id 앞 8자를 그대로 보인다", async () => {
+    const server = createFakeServer();
+    const base = server.state.scenarios.runs[0]!;
+    base.result!.products!.push({ ...base.result!.products![0]!, product_id: "99999999-0000-4000-8000-000000000009", process_version_id: "88888888-0000-4000-8000-000000000008" });
+    open(detail(1), server);
+    const table = await screen.findByRole("table", { name: "공정 버전별 결과" }, slow);
+    await waitFor(() => expect(within(table).getByText(/^P-001 /)).toBeInTheDocument(), slow);
+    expect(within(table).getByText("제품 99999999")).toBeInTheDocument(); // 코드를 만들어 내지 않는다
+  });
+
+  it("쓰인 가정이 있으면 '가정 위의 결과'로 표시하고 용량 무제한 가정은 특별히 알린다", async () => {
+    const server = createFakeServer();
+    server.state.scenarios.runs[0]!.result!.assumptions = [{ code: "UNBOUNDED_BUFFERS", message: "용량을 모르는 대기 장소 5곳을 용량 제한 없이 대기하는 것으로 가정", node_key: null }];
+    open(detail(1), server);
+    expect(await screen.findByText("가정 위의 결과입니다", {}, slow)).toBeInTheDocument();
+    expect(screen.getByText(/대기 공간 용량 때문에 생기는 지연·막힘은 반영되지 않았습니다/)).toBeInTheDocument();
+  });
+
+  it("가정이 없으면 '가정 위의 결과' 안내를 띄우지 않는다", async () => {
+    open(detail(1));
+    await screen.findByRole("table", { name: "공정 버전별 결과" }, slow);
+    expect(screen.queryByText("가정 위의 결과입니다")).not.toBeInTheDocument();
+  });
+
   it("입력 부족으로 멈춘(stalled) 실행은 오류가 아니라 관측 결과로 안내하고 부족한 입력을 보인다", async () => {
     const server = createFakeServer();
     const base = server.state.scenarios.runs[0]!;
