@@ -75,17 +75,25 @@ export function classifyError(e: unknown): ErrorKind {
     case "REVISION_DRAFT_EXISTS":
     case "PROCESS_DRAFT_EXISTS":
     case "INVALID_STATE_TRANSITION":
+    case "SCENARIO_DRAFT_EXISTS":
+    case "JOB_CANCEL_TOO_LATE":
+    case "RUN_RESULT_NOT_AVAILABLE":
       return "state";
     case "PROJECT_CODE_CONFLICT":
     case "ASSET_CODE_CONFLICT":
     case "PRODUCT_CODE_CONFLICT":
     case "MATERIAL_CODE_CONFLICT":
+    case "SCENARIO_CODE_CONFLICT":
       return "duplicate";
     case "VALIDATION_ERROR":
+    case "SCENARIO_NOT_RUNNABLE":
+    case "RUN_NOT_RUNNABLE":
     case "INVALID_CURSOR":
       return "validation";
     case "PRECONDITION_REQUIRED":
       return "precondition";
+    case "IDEMPOTENCY_CONFLICT":
+      return "state";
     case "INTERNAL_ERROR":
       return "server";
   }

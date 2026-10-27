@@ -11,6 +11,12 @@ import { MaterialListPage } from "../features/materials/MaterialListPage";
 import { ProductCreatePage } from "../features/products/ProductCreatePage";
 import { ProductDetailPage } from "../features/products/ProductDetailPage";
 import { ProductListPage } from "../features/products/ProductListPage";
+import { RunDetailPage } from "../features/runs/RunDetailPage";
+import { RunListPage } from "../features/runs/RunListPage";
+import { ScenarioCreatePage } from "../features/scenarios/ScenarioCreatePage";
+import { ScenarioDetailPage } from "../features/scenarios/ScenarioDetailPage";
+import { ScenarioListPage } from "../features/scenarios/ScenarioListPage";
+import { ScenarioVersionPage } from "../features/scenarios/ScenarioVersionPage";
 import { ProjectCreatePage } from "../features/projects/ProjectCreatePage";
 import { ProjectListPage } from "../features/projects/ProjectListPage";
 
@@ -30,6 +36,12 @@ export const routes = [
       { path: "/projects/:projectId/products/new", element: <ProductCreatePage /> },
       { path: "/projects/:projectId/products/:productId", element: <ProductDetailPage /> },
       { path: "/projects/:projectId/processes", element: <ProcessListPage /> },
+      { path: "/projects/:projectId/scenarios", element: <ScenarioListPage /> },
+      { path: "/projects/:projectId/scenarios/new", element: <ScenarioCreatePage /> },
+      { path: "/projects/:projectId/scenarios/versions/:versionId", element: <ScenarioVersionPage /> },
+      { path: "/projects/:projectId/scenarios/:scenarioId", element: <ScenarioDetailPage /> },
+      { path: "/projects/:projectId/runs", element: <RunListPage /> },
+      { path: "/projects/:projectId/runs/:runId", element: <RunDetailPage /> },
       {
         path: "/projects/:projectId/products/:productId/processes/:versionId",
         element: <ProcessEditorPage />,
