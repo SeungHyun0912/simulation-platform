@@ -7,6 +7,7 @@ from simulation_platform.api.v1 import (
     health,
     materials,
     me,
+    metrics,
     process_versions,
     products,
     projects,
@@ -25,7 +26,7 @@ def create_app() -> FastAPI:
     register_request_id(app)
     register_exception_handlers(app)
     for module in (health, me, projects, assets, revisions, products, materials, process_versions,
-                   scenarios, runs):
+                   scenarios, runs, metrics):
         app.include_router(module.router, prefix="/api/v1")
     return app
 

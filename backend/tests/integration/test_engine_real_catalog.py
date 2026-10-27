@@ -154,3 +154,41 @@ def test_a_scenario_that_does_not_state_the_unknowns_stays_blocked(client, wire)
     """공간 용량·점유 정책을 시나리오가 말하지 않으면 용량 미정은 무제한으로 가정되지 않고 막힌다."""
     result = compile_snapshot(snapshot(client, wire, "P06"), ScenarioAssumptions(), allow_unapproved=True)
     assert {"BUFFER_POLICY_UNKNOWN", "EQUIPMENT_HOLD_POLICY_REQUIRED"} <= rules(result)
+
+
+def test_p05_metrics_over_six_weeks_are_computed_from_streamed_events(client, wire):
+    """실제 공정 한 달치를 이벤트 스트림(메모리 비보관)으로 돌리며 지표를 모은다. 지표는 요약과 같은 값이어야 한다."""
+    from simulation_platform.simulation.metrics import MetricCollector
+
+    model = compiled(client, wire, "P05").require_model()
+    collector, count = MetricCollector(), 0
+
+    def sink(batch):
+        nonlocal count
+        for event in batch:
+            collector.observe(event)
+            count += 1
+
+    result = run_models([Lane(model, (Arrival(weight_kg=RAW_WEIGHT_KG["P05"], count=RAW_COUNT),))],
+                        daily_snapshots=True, event_sink=sink, retain_events=False)
+    rows = collector.finish(result.end_time, result.state)
+    def run_value(key):
+        found = [r for r in rows if r["metric_key"] == key and r["window_kind"] == "run"
+                 and "process_version_id" in r["dimensions"]]
+        assert len(found) == 1, key
+        return found[0]["value"]
+
+    assert result.state == "stalled" and {r["quality_status"] for r in rows} == {"incomplete"}
+    assert count > 60_000  # 이벤트는 배치로 흘려 보냈고 메모리에는 없다
+    assert result.events == () and result.event_count == count
+    assert run_value("arrived_items") == "24.000000" and run_value("arrived_weight_kg") == "79200.000000"
+    assert run_value("arrived_length_m") is None  # 길이 없는 원자재: 해당 없음(0이 아니다)
+    assert run_value("completed_items") == run_value("sunk_items") == "4320.000000"
+    assert run_value("completed_length_m") == "2592000.000000" and run_value("completed_weight_kg") is None
+    assert run_value("discarded_length_m") == "108000.000000"  # 절연 27회 × 4,000m
+    # 끝난 시점의 재공품: 입력 부족으로 남은 원자재 2개(6,600kg). 길이는 알려지지 않았다
+    assert run_value("wip_items") == "2.000000" and run_value("wip_weight_kg") == "6600.000000"
+    assert run_value("wip_length_m") is None
+    days = [r for r in rows if r["metric_key"] == "completed_items" and r["window_kind"] == "day"]
+    assert len(days) == 45 and sum(Fraction(r["value"]) for r in days) == 4320  # 44.1일 → 일 구간 45개, 합이 전체와 같다
+    assert Fraction("10.0") < Fraction(run_value("lead_time_avg_min")) / 1440 < Fraction(44)

@@ -2379,6 +2379,46 @@
         "title": "ListOut[MaterialOut]",
         "type": "object"
       },
+      "ListOut_MetricDefinitionOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefinitionOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[MetricDefinitionOut]",
+        "type": "object"
+      },
+      "ListOut_MetricOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MetricOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[MetricOut]",
+        "type": "object"
+      },
       "ListOut_ProcessVersionListItem_": {
         "properties": {
           "data": {
@@ -2906,6 +2946,133 @@
           "display_name"
         ],
         "title": "MeUser",
+        "type": "object"
+      },
+      "MetricDefinitionOut": {
+        "properties": {
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "dimension": {
+            "enum": [
+              "process_version_id",
+              "asset_key",
+              "node_key"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric_key",
+          "unit",
+          "dimension",
+          "description",
+          "definition_version"
+        ],
+        "title": "MetricDefinitionOut",
+        "type": "object"
+      },
+      "MetricOut": {
+        "properties": {
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "string"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "차원: `process_version_id`(공정 버전별) 또는 `asset_key`(설비) 또는 `node_key`(대기 공간)",
+            "title": "Dimensions",
+            "type": "object"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "quality_status": {
+            "description": "complete: 끝까지 실행, censored: 고정 지평선에서 끊긴 관측, incomplete: 입력 부족·한도 등으로 끝나지 못함",
+            "enum": [
+              "complete",
+              "censored",
+              "incomplete"
+            ],
+            "title": "Quality Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "decimal 문자열. 분모가 0이거나 해당 없으면 null(0이 아니다)",
+            "title": "Value"
+          },
+          "window": {
+            "$ref": "#/components/schemas/MetricWindowOut"
+          }
+        },
+        "required": [
+          "metric_key",
+          "dimensions",
+          "window",
+          "value",
+          "unit",
+          "definition_version",
+          "quality_status"
+        ],
+        "title": "MetricOut",
+        "type": "object"
+      },
+      "MetricWindowOut": {
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/MinutesOut",
+            "description": "마지막 구간은 실행이 끝난 시각까지로 잘린다(관측 시간 = end − start)"
+          },
+          "kind": {
+            "description": "run: 실행 전체, day: 1,440분, week: 7일, month: 30일(24시간 연속 기준)",
+            "enum": [
+              "run",
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/MinutesOut"
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end"
+        ],
+        "title": "MetricWindowOut",
         "type": "object"
       },
       "MinutesOut": {
@@ -6741,6 +6908,48 @@
         "summary": "Get Me",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/api/v1/metric-definitions": {
+      "get": {
+        "description": "지표 정의(key·단위·차원·설명). 지표 값을 해석하는 기준이며 정의가 바뀌면 `definition_version`이 바뀐다.",
+        "operationId": "list_metric_definitions_api_v1_metric_definitions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_MetricDefinitionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Metric Definitions",
+        "tags": [
+          "runs"
         ]
       }
     },
@@ -11819,6 +12028,222 @@
           }
         },
         "summary": "Get Item Lineage",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/metrics": {
+      "get": {
+        "description": "공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.\n공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 하나만 쓸 수 있다.",
+        "operationId": "list_run_metrics_api_v1_projects__project_id__runs__run_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "지표 key(`GET /metric-definitions` 참조)",
+            "in": "query",
+            "name": "metric_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "지표 key(`GET /metric-definitions` 참조)",
+              "title": "Metric Key"
+            }
+          },
+          {
+            "description": "구간 종류: run(전체, 기본)·day·week·month",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "run",
+              "description": "구간 종류: run(전체, 기본)·day·week·month",
+              "enum": [
+                "run",
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "description": "공정 버전 차원 필터",
+            "in": "query",
+            "name": "process_version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "공정 버전 차원 필터",
+              "title": "Process Version Id"
+            }
+          },
+          {
+            "description": "설비 차원 필터",
+            "in": "query",
+            "name": "asset_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "설비 차원 필터",
+              "title": "Asset Key"
+            }
+          },
+          {
+            "description": "대기 공간 차원 필터",
+            "in": "query",
+            "name": "node_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대기 공간 차원 필터",
+              "title": "Node Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_MetricOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Run Metrics",
         "tags": [
           "runs"
         ]

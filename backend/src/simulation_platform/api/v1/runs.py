@@ -17,6 +17,8 @@ from simulation_platform.schemas.common import ListOut, Single
 from simulation_platform.schemas.run import (
     EventOut,
     LineageOut,
+    MetricOut,
+    MetricWindowKind,
     RunCreate,
     RunInputOut,
     RunListItem,
@@ -136,3 +138,25 @@ def get_item_lineage(
 ):
     """작업물의 조상(어디서 왔나)과 후손(무엇이 되었나), 그 작업물을 만들거나 바꾼 작업과 길이 보존 값(잔량·이월·균형)."""
     return {"data": service.get_lineage(session, principal, project_id, run_id, item_key)}
+
+
+@router.get("/runs/{run_id}/metrics", response_model=ListOut[MetricOut], responses={**READ_ERRORS, 409: ERR})
+def list_run_metrics(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    limit: LimitQuery = None,
+    cursor: CursorQuery = None,
+    metric_key: Annotated[str | None, Query(max_length=64, description="지표 key(`GET /metric-definitions` 참조)")] = None,
+    window: Annotated[MetricWindowKind, Query(description="구간 종류: run(전체, 기본)·day·week·month")] = "run",
+    process_version_id: Annotated[str | None, Query(max_length=64, description="공정 버전 차원 필터")] = None,
+    asset_key: Annotated[str | None, Query(max_length=64, description="설비 차원 필터")] = None,
+    node_key: Annotated[str | None, Query(max_length=64, description="대기 공간 차원 필터")] = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.
+    공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 하나만 쓸 수 있다."""
+    items, page = service.list_metrics(
+        session, principal, project_id, run_id, limit=limit, cursor=cursor, metric_key=metric_key, window=window,
+        process_version_id=process_version_id, asset_key=asset_key, node_key=node_key)
+    return {"data": items, "page": page}

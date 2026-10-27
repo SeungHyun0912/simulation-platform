@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from simulation_platform.models import (
     Job,
+    MetricResult,
     RunAttempt,
     RunInputSnapshot,
     RunWorkItem,
@@ -106,3 +107,18 @@ def relations_of_operations(session: Session, project_id: uuid.UUID, attempt_id:
     return list(session.scalars(select(RunWorkItemRelation).where(
         RunWorkItemRelation.project_id == project_id, RunWorkItemRelation.attempt_id == attempt_id,
         RunWorkItemRelation.operation_key.in_(list(operation_keys))).order_by(RunWorkItemRelation.seq)))
+
+
+def list_metrics(session: Session, project_id: uuid.UUID, attempt_id: uuid.UUID, *, limit: int,
+                 cursor_values: list | None, metric_key: str | None, window_kind: str,
+                 dimension: tuple[str, str] | None) -> list[MetricResult]:
+    """저장된 순서(id)대로. limit+1건 반환. `dimension`은 (차원 이름, 값) 하나로 거른다."""
+    stmt = select(MetricResult).where(
+        MetricResult.project_id == project_id, MetricResult.attempt_id == attempt_id,
+        MetricResult.window_kind == window_kind)
+    if metric_key is not None:
+        stmt = stmt.where(MetricResult.metric_key == metric_key)
+    if dimension is not None:
+        stmt = stmt.where(MetricResult.dimensions[dimension[0]].as_string() == dimension[1])
+    stmt = apply_keyset(stmt, [MetricResult.id], False, cursor_values)
+    return list(session.scalars(stmt.limit(limit + 1)))

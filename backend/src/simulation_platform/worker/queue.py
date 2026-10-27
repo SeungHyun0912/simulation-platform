@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from simulation_platform.models import (
     Job,
+    MetricResult,
     RunAttempt,
     RunInputSnapshot,
     RunWorkItem,
@@ -138,8 +139,18 @@ def _relation_row(claim: Claim, row: dict) -> dict:
     return {"attempt_id": claim.attempt_id, "project_id": claim.project_id, **plain, **amounts}
 
 
+def _metric_row(claim: Claim, row: dict) -> dict:
+    start, end = row["window_start_min"], row["window_end_min"]
+    return {"attempt_id": claim.attempt_id, "project_id": claim.project_id, "metric_key": row["metric_key"],
+            "dimensions": row["dimensions"], "dimensions_hash": row["dimensions_hash"],
+            "window_kind": row["window_kind"], "window_start_min": Decimal(start["min"]),
+            "window_start_exact": start["exact"], "window_end_min": Decimal(end["min"]),
+            "window_end_exact": end["exact"], "value": _dec(row["value"]), "unit": row["unit"],
+            "definition_version": row["definition_version"], "quality_status": row["quality_status"]}
+
+
 BATCH_KINDS = {"events": (SimulationEvent, _event_row), "items": (RunWorkItem, _item_row),
-               "relations": (RunWorkItemRelation, _relation_row)}
+               "relations": (RunWorkItemRelation, _relation_row), "metrics": (MetricResult, _metric_row)}
 
 
 def write_batch(session: Session, claim: Claim, kind: str, rows: list[dict], lease_seconds: float) -> bool:

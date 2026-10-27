@@ -12,13 +12,14 @@ from fractions import Fraction
 from simulation_platform.simulation import ENGINE_VERSION
 from simulation_platform.simulation.compiler import ProcessSnapshot, compile_snapshot
 from simulation_platform.simulation.compiler.assumptions import assumptions_from_scenario
+from simulation_platform.simulation.metrics import MetricCollector
 from simulation_platform.simulation.numbers import format_decimal, to_fraction
 from simulation_platform.simulation.runtime import Arrival, Lane, run_models
 
 DEFAULT_EVENT_LIMIT = 2_000_000
 BATCH_SIZE = 2000
 
-# on_batch(kind, rows): kind = "events" | "items" | "relations", rows = JSON으로 바꿀 수 있는 dict 목록
+# on_batch(kind, rows): kind = "events" | "items" | "relations" | "metrics", rows = JSON으로 바꿀 수 있는 dict 목록
 BatchSink = Callable[[str, list[dict]], None]
 
 
@@ -77,11 +78,12 @@ def run_snapshot(snapshot: dict, on_batch: BatchSink | None = None) -> dict:
     rule = snapshot["scenario"]["stopping_rule"]
     horizon = to_fraction(rule["horizon_min"]) if rule["mode"] == "fixed_horizon" else None
     options = snapshot.get("engine_options") or {}
-    tally = _Tally()
+    tally, collector = _Tally(), MetricCollector()
 
     def sink(batch) -> None:
         for event in batch:
             tally.observe(event)
+            collector.observe(event)
         if on_batch is not None:
             on_batch("events", [event.to_dict() for event in batch])
 
@@ -90,7 +92,8 @@ def run_snapshot(snapshot: dict, on_batch: BatchSink | None = None) -> dict:
                         daily_snapshots=options.get("daily_snapshots", True), event_sink=sink,
                         retain_events=False, batch_size=BATCH_SIZE)
     if on_batch is not None:
-        for kind, rows in (("items", item_rows(result)), ("relations", relation_rows(result))):
+        metrics = collector.finish(result.end_time, result.state)
+        for kind, rows in (("items", item_rows(result)), ("relations", relation_rows(result)), ("metrics", metrics)):
             for start in range(0, len(rows), BATCH_SIZE):
                 on_batch(kind, rows[start:start + BATCH_SIZE])
     return summarize(snapshot, result, tally)

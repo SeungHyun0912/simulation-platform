@@ -22,6 +22,7 @@ from simulation_platform.models.process import (
 from simulation_platform.models.revision import AssetRevision, PortPolicy
 from simulation_platform.models.run import (
     Job,
+    MetricResult,
     RunAttempt,
     RunInputSnapshot,
     RunWorkItem,
@@ -48,6 +49,7 @@ __all__ = [
     "FlowNode",
     "Job",
     "MaterialDefinition",
+    "MetricResult",
     "Organization",
     "OrganizationMember",
     "PortPolicy",

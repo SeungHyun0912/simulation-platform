@@ -5,6 +5,13 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.11.0 — 2026-10-27 · scope `runs`(확장, BE-06c) · sha256 `d6189bb8…5d49` · 기준 commit `1a16559`
+- **호환성: 0.10.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 2개(`GET /runs/{r}/metrics`, `GET /metric-definitions`). 새 오류 코드 없음(결과가 없으면 기존 `RUN_RESULT_NOT_AVAILABLE`).
+- 근거: CR be08 §4 be08c / 보드 DEC-008(사용자 'be08c 시작해 줘', 2026-10-27, 권장안 승인으로 해석). 상세는 04 §5.4.
+- 핵심 규칙: 지표는 이벤트로만 계산하고 하루·주·월·전체 구간으로 조회한다. 분모 0·해당 없음은 null(0과 구분), 공정(제품) 간 합산 없음, 설비 안 재료를 재공품에 포함, 가동률은 24시간 기준. `quality_status`가 complete/censored/incomplete로 관측의 신뢰를 알려 준다.
+- **동작 변경(스키마 불변):** `STATE_SNAPSHOT.quantities`에 `in_machine`·`wip_total`이 늘고 `wip` 항목의 `node_key`가 null일 수 있다(위치 없는 활성 작업물). `RUN_TERMINATED.quantities.wip_total`이 늘었다. 상태 요약이 경계 시각의 이벤트를 처리하기 **전** 상태를 정확히 가리키도록 고쳤다(0.10.0에서는 경계 직후 이벤트의 영향이 섞일 수 있었다). `quantities`는 열린 구조라 스키마는 같다.
+- **프런트가 해야 할 일:** 결과 화면을 만들 때 타입 재생성. 지표 이름·단위·설명은 하드코딩하지 말고 `GET /metric-definitions`로 가져온다. `value`가 null이면 "해당 없음/계산 불가"로, 0과 다르게 표시한다. 일 단위 `window=day`로 추이 그래프를 그리고, 마지막 구간이 짧을 수 있음(`window.end − window.start`)에 주의한다. 공정(제품)을 합산해 보여 주지 않는다. `quality_status`가 `complete`가 아니면 "관측 중단/미완료 결과"임을 화면에 표시한다.
+
 ## 0.10.0 — 2026-10-27 · scope `runs`(확장, BE-06b) · sha256 `d3af644b…b658` · 기준 commit `9b84398`
 - **호환성: 0.9.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 2개(`GET /runs/{r}/events`, `GET /runs/{r}/items/{item_key}/lineage`)와 새 오류 코드 `RUN_RESULT_NOT_AVAILABLE`(409).
 - 근거: CR be08 §4 be08b / 보드 DEC-008(사용자 '개발 이어가 줘', 2026-10-27, 권장안 승인으로 해석). 상세는 04 §5.3.
