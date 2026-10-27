@@ -208,6 +208,40 @@ describe("단계 재료 spec", () => {
   });
 });
 
+describe("잔여 처리(계약 0.8.0 discard)", () => {
+  it("'그 자리에서 폐기'를 고를 수 있고 저장 본문에 discard로 실린다", async () => {
+    const user = userEvent.setup();
+    const { server } = open();
+    await ready();
+    await user.click(screen.getByRole("button", { name: "가닥 A 편집" }));
+    await user.selectOptions(screen.getByLabelText("잔여 처리"), "discard");
+    await user.click(saveButton());
+    await screen.findByText("공정을 저장했습니다.");
+    const a = puts(server)[0]!.body.nodes.find((n: { label: string }) => n.label === "가닥 A");
+    expect(a.step.residual_rule.mode).toBe("discard");
+    expect(graphOf(server).nodes.find((n) => n.label === "가닥 A")!.step!.residual_rule!.mode).toBe("discard");
+  });
+
+  it("서버가 모르는 값을 주면 원문을 보여 주고 저장해도 그 값을 바꾸지 않는다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    const a = graphOf(server).nodes.find((n) => n.label === "가닥 A")!;
+    (a.step!.residual_rule as { mode: string }).mode = "future_mode";
+    open(server);
+    await ready();
+    await user.click(screen.getByRole("button", { name: "가닥 A 편집" }));
+    const select = screen.getByLabelText("잔여 처리") as HTMLSelectElement;
+    expect(select.value).toBe("future_mode");
+    expect(within(select).getByRole("option", { name: "알 수 없는 값 (future_mode)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "가닥 B 편집" }));
+    await user.type(screen.getByLabelText("공정명"), "!");
+    await user.click(saveButton());
+    await screen.findByText("공정을 저장했습니다.");
+    const sent = puts(server)[0]!.body.nodes.find((n: { label: string }) => n.label === "가닥 A");
+    expect(sent.step.residual_rule.mode).toBe("future_mode");
+  });
+});
+
 describe("간선 spec 연결", () => {
   it("시작 단계의 출력 spec과 끝 단계의 입력 spec으로 연결하고 표에 보인다", async () => {
     const user = userEvent.setup();

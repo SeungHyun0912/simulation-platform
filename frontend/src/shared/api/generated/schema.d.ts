@@ -1,7 +1,7 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.6.0, openapi_sha256 509a71f15a7ed1ab1516f0ced5e107a55df56f3a553d9331b1f209a341c138ef
-// 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions
+// 기준 계약: version 0.9.0, openapi_sha256 229cc091b84e00810e2883455e84257066d3954091e82bc84f9ed86f164aae74
+// 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
     "/api/v1/health": {
@@ -557,6 +557,227 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description 실행 목록(최근 요청부터).
+         */
+        get: operations["list_runs_api_v1_projects__project_id__runs_get"];
+        put?: never;
+        /**
+         * Create Run
+         * @description 실행을 요청한다(202). 승인된 시나리오 버전만, 사전검증을 통과해야 한다(422 `RUN_NOT_RUNNABLE`).
+         *
+         *     요청하는 순간 입력 스냅샷·run·job이 한 트랜잭션으로 만들어지고 worker가 가져가 실행한다. `Idempotency-Key`가 필수이며
+         *     같은 키·같은 본문이면 기존 run을 돌려주고(200), 같은 키·다른 본문이면 409 `IDEMPOTENCY_CONFLICT`다.
+         */
+        post: operations["create_run_api_v1_projects__project_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description 상태·시도·종료 사유와, 끝났다면 공식 결과 요약. 상태는 엔진 종료 상태 그대로다(`completed`와 `stalled`를 구분).
+         */
+        get: operations["get_run_api_v1_projects__project_id__runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description 취소를 요청한다(202). 시작 전이면 바로 `cancelled`가 되고, 실행 중이면 `cancel_requested_at`만 기록되며 worker가
+         *     확인해 멈춘 뒤 `cancelled`가 된다(요청과 실제 취소를 구분). 이미 끝났으면 409 `JOB_CANCEL_TOO_LATE`.
+         */
+        post: operations["cancel_run_api_v1_projects__project_id__runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run Input
+         * @description 실행을 요청한 당시의 입력 스냅샷(불변)과 해시. 과거 실행을 현재 설정이 아니라 이 입력으로 설명해야 한다.
+         */
+        get: operations["get_run_input_api_v1_projects__project_id__runs__run_id__input_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scenario Version */
+        get: operations["get_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Scenario Version
+         * @description 초안 수정(보낸 최상위 필드를 통째로 교체). 참조 오류는 422(SCN-REF-001~004)이고, 실행 가능 여부는 사전검증이
+         *     따로 판정한다(미정이 있어도 초안은 저장된다). `products`만 보내면 고정하지 않은 자산을 현재 승인 버전으로 채운다.
+         */
+        patch: operations["patch_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Scenario Version
+         * @description draft → approved(project admin). 사전검증 오류가 있으면 422 SCENARIO_NOT_RUNNABLE. 승인 후 내용은 바꿀 수 없다.
+         */
+        post: operations["approve_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Precheck Scenario Version
+         * @description 실행 사전검증(저장하지 않음). 시나리오 수준 검사(SCN-*)와, 제품마다 엔진 컴파일 결과(오류·사용한 가정·
+         *     가정으로 면제한 항목)를 번역하지 않고 돌려준다. 오류가 있어도 검증이 정상 수행되면 200이다.
+         */
+        post: operations["precheck_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Scenarios
+         * @description 시나리오 목록(code 순). 각 시나리오의 가장 최근 버전 요약을 함께 준다.
+         */
+        get: operations["list_scenarios_api_v1_projects__project_id__scenarios_get"];
+        put?: never;
+        /**
+         * Create Scenario
+         * @description 시나리오와 첫 초안(version 1, 비어 있음·종료 규칙 drain)을 함께 만든다. 코드 중복은 409 SCENARIO_CODE_CONFLICT.
+         */
+        post: operations["create_scenario_api_v1_projects__project_id__scenarios_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/scenarios/{scenario_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scenario */
+        get: operations["get_scenario_api_v1_projects__project_id__scenarios__scenario_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Scenario
+         * @description 이름·설명 수정. If-Match는 시나리오의 row_version이다(버전 내용과 무관).
+         */
+        patch: operations["patch_scenario_api_v1_projects__project_id__scenarios__scenario_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/scenarios/{scenario_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Scenario Versions
+         * @description 시나리오 버전 목록(최신 version_no부터).
+         */
+        get: operations["list_scenario_versions_api_v1_projects__project_id__scenarios__scenario_id__versions_get"];
+        put?: never;
+        /**
+         * Create Scenario Version
+         * @description 새 초안. `from_version_id`(같은 시나리오의 모든 상태) 또는 가장 최근 승인 버전의 내용을 복사하고, 둘 다 없으면
+         *     빈 초안이다. 시나리오당 초안은 하나뿐이다(409 SCENARIO_DRAFT_EXISTS).
+         */
+        post: operations["create_scenario_version_api_v1_projects__project_id__scenarios__scenario_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -569,6 +790,28 @@ export interface components {
              * @enum {string}
              */
             mode: "unknown" | "fifo" | "priority" | "first_available";
+        };
+        /**
+         * ArrivalDto
+         * @description 지정 시각 도착(시나리오 시작 기준 분). 같은 시각에 count개가 도착한다.
+         *
+         *     원자재에 길이가 없는 공정(예: 2t·3.3t 원자재)은 `length_m`을 비우고 `weight_kg`만 보낸다(해당 없음 ≠ 0, 0.8.0).
+         *     길이와 무게는 서로 환산하지 않으며 둘 중 하나는 있어야 한다.
+         */
+        ArrivalDto: {
+            /**
+             * At Min
+             * @default 0
+             */
+            at_min: string;
+            /** Count */
+            count: number;
+            /** Length M */
+            length_m?: string | null;
+            /** Lot */
+            lot?: string | null;
+            /** Weight Kg */
+            weight_kg?: string | null;
         };
         /**
          * AssetCreate
@@ -708,6 +951,68 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
+        /** AssumptionUseOut */
+        AssumptionUseOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Node Key */
+            node_key?: string | null;
+        };
+        /**
+         * AssumptionsDto
+         * @description 공정의 미정을 이 시나리오에서만 해소하는 가정(master 공정은 바뀌지 않는다, ADR-017).
+         *
+         *     키는 그 공정 버전의 node_key다. 값이 하나라도 있으면 시나리오 버전의 `assumption_reason`이 필요하다.
+         */
+        AssumptionsDto: {
+            /**
+             * Equipment Hold
+             * @description 한 작업이 여러 산출을 낼 때 설비 점유 정책(07 §13)
+             */
+            equipment_hold?: "hold_for_operation" | null;
+            /**
+             * Manual Transport Minutes
+             * @description 수동 운반 단계(node_key)별 이동 시간(분, 0도 명시해야 함)
+             */
+            manual_transport_minutes?: {
+                [key: string]: string;
+            };
+            /**
+             * Residual Scope
+             * @description 잔량 이월 단계(node_key)별 잔량 범위(공정에 미정일 때만)
+             */
+            residual_scope?: {
+                [key: string]: "machine" | "product" | "operation" | "lot";
+            };
+            /**
+             * Unbounded Buffers
+             * @description 용량을 모르는 대기 장소를 용량 제한 없이 대기하는 것으로 가정
+             * @default false
+             */
+            unbounded_buffers: boolean;
+        };
+        /** AttemptOut */
+        AttemptOut: {
+            /** Attempt No */
+            attempt_no: number;
+            /** Finished At */
+            finished_at: string | null;
+            /** Heartbeat At */
+            heartbeat_at: string | null;
+            /** Started At */
+            started_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "finished" | "failed" | "cancelled" | "abandoned";
+            /** Termination Reason */
+            termination_reason: string | null;
+            /** Worker Id */
+            worker_id: string;
+        };
         /** CandidateDto */
         CandidateDto: {
             /**
@@ -741,6 +1046,31 @@ export interface components {
             unit?: ("item" | "bobbin_slot" | "pallet_slot" | "kg" | "m2") | null;
             /** Value */
             value?: string | null;
+        };
+        /**
+         * CompileIssueOut
+         * @description 엔진 컴파일 결과를 번역하지 않고 그대로 담는다(rule_id = 엔진 코드 또는 도메인 실행 검증 코드).
+         */
+        CompileIssueOut: {
+            /** Field Path */
+            field_path?: string | null;
+            /** Message */
+            message: string;
+            /** Node Key */
+            node_key?: string | null;
+            /** Rule Id */
+            rule_id: string;
+        };
+        /** CompileProblemOut */
+        CompileProblemOut: {
+            /** Message */
+            message: string;
+            /** Node Key */
+            node_key?: string | null;
+            /** Product Index */
+            product_index: number;
+            /** Rule Id */
+            rule_id: string;
         };
         /**
          * CountMeasure
@@ -841,6 +1171,17 @@ export interface components {
             reservation: "unknown" | "reserve" | "none";
             /** Wait At In If Busy */
             wait_at_in_if_busy: boolean;
+        };
+        /**
+         * DrainRule
+         * @description 모든 작업물이 소진될 때까지(또는 더 진행할 사건이 없을 때까지).
+         */
+        DrainRule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "drain";
         };
         /**
          * DurationMeasure
@@ -958,6 +1299,28 @@ export interface components {
         /** ErrorEnvelope */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** FailureOut */
+        FailureOut: {
+            /** Message */
+            message?: string | null;
+            /** Reason */
+            reason: string;
+            /** Step Key */
+            step_key?: string | null;
+        };
+        /**
+         * FixedHorizonRule
+         * @description 고정 지평선 `[0, H)`: H 시각의 사건은 처리하지 않는다(07 §11).
+         */
+        FixedHorizonRule: {
+            /** Horizon Min */
+            horizon_min: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "fixed_horizon";
         };
         /** GraphEdge */
         GraphEdge: {
@@ -1168,6 +1531,24 @@ export interface components {
             data: components["schemas"]["ProjectOut"][];
             page: components["schemas"]["Page"];
         };
+        /** ListOut[RunListItem] */
+        ListOut_RunListItem_: {
+            /** Data */
+            data: components["schemas"]["RunListItem"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[ScenarioOut] */
+        ListOut_ScenarioOut_: {
+            /** Data */
+            data: components["schemas"]["ScenarioOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[ScenarioVersionListItem] */
+        ListOut_ScenarioVersionListItem_: {
+            /** Data */
+            data: components["schemas"]["ScenarioVersionListItem"][];
+            page: components["schemas"]["Page"];
+        };
         /** MaterialCreate */
         MaterialCreate: {
             /** Code */
@@ -1306,6 +1687,19 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** MinutesOut */
+        MinutesOut: {
+            /**
+             * Exact
+             * @description 정확한 값(분수 문자열, 예: 100/3)
+             */
+            exact: string;
+            /**
+             * Min
+             * @description 가상 시간(분), 소수 6자리 decimal 문자열(표시용 반올림)
+             */
+            min: string;
         };
         /** MovementRule */
         MovementRule: {
@@ -1496,6 +1890,40 @@ export interface components {
             port_id: string;
             /** Release Rule */
             release_rule?: (components["schemas"]["ReleaseUnknown"] | components["schemas"]["ReleaseWhenAccepts"]) | null;
+        };
+        /** PrecheckIssue */
+        PrecheckIssue: {
+            /** Field Path */
+            field_path?: string | null;
+            /** Message */
+            message: string;
+            /** Rule Id */
+            rule_id: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+        };
+        /** PrecheckOut */
+        PrecheckOut: {
+            /** Engine Version */
+            engine_version: string;
+            /** Error Count */
+            error_count: number;
+            /** Issues */
+            issues: components["schemas"]["PrecheckIssue"][];
+            /** Products */
+            products: components["schemas"]["ProductPrecheck"][];
+            /** Runnable */
+            runnable: boolean;
+            /**
+             * Scenario Version Id
+             * Format: uuid
+             */
+            scenario_version_id: string;
+            /** Warning Count */
+            warning_count: number;
         };
         /**
          * PreconditionDelay
@@ -1718,6 +2146,50 @@ export interface components {
             /** Specification */
             specification?: string | null;
         };
+        /** ProductPrecheck */
+        ProductPrecheck: {
+            /** Assumptions Used */
+            assumptions_used: components["schemas"]["AssumptionUseOut"][];
+            /** Compile Issues */
+            compile_issues: components["schemas"]["CompileIssueOut"][];
+            /** Compiled */
+            compiled: boolean;
+            /**
+             * Process Version Id
+             * Format: uuid
+             */
+            process_version_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Waived */
+            waived: components["schemas"]["CompileIssueOut"][];
+        };
+        /** ProductResultOut */
+        ProductResultOut: {
+            /**
+             * Completed Items
+             * @description 완제품 milestone에 도달한 작업물 수
+             */
+            completed_items: number;
+            /** Completed Length M */
+            completed_length_m: string;
+            /**
+             * Discarded Length M
+             * @description 잔량 폐기 길이 합계(m)
+             */
+            discarded_length_m: string;
+            first_completion?: components["schemas"]["MinutesOut"] | null;
+            last_completion?: components["schemas"]["MinutesOut"] | null;
+            /** Process Version Id */
+            process_version_id: string;
+            /** Product Id */
+            product_id: string;
+            /** Reached Sink */
+            reached_sink: number;
+        };
         /** ProjectCreate */
         ProjectCreate: {
             /** Code */
@@ -1832,6 +2304,17 @@ export interface components {
              */
             selection_mode: "one_of" | "all_of";
         };
+        /** ResidualOut */
+        ResidualOut: {
+            /** Disposition */
+            disposition: string;
+            /** Length M */
+            length_m: string;
+            /** Pool */
+            pool: string;
+            /** Process Version Id */
+            process_version_id: string;
+        };
         /** ResidualRule */
         ResidualRule: {
             /**
@@ -1839,7 +2322,7 @@ export interface components {
              * @default unknown
              * @enum {string}
              */
-            mode: "unknown" | "none" | "carry_same_product";
+            mode: "unknown" | "none" | "carry_same_product" | "discard";
             /**
              * On Product Change
              * @default unknown
@@ -1896,6 +2379,380 @@ export interface components {
              */
             status: "draft" | "in_review" | "approved" | "superseded";
         };
+        /** RunCreate */
+        RunCreate: {
+            /**
+             * Replicate Index
+             * @default 0
+             */
+            replicate_index: number;
+            /**
+             * Scenario Version Id
+             * Format: uuid
+             * @description 승인된 시나리오 버전
+             */
+            scenario_version_id: string;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+        };
+        /** RunInputOut */
+        RunInputOut: {
+            /**
+             * Hash Verified
+             * @description 저장된 스냅샷을 다시 정규화해 해시가 맞는지 확인한 결과
+             */
+            hash_verified: boolean;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Schema Version */
+            schema_version: string;
+            /**
+             * Sha256
+             * @description 정규화 JSON의 SHA-256(= run.input_hash)
+             */
+            sha256: string;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /** RunListItem */
+        RunListItem: {
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Hash */
+            input_hash: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Replicate Index */
+            replicate_index: number;
+            /** Requested At */
+            requested_at: string;
+            /**
+             * Scenario Version Id
+             * Format: uuid
+             */
+            scenario_version_id: string;
+            /** Seed */
+            seed: number;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "stalled" | "horizon_reached" | "failed" | "limit_reached" | "cancelled";
+        };
+        /** RunOut */
+        RunOut: {
+            /** Attempts */
+            attempts: components["schemas"]["AttemptOut"][];
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /** Engine Version */
+            engine_version: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Hash */
+            input_hash: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Replicate Index */
+            replicate_index: number;
+            /** Requested At */
+            requested_at: string;
+            /**
+             * Requested By
+             * Format: uuid
+             */
+            requested_by: string;
+            /** @description 공식 결과 시도의 요약. 아직 끝나지 않았거나 취소·인프라 실패면 null */
+            result: components["schemas"]["RunResultOut"] | null;
+            /**
+             * Scenario Version Id
+             * Format: uuid
+             */
+            scenario_version_id: string;
+            /** Seed */
+            seed: number;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "stalled" | "horizon_reached" | "failed" | "limit_reached" | "cancelled";
+            /** Termination Reason */
+            termination_reason: string | null;
+        };
+        /** RunResultOut */
+        RunResultOut: {
+            /** Assumptions */
+            assumptions?: components["schemas"]["AssumptionUseOut"][];
+            /**
+             * Censored
+             * @description 고정 지평선에서 끊긴 관측 중단
+             * @default false
+             */
+            censored: boolean;
+            /** Compile Issues */
+            compile_issues?: components["schemas"]["CompileProblemOut"][];
+            end_time?: components["schemas"]["MinutesOut"] | null;
+            /** Engine Version */
+            engine_version: string;
+            /**
+             * Event Count
+             * @default 0
+             */
+            event_count: number;
+            failure?: components["schemas"]["FailureOut"] | null;
+            horizon?: components["schemas"]["MinutesOut"] | null;
+            /** Products */
+            products?: components["schemas"]["ProductResultOut"][];
+            /** Reason */
+            reason?: string | null;
+            /** Residuals */
+            residuals?: components["schemas"]["ResidualOut"][];
+            /** Seed */
+            seed?: number | null;
+            /** Shortfalls */
+            shortfalls?: components["schemas"]["ShortfallOut"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "completed" | "stalled" | "horizon_reached" | "failed" | "limit_reached" | "cancelled";
+            /**
+             * Wip Items
+             * @default 0
+             */
+            wip_items: number;
+        };
+        /** ScenarioAssetDto */
+        ScenarioAssetDto: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Asset Revision Id
+             * Format: uuid
+             * @description 그 자산의 승인된(또는 승인 후 대체된) 자산 버전
+             */
+            asset_revision_id: string;
+        };
+        /** ScenarioCreate */
+        ScenarioCreate: {
+            /** Code */
+            code: string;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** ScenarioOut */
+        ScenarioOut: {
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            latest_version: components["schemas"]["ScenarioVersionSummary"] | null;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Row Version */
+            row_version: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** ScenarioPatch */
+        ScenarioPatch: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * ScenarioProductDto
+         * @description 제품 하나 = 실행의 공정 하나. 목록 순서가 같은 시각 동순위의 처리 순서다.
+         */
+        ScenarioProductDto: {
+            /** Arrivals */
+            arrivals?: components["schemas"]["ArrivalDto"][];
+            assumptions?: components["schemas"]["AssumptionsDto"];
+            /**
+             * Priority
+             * @default 1
+             */
+            priority: number;
+            /**
+             * Process Version Id
+             * Format: uuid
+             * @description 그 제품의 승인된(또는 승인 후 대체된) 공정 버전
+             */
+            process_version_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+        };
+        /** ScenarioVersionCreate */
+        ScenarioVersionCreate: {
+            /**
+             * From Version Id
+             * @description 복사할 같은 시나리오의 버전(모든 상태). 생략하면 가장 최근 승인 버전, 없으면 빈 초안
+             */
+            from_version_id?: string | null;
+        };
+        /** ScenarioVersionListItem */
+        ScenarioVersionListItem: {
+            /** Approved At */
+            approved_at: string | null;
+            /** Base Version Id */
+            base_version_id: string | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Row Version */
+            row_version: number;
+            /**
+             * Scenario Id
+             * Format: uuid
+             */
+            scenario_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved";
+            /** Updated At */
+            updated_at: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /** ScenarioVersionOut */
+        ScenarioVersionOut: {
+            /** Approved At */
+            approved_at: string | null;
+            /** Approved By */
+            approved_by: string | null;
+            /** Assets */
+            assets: components["schemas"]["ScenarioAssetDto"][];
+            /** Assumption Reason */
+            assumption_reason: string | null;
+            /** Base Version Id */
+            base_version_id: string | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notes */
+            notes: string | null;
+            /** Products */
+            products: components["schemas"]["ScenarioProductDto"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Row Version */
+            row_version: number;
+            /**
+             * Scenario Id
+             * Format: uuid
+             */
+            scenario_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved";
+            /** Stopping Rule */
+            stopping_rule: components["schemas"]["DrainRule"] | components["schemas"]["FixedHorizonRule"];
+            /** Updated At */
+            updated_at: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * ScenarioVersionPatch
+         * @description 보낸 최상위 필드를 통째로 교체한다(초안만). `products`만 보내고 `assets`를 보내지 않으면, 공정이 참조하는
+         *     자산 가운데 아직 고정되지 않은 것을 그 자산의 현재 승인 버전으로 채운다(이미 고정한 것은 그대로).
+         */
+        ScenarioVersionPatch: {
+            /** Assets */
+            assets?: components["schemas"]["ScenarioAssetDto"][] | null;
+            /** Assumption Reason */
+            assumption_reason?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Products */
+            products?: components["schemas"]["ScenarioProductDto"][] | null;
+            /** Stopping Rule */
+            stopping_rule?: (components["schemas"]["DrainRule"] | components["schemas"]["FixedHorizonRule"]) | null;
+        };
+        /** ScenarioVersionSummary */
+        ScenarioVersionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved";
+            /** Version No */
+            version_no: number;
+        };
         /** Setup */
         Setup: {
             duration_min?: components["schemas"]["DurationMeasure"];
@@ -1905,6 +2762,24 @@ export interface components {
              * @enum {string}
              */
             trigger: "unknown" | "not_applicable" | "per_operation" | "per_input_replacement" | "per_output_replacement" | "on_product_change" | "on_shift_start" | "once_per_run";
+        };
+        /**
+         * ShortfallOut
+         * @description 입력 부족: 어느 단계가 몇 개를 기다리는데 몇 개가 필요한지.
+         */
+        ShortfallOut: {
+            /** Held */
+            held: number;
+            /** Needed */
+            needed: number;
+            /** Pool */
+            pool: string;
+            /** Process Version Id */
+            process_version_id: string;
+            /** Step */
+            step?: string | null;
+            /** Waiting */
+            waiting: number;
         };
         /** Single[AssetOut] */
         Single_AssetOut_: {
@@ -1930,6 +2805,10 @@ export interface components {
         Single_MeOut_: {
             data: components["schemas"]["MeOut"];
         };
+        /** Single[PrecheckOut] */
+        Single_PrecheckOut_: {
+            data: components["schemas"]["PrecheckOut"];
+        };
         /** Single[ProcessVersionOut] */
         Single_ProcessVersionOut_: {
             data: components["schemas"]["ProcessVersionOut"];
@@ -1941,6 +2820,22 @@ export interface components {
         /** Single[ProjectOut] */
         Single_ProjectOut_: {
             data: components["schemas"]["ProjectOut"];
+        };
+        /** Single[RunInputOut] */
+        Single_RunInputOut_: {
+            data: components["schemas"]["RunInputOut"];
+        };
+        /** Single[RunOut] */
+        Single_RunOut_: {
+            data: components["schemas"]["RunOut"];
+        };
+        /** Single[ScenarioOut] */
+        Single_ScenarioOut_: {
+            data: components["schemas"]["ScenarioOut"];
+        };
+        /** Single[ScenarioVersionOut] */
+        Single_ScenarioVersionOut_: {
+            data: components["schemas"]["ScenarioVersionOut"];
         };
         /** Single[StepOut] */
         Single_StepOut_: {
@@ -4803,6 +5698,983 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Single_ProcessVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_projects__project_id__runs_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+                /** @description 상태 필터 */
+                status?: ("queued" | "running" | "completed" | "stalled" | "horizon_reached" | "failed" | "limit_reached" | "cancelled") | null;
+                /** @description 시나리오 버전 필터 */
+                scenario_version_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_RunListItem_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_run_api_v1_projects__project_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 실행 요청마다 클라이언트가 만든 고유 값(1~128자). 같은 키·같은 본문이면 기존 결과를 돌려준다. */
+                "idempotency-key"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_RunOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_projects__project_id__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_RunOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_run_api_v1_projects__project_id__runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_RunOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_run_input_api_v1_projects__project_id__runs__run_id__input_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_RunInputOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScenarioVersionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approve_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    precheck_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_PrecheckOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_scenarios_api_v1_projects__project_id__scenarios_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_ScenarioOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_scenario_api_v1_projects__project_id__scenarios_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScenarioCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_scenario_api_v1_projects__project_id__scenarios__scenario_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_scenario_api_v1_projects__project_id__scenarios__scenario_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScenarioPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_scenario_versions_api_v1_projects__project_id__scenarios__scenario_id__versions_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_ScenarioVersionListItem_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_scenario_version_api_v1_projects__project_id__scenarios__scenario_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ScenarioVersionCreate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioVersionOut_"];
                 };
             };
             /** @description Unauthorized */
