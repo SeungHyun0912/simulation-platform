@@ -361,8 +361,8 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 
 ## 5. 시나리오·실행 API
 
-> 아래 표에서 시나리오 6행(목록~승인)은 §5.1로 **승인**(contract 0.7.0)되었다. 실행(`runs`)·비교 행은 PROPOSED이며
-> CR be08(스냅샷·job queue·worker)에서 다룬다.
+> 아래 표에서 시나리오 6행(목록~승인)은 §5.1로, 실행 5행(요청·목록·조회·input·cancel)은 §5.2로 **승인**(contract
+> 0.7.0·0.9.0)되었다. `rerun`·`events`·`metrics`·`lineage`·비교 행은 PROPOSED이며 CR be08(be08b·be08c)에서 다룬다.
 
 | Method | Path | 의미 |
 |---|---|---|
@@ -425,6 +425,27 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 - **자산 버전 자동 고정:** `products`만 보내고 `assets`를 보내지 않으면, 공정이 참조하는 자산(공간 노드·설비 후보) 가운데 아직 고정되지 않은 것을 그 자산의 **현재 승인 버전**으로 채운다(이미 고정한 것은 그대로, 승인 버전이 없으면 비워 둠). `assets`를 함께 보내면 보낸 그대로다(빈 목록 = 고정 안 함).
 - **사전검증 응답:** `runnable`, `error_count`, `warning_count`, `engine_version`, `issues[]`(시나리오 수준: `SCN-PROD-001` 제품 없음, `SCN-ARR-001` 도착 없음, `SCN-ASM-001` 가정을 썼는데 사유 없음 — 오류; `SCN-ASSET-001` 공정이 쓰는 자산에 고정 버전 없음, `SCN-ASSET-002` 쓰지 않는 자산 고정, `SCN-ARR-002` 도착의 단위(길이·무게)가 공정의 원자재 단위와 다름(0.8.0) — 경고), `products[]`(제품마다 엔진 컴파일 결과: `compiled`, `compile_issues[]`, `assumptions_used[]`, `waived[]`). **엔진·도메인 실행 검증 코드(`VAL-*`, `BUFFER_POLICY_UNKNOWN`, `ENGINE_HANDLER_NOT_AVAILABLE` 등)를 번역하지 않고 그대로** 준다. `runnable`은 오류 0이고 모든 제품이 컴파일될 때만 true. 고정하지 않은 자산의 용량·배출 규칙은 모르는 값으로 판정한다(무제한으로 보지 않음).
 - 예제: `examples/first-scope/scenario.create`·`scenario-version.patch`·`scenario-version.validate`·`error.scenario-not-runnable`.
+
+### 5.2 승인 scope `runs` — BE-06a (contract 0.9.0)
+근거: `docs/change-requests/CR-backend-20261027-be08-run-platform.md`(보드 DEC-008). 필드·타입의 정본은 openapi.json.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| POST | /projects/{p}/runs | project editor | **202** `queued` run. 스냅샷·run·job을 한 트랜잭션으로 만든다. 같은 `Idempotency-Key`+같은 본문이면 기존 run을 **200**으로 돌려준다 |
+| GET | /projects/{p}/runs | viewer | 최신 요청부터(keyset cursor). 필터 `status`·`scenario_version_id`, `limit`·`cursor` |
+| GET | /projects/{p}/runs/{r} | viewer | 상태·attempt 목록·종료 사유·결과 요약 |
+| GET | /projects/{p}/runs/{r}/input | viewer | 실행 당시 입력 스냅샷(`snapshot`)과 `sha256`, 저장본을 다시 해시한 `hash_verified` |
+| POST | /projects/{p}/runs/{r}/cancel | project editor | **202**. 대기 중이면 즉시 `cancelled`, 실행 중이면 `cancel_requested_at`만 기록(요청 ≠ 실제 취소) |
+
+- **요청 본문(닫힌 객체):** `scenario_version_id`(필수, **승인된** 시나리오 버전), `seed`(정수 0~2³¹−1, 기본 0), `replicate_index`(같은 범위, 기본 0). 승인되지 않은 버전은 422 `RUN_NOT_RUNNABLE`(`RUN-SCN-001`)이다. 다른 프로젝트의 버전은 404. 이전 설계안의 `assumption_acknowledgments`는 받지 않는다(가정은 시나리오 승인에 포함됨).
+- **`Idempotency-Key` 헤더 필수**(1~128자): 없으면 428 `PRECONDITION_REQUIRED`, 길이 위반은 422. 같은 키로 본문이 다르면 409 `IDEMPOTENCY_CONFLICT`. 키는 (프로젝트, 요청자) 안에서 유일하다.
+- **입력 스냅샷은 불변:** 정규화 JSON(키 정렬·공백 없음·UTF-8)의 SHA-256이 `input_hash`이며, DB 트리거가 스냅샷의 수정·삭제를 막는다. 스냅샷은 시나리오 버전·제품별 공정 그래프·도착·가정·고정한 자산 버전·시드·엔진 버전·이벤트 한도를 담아, 이후 원본이 바뀌어도 같은 입력을 다시 보여 준다.
+- **상태:** `queued`, `running`, 엔진 종료 상태(`completed`·`stalled`·`horizon_reached`·`failed`·`limit_reached`), `cancelled`. 종료 상태는 다시 바뀌지 않는다. `stalled`는 실행 실패가 아니라 **더 진행할 수 없는 상태**이며 결과에 부족한 입력(`shortfalls`)이 들어간다. 종료 사유 예: `CANCELLED_BEFORE_START`, `CANCELLED`, `WALL_TIMEOUT`, `ENGINE_ERROR`, `WORKER_LOST`, `SNAPSHOT_HASH_MISMATCH`, `COMPILE_FAILED`.
+- **결과 요약(`result`):** 종료 시 한 번 기록되는 작은 요약 — `state`·`reason`·`censored`·`end_time{min,exact}`·`horizon`·`event_count`·`engine_version`·`seed`·`products[]`(완제품 수·길이·최초/최종 완료 시각·폐기 길이)·`assumptions`·`shortfalls`·`residuals`·`wip_items`·`failure`·`compile_issues`. 시각은 가상 시간(분)이며 표시용 소수 6자리 `min`과 정확한 분수 `exact`를 함께 준다. 이벤트·지표·계보는 be08b·be08c에서 조회 API가 생긴다.
+- **취소 의미:** 대기 중 취소는 즉시 `cancelled`/`CANCELLED_BEFORE_START`. 실행 중 취소는 요청 시각만 남기고 worker가 다음 heartbeat에서 자식 프로세스를 멈춘 뒤 `cancelled`가 된다. 이미 끝난 run은 409 `JOB_CANCEL_TOO_LATE`.
+- **worker(참고):** API와 별도 프로세스가 DB 큐(`FOR UPDATE SKIP LOCKED`)에서 job을 가져가 엔진을 자식 프로세스로 실행한다. 임대·heartbeat·fencing 토큰으로 죽은 worker를 대체하고, worker가 사라진 경우만 최대 3회 재시도한다(엔진 오류·시간 초과는 재시도하지 않음). FE는 polling으로 상태를 본다.
+- **권한:** 조회 viewer, 요청·취소 editor 이상. organization·project 범위는 서버가 검증하며 다른 프로젝트의 run은 404다.
+- 예제: `examples/first-scope/error.run-not-runnable`(초안 버전). 성공 응답은 승인 시나리오가 필요해 시험(`tests/integration/test_api_runs.py`)이 정본이다.
 
 ## 6. LLM·위키 API
 

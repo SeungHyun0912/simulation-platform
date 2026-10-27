@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/projects/00000000-0000-4000-8000-000000000002/runs",
+    "headers": {
+      "Idempotency-Key": "demo-run-1"
+    },
+    "body": {
+      "scenario_version_id": "00000000-0000-4000-8000-000000000042",
+      "seed": 42
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "RUN_NOT_RUNNABLE",
+        "message": "승인된 시나리오 버전만 실행할 수 있습니다.",
+        "request_id": "req-example",
+        "details": [
+          {
+            "message": "현재 상태는 draft입니다. 사전검증을 통과해 승인한 뒤 실행하세요.",
+            "severity": "error",
+            "rule_id": "RUN-SCN-001",
+            "field_path": "/scenario_version_id"
+          }
+        ]
+      }
+    }
+  }
+}
