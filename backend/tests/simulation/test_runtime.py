@@ -302,3 +302,17 @@ def test_storage_ids_are_only_labels_for_buffers():
     result = run_model(model_of(single_insulation()), [Arrival("2000")])
     entered = result.of_type("BUFFER_ENTERED")
     assert entered[0].asset_key == STORAGE_A and entered[0].destination == "wait_in"
+
+
+def test_manual_transport_time_from_the_process_data_is_used_by_the_run():
+    from fixtures import per_unit
+
+    g = Graph()
+    g.node("src", "source")
+    g.node("forklift", "operation", step("transport_manual", processing=per_unit("4", "sequential_units"),
+                                         output=out_pass(), worker=True))
+    g.node("complete", "milestone")
+    g.node("sink", "sink")
+    result = run_model(model_of(g.chain().snapshot()), [Arrival("500", count=3)])
+    # 보빈마다 독립 이동한다(운반 자원은 이번에는 무제한이라 서로 기다리지 않는다)
+    assert times(result, "SINK_REACHED") == [4, 4, 4] and not result.assumptions

@@ -1,10 +1,13 @@
-"""실제 기준정보(DEMO-WIRE) 공정 4가지를 엔진 컴파일러에 통과시켜 **지금 어디서 막히는지**를 기록한다.
+"""실제 기준정보(DEMO-WIRE) 공정 6종을 엔진에 통과시켜 **지금 어디까지 실행되고 어디서 막히는지**를 고정한다.
 
-이 테스트는 "엔진이 실제 공정을 돌린다"는 증거가 아니다. 반대로 문서가 정하지 않은 값(입력 소비 시점·운반 시간·
-점유 정책 등)이 남아 있어 컴파일이 막힌다는 것을 고정한다. 미정이 확정되면(도메인 입력) 이 기대값이 줄어든다.
+사용자가 6묶음 미정을 정리한 뒤(CR be09, 2026-10-27) P02·P03·P06은 엔진에서 끝까지 실행된다. P01은 잔량 이월 범위,
+P04·P05는 멀티신선 시간 기준과 엔진 미구현(일괄 확보 handler, 제품 전환 준비)이 남아 컴파일이 이유와 함께 막힌다.
+입고 수량(원자재 24개)과 공간 용량 가정(`unbounded_buffers`)은 시나리오 쪽 값이며 문서의 사실이 아니다.
 """
 
 import sys
+from collections import Counter
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -18,8 +21,11 @@ from simulation_platform.simulation.compiler import (
     ScenarioAssumptions,
     compile_snapshot,
 )
+from simulation_platform.simulation.runtime import Arrival, Lane, run_model, run_models
 
 API = "/api/v1"
+RAW_LENGTH_M = {"P01": "3000", "P02": "4000", "P03": "5000", "P06": "2000"}
+RAW_COUNT = 24  # 시나리오 기본값: 월 1회 월초 24개(사용자 지정, 바꿔 가며 반복 실행할 시험값)
 
 
 @pytest.fixture(scope="module")
@@ -41,50 +47,83 @@ def rules(result):
     return {i.rule_id for i in result.issues}
 
 
-FULL_ASSUMPTIONS = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True)
+# 공간 용량은 자산 버전 승인 전이라 모른다(무제한으로 가정하지 않고 시나리오가 명시). 점유 정책은 사용자 확정 기본값.
+ASSUMED = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True)
 
 
-@pytest.mark.parametrize("code", ["P01", "P02", "P03", "P04", "P05", "P06"])
-def test_no_real_process_is_runnable_yet_and_the_reasons_are_explicit(client, wire, code):
-    result = compile_snapshot(snapshot(client, wire, code), FULL_ASSUMPTIONS, allow_unapproved=True)
-    assert result.model is None and not result.ok
-    assert result.issues  # 숨기지 않는다
-    # 문서에 없는 값(입력 소비 시점·확보 범위)이 모든 단계에 남아 있다
-    assert "VAL-INPUT-001" in rules(result)
+def compiled(client, wire, code):
+    return compile_snapshot(snapshot(client, wire, code), ASSUMED, allow_unapproved=True)
 
 
-def test_silicon_products_are_blocked_by_missing_completion_and_inspection_resources(client, wire):
-    result = compile_snapshot(snapshot(client, wire, "P01"), FULL_ASSUMPTIONS, allow_unapproved=True)
-    assert {"VAL-GRAPH-014", "VAL-RES-002", "VAL-HANDOFF-001"} <= rules(result)  # 완제품 시점·검사 자원·인계 방식 미정
+# --- 끝까지 실행되는 공정 -------------------------------------------------------------------------
+
+@pytest.mark.parametrize("code", ["P02", "P03", "P06"])
+def test_these_real_processes_compile_with_the_stated_scenario_assumptions(client, wire, code):
+    result = compiled(client, wire, code)
+    assert result.ok, result.issues
+    assert {a.code for a in result.assumptions} == {"UNBOUNDED_BUFFERS", "EQUIPMENT_HOLD_FOR_OPERATION"}
+    model = result.require_model()
+    assert model.completion_key == "complete"
+    for step in model.steps.values():  # 사용자 확정값이 모든 단계에 들어갔다
+        assert step.handoff == "per_output_unit"
+        assert step.setup_minutes == 0 and step.consume_policy == "consume"
+        if len(step.candidates) > 1:
+            assert step.allocation == "first_available"
 
 
-def test_p04_al_join_is_structurally_runnable_but_its_unknowns_remain(client, wire):
-    result = compile_snapshot(snapshot(client, wire, "P04"), FULL_ASSUMPTIONS, allow_unapproved=True)
-    # C0-07: ST-019 분기(싱글-1·싱글-12) + 싱글 메인 합류(직결·공급 간선)는 경로로 받아들인다
-    assert not {"NONLINEAR_EDGE_UNSUPPORTED", "BRANCH_UNSUPPORTED", "JOIN_UNSUPPORTED"} & rules(result)
-    assert "ENGINE_HANDLER_NOT_AVAILABLE" in rules(result)  # 멀티신선 output_units_by_time(병렬 스트림)은 미구현
-    # 싱글 메인의 공급 입력은 가닥 수(12)만 있고 단위 수가 없다: 가닥을 보빈 수로 바꾸지 않는다
-    assert "INPUT_COUNT_UNKNOWN" in rules(result)
+def test_p06_runs_to_completion_for_one_month_of_raw_material(client, wire):
+    """원자재 2,000m 롤 24개(월초 입고) → 500m 보빈 96개. 설비는 후보 목록 순서(코드 순서)로 쓰인다."""
+    model = compiled(client, wire, "P06").require_model()
+    result = run_model(model, [Arrival("2000", count=RAW_COUNT)])
+    assert (result.state, result.reason) == ("completed", None)
+    assert len(result.of_type("SINK_REACHED")) == 96  # 2,000m → 1,000m×2 → 500m×2, 총 4개씩
+    completions = [e for e in result.of_type("MILESTONE_REACHED") if e.reason == "completion"]
+    assert len(completions) == 96
+    assert all(r.balanced for r in result.lineage)  # 길이가 새거나 늘지 않는다
+    started = Counter(e.asset_key for e in result.of_type("PROCESS_STARTED") if e.asset_key)
+    assert len(started) > 40  # 편조기 42대 등 여러 설비가 병렬로 쓰였다
+    # 이동은 보빈마다 독립이고 한 번에 4분(이동 3 + 상하차 1)이다
+    moves = [r for r in result.lineage if r.step_key in ("forklift", "amr")]
+    assert len(moves) == 2 * 48  # 지게차·AMR 각 1,000m 보빈 48개
+    assert not any(a.code == "MANUAL_TRANSPORT_MINUTES" for a in result.assumptions)  # 이동 시간은 가정이 아니라 사실
 
 
-def test_p05_and_p06_are_linear_but_need_transport_assumptions_and_input_policies(client, wire):
-    for code in ("P05", "P06"):
-        result = compile_snapshot(snapshot(client, wire, code), FULL_ASSUMPTIONS, allow_unapproved=True)
-        assert "TRANSPORT_DURATION_UNKNOWN" in rules(result)  # 지게차·AMR 이동 시간은 문서에 없다
-        assert not rules(result) & {"NONLINEAR_EDGE_UNSUPPORTED", "BRANCH_UNSUPPORTED", "JOIN_UNSUPPORTED"} \
-            or code == "P05"  # P05의 draw·multi는 병렬 신선(미지원)이라 별도 사유가 섞일 수 있다
+def test_the_three_runnable_processes_share_equipment_and_the_first_free_machine_is_used_first(client, wire):
+    lanes = [Lane(compiled(client, wire, code).require_model(), (Arrival(RAW_LENGTH_M[code], count=RAW_COUNT),))
+             for code in ("P02", "P03", "P06")]  # ST-001 순차 입고(제품 순서가 같은 시각 처리 순서)
+    result = run_models(lanes)
+    assert (result.state, result.reason) == ("completed", None)
+    done = Counter(e.process_version_id for e in result.of_type("SINK_REACHED"))
+    assert sorted(done.values()) == [96, 192, 240]  # P06 96 / P02 24×8 / P03 24×10
+    # 실리콘 쉬스 압출기 EQ-002와 테이핑기 EQ-011은 한 대(또는 두 대 중 앞 번호)가 216개 보빈을 모두 맡는다
+    started = Counter(e.asset_key for e in result.of_type("PROCESS_STARTED") if e.asset_key)
+    assert max(started.values()) >= 216
+    assert result.end_time > Fraction(10 * 1440)  # 실리콘 편조(1.5m/min, 8대)가 병목이라 약 13일 걸린다
 
 
-def test_p06_blockers_shrink_only_when_the_scenario_states_the_unknowns(client, wire):
-    snap = snapshot(client, wire, "P06")
-    transports = {n["node_key"]: 0 for n in snap.nodes if (n["step"] or {}).get("operation_type") == "transport_manual"}
-    from fractions import Fraction
-    assumed = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True,
-                                  manual_transport_minutes={k: Fraction(v) for k, v in transports.items()})
-    result = compile_snapshot(snap, assumed, allow_unapproved=True)
-    remaining = rules(result)
-    assert "TRANSPORT_DURATION_UNKNOWN" not in remaining and "BUFFER_POLICY_UNKNOWN" not in remaining
-    assert "EQUIPMENT_HOLD_POLICY_REQUIRED" not in remaining
-    assert "VAL-INPUT-001" in remaining and "VAL-RES-004" in remaining  # 도메인 입력(소비 시점·후보 호기 자격)이 남는다
-    waived = {w.rule_id for w in result.waived}
-    assert {"VAL-RES-002"} <= waived  # 운반 단계의 자원 미정은 가정으로 면제하되 보고한다
+# --- 아직 막히는 공정(이유를 숨기지 않는다) ------------------------------------------------------
+
+def test_p01_is_blocked_only_by_the_residual_scope_of_its_carry_rule(client, wire):
+    result = compiled(client, wire, "P01")
+    assert rules(result) == {"RESIDUAL_SCOPE_UNKNOWN"}  # 쉬스 잔량 이월 범위(machine·product·operation·lot)는 사용자 결정
+
+
+def test_p04_blockers_are_the_multi_drawing_time_basis_and_unbuilt_engine_parts(client, wire):
+    result = compiled(client, wire, "P04")
+    found = rules(result)
+    # 멀티신선 12보빈을 동시에 만드는지 순차인지 미정, 일괄 확보 handler 미구현, 싱글 메인 공급 입력의 개수(가닥 수만 있음)
+    assert {"VAL-TIME-003", "ENGINE_HANDLER_NOT_AVAILABLE", "INPUT_COUNT_UNKNOWN"} <= found
+    assert not found & {"NONLINEAR_EDGE_UNSUPPORTED", "BRANCH_UNSUPPORTED", "JOIN_UNSUPPORTED",
+                        "VAL-INPUT-001", "VAL-RES-004", "VAL-HANDOFF-001", "TRANSPORT_DURATION_UNKNOWN"}
+
+
+def test_p05_blockers_are_the_batch_handlers_and_the_product_change_setup(client, wire):
+    found = rules(compiled(client, wire, "P05"))
+    assert {"VAL-TIME-003", "ENGINE_HANDLER_NOT_AVAILABLE", "SETUP_TRIGGER_UNSUPPORTED"} <= found
+    assert not found & {"VAL-INPUT-001", "VAL-RES-004", "VAL-HANDOFF-001", "TRANSPORT_DURATION_UNKNOWN"}
+
+
+def test_a_scenario_that_does_not_state_the_unknowns_stays_blocked(client, wire):
+    """공간 용량·점유 정책을 시나리오가 말하지 않으면 용량 미정은 무제한으로 가정되지 않고 막힌다."""
+    result = compile_snapshot(snapshot(client, wire, "P06"), ScenarioAssumptions(), allow_unapproved=True)
+    assert {"BUFFER_POLICY_UNKNOWN", "EQUIPMENT_HOLD_POLICY_REQUIRED"} <= rules(result)
