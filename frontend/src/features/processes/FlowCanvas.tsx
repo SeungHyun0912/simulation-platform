@@ -209,7 +209,7 @@ export function FlowCanvas({
                 {(kind !== "material" || linked) && (
                   <text x={mid.x} y={mid.y - 6} textAnchor="middle" className={styles.edgeText}>
                     {kind === "precedence" ? "선후" : kind === "supply" ? "공급" : ""}
-                    {linked ? " ⛓재료" : ""}
+                    {linked ? " · 재료 연결" : ""}
                   </text>
                 )}
               </g>
@@ -245,14 +245,14 @@ export function FlowCanvas({
                 <rect width={NODE.w} height={NODE.h} rx={n.kind === "operation" ? 6 : 22} />
                 <text x={10} y={16} className={styles.kind}>
                   {NODE_KIND_LABELS[n.kind]}
-                  {isCompletion ? " · ★완제품" : ""}
+                  {isCompletion ? " · ● 완제품" : ""}
                 </text>
                 <text x={10} y={36} className={styles.label}>
-                  {clip(name, 20)}
+                  {clip(name, 13)}
                 </text>
                 {summary && (
                   <text x={10} y={53} className={styles.summary}>
-                    {clip(summary, 28)}
+                    {clip(summary, 18)}
                   </text>
                 )}
                 <title>{summary ? `${name}\n${summary}` : name}</title>

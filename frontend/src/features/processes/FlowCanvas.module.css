@@ -81,18 +81,18 @@
 }
 
 .kind {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   fill: var(--color-text-muted);
 }
 
 .label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   fill: var(--color-text);
 }
 
 .summary {
-  font-size: 11px;
+  font-size: var(--text-xs);
   fill: var(--color-text-muted);
 }
 
@@ -143,12 +143,12 @@
 }
 
 .edgeText {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   fill: var(--color-text-muted);
   pointer-events: none;
 }
 
 .empty {
-  font-size: 14px;
+  font-size: var(--text-sm);
   fill: var(--color-text-muted);
 }

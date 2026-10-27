@@ -11,13 +11,13 @@ export type RunResult = NonNullable<RunOut["result"]>;
  */
 export const RUN_STATUS_LABELS: Record<string, { text: string; mark: string; tone: string }> = {
   queued: { text: "대기 중", mark: "…", tone: "info" },
-  running: { text: "실행 중", mark: "▶", tone: "info" },
+  running: { text: "실행 중", mark: "●", tone: "info" },
   completed: { text: "완료", mark: "✓", tone: "success" },
-  stalled: { text: "입력 부족으로 멈춤", mark: "⏸", tone: "warning" },
-  horizon_reached: { text: "지평선 도달", mark: "⏹", tone: "success" },
+  stalled: { text: "입력 부족으로 멈춤", mark: "⚠", tone: "warning" },
+  horizon_reached: { text: "지평선 도달", mark: "✓", tone: "success" },
   limit_reached: { text: "이벤트 한도 도달", mark: "⚠", tone: "warning" },
-  failed: { text: "실패", mark: "✕", tone: "danger" },
-  cancelled: { text: "취소됨", mark: "⊘", tone: "neutral" },
+  failed: { text: "실패", mark: "!", tone: "danger" },
+  cancelled: { text: "취소됨", mark: "○", tone: "neutral" },
 };
 
 export const isActiveRun = (status: string) => status === "queued" || status === "running";

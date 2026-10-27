@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDataSource } from "../../shared/api/ApiContext";
 import { ApiError, classifyError, toIssues } from "../../shared/api/errors";
 import type { ValidationIssue } from "../../shared/components/ValidationPanel";
@@ -36,6 +36,9 @@ import {
 } from "./processDraft";
 import { buildUnitSpecPatch, type ProcessGraphView, type ProcessVersionView, type UnitSpecEdit } from "./processView";
 import { useProcessWriter, type ProcessTransition, type ValidateScope, type ValidationResult } from "./writer";
+
+/** 단계 PATCH가 받는 단계 필드(계약 StepPatch). 이름(label)은 노드에서 따로 보낸다. */
+const STEP_PATCH_KEYS = ["operation_type", "handler_version", "timing_rule", "input_rule", "output_rule", "handoff_rule", "residual_rule", "resources", "material_specs"] as const;
 
 /** 편집을 시작한 시점의 서버 값(base)과 row_version, 그리고 입력 중인 값(draft) */
 type Entry = { base: ProcessDraft & { version: number }; draft: ProcessDraft };
@@ -90,9 +93,12 @@ export function useProcessEditor(args: {
   const writer = useProcessWriter(projectId);
 
   const [entry, setEntry] = useState<Entry | null>(null);
-  const [busy, setBusy] = useState<null | "saving" | "transition" | "validating">(null);
+  const [busy, setBusy] = useState<null | "saving" | "step" | "transition" | "validating">(null);
   const [ui, setUi] = useState<Ui>(() => EMPTY_UI(previewConflict));
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  // 저장 요청 직렬화: 상태(busy)는 다음 렌더에야 보이므로 같은 순간의 두 호출이 겹치지 않게 즉시 잠근다.
+  // 겹치면 같은 If-Match로 두 번 보내 자기 자신과 412가 난다(Backend 안내 2026-10-27).
+  const saving = useRef(false);
 
   const freshVersion = Math.max(version.rowVersion, graph.rowVersion);
   const fresh: ProcessDraft & { version: number } = {
@@ -170,7 +176,8 @@ export function useProcessEditor(args: {
 
   /** 저장한다. 성공하면 true, 실패(충돌·검증 거부·오류)나 저장할 것이 없으면 false를 돌려준다. */
   async function save(): Promise<boolean> {
-    if (busy || !dirty) return false;
+    if (busy || !dirty || saving.current) return false;
+    saving.current = true;
     const { base: b, draft: d } = entry;
     setBusy("saving");
     clearMessages();
@@ -193,15 +200,64 @@ export function useProcessEditor(args: {
       phase = "graph";
       if (docChanged(b.doc, d.doc)) {
         sent = toGraphIn(d.doc);
-        await writer.saveGraph(version.id, sent, current);
+        current = (await writer.saveGraph(version.id, sent, current)).rowVersion;
       }
-      setEntry(null);
+      // 저장하는 동안 더 입력한 내용은 남긴다(보낸 값이 새 기준이 된다).
+      const savedBase = { ...b, doc: d.doc, raw: d.raw, finished: d.finished, version: current };
+      setEntry((cur) => (cur && cur.draft !== d && draftChanged(savedBase, cur.draft) ? { base: savedBase, draft: cur.draft } : null));
       show({ hints: [], conflict: false, mergeBlocked: false, notice: "공정을 저장했습니다." });
       return true;
     } catch (e) {
       handleFailure(e, phase, sent);
       return false;
     } finally {
+      saving.current = false;
+      setBusy(null);
+    }
+  }
+
+  /** 그 단계(이름·단계 내용)가 편집 시작 시점과 달라졌는지. 새로 추가한 노드(서버에 없음)는 "new" */
+  function stepState(id: string): "clean" | "changed" | "new" {
+    if (!dirty) return "clean";
+    const bn = entry.base.doc.nodes.find((n) => n.id === id);
+    const dn = entry.draft.doc.nodes.find((n) => n.id === id);
+    if (!dn) return "clean";
+    if (!bn) return "new";
+    return JSON.stringify([bn.label, bn.step]) === JSON.stringify([dn.label, dn.step]) ? "clean" : "changed";
+  }
+
+  /**
+   * 단계 하나만 저장(PATCH /steps/{id}). 그래프의 다른 변경은 그대로 남기고, 저장된 단계만 편집 시작 값(base)에 반영한다.
+   * 서버에 아직 없는 노드(새로 추가)는 그래프 저장으로만 저장된다. 성공하면 true, 실패하면 false, 저장할 것이 없거나 다른 저장 중이면 null.
+   */
+  async function saveStep(id: string): Promise<boolean | null> {
+    if (busy || saving.current || !dirty || stepState(id) !== "changed") return null;
+    const { base: b, draft: d } = entry;
+    const dn = d.doc.nodes.find((n) => n.id === id)!;
+    if (dn.kind !== "operation") return null;
+    saving.current = true;
+    setBusy("step");
+    clearMessages();
+    try {
+      const s = (dn.step ?? {}) as Record<string, unknown>;
+      const body = Object.fromEntries([["label", dn.label], ...STEP_PATCH_KEYS.filter((k) => k in s).map((k) => [k, s[k]])]);
+      const r = await writer.patchStep(version.id, id, body, b.version);
+      // 저장한 단계만 기준에 반영하고, 요청 중에 더 입력한 내용(현재 draft)은 그대로 둔다.
+      setEntry((cur) => {
+        const from = cur ?? { base: b, draft: d };
+        const saved = { ...from.base, version: r.rowVersion, doc: { ...from.base.doc, nodes: from.base.doc.nodes.map((n) => (n.id === id ? { ...n, label: dn.label, step: dn.step } : n)) } };
+        return draftChanged(saved, from.draft) ? { base: saved, draft: from.draft } : null;
+      });
+      show({ notice: `단계 "${dn.label || "이름 없음"}"을(를) 저장했습니다.` });
+      return true;
+    } catch (e) {
+      const kind = classifyError(e);
+      if (kind === "conflict") show({ conflict: true });
+      else if (kind === "validation" && e instanceof ApiError && e.details.length > 0) show({ rejected: toIssues(e).map((i) => ({ ...i, entity_id: id })) });
+      else show({ error: e });
+      return false;
+    } finally {
+      saving.current = false;
       setBusy(null);
     }
   }
@@ -326,6 +382,8 @@ export function useProcessEditor(args: {
     move: (id: string, delta: -1 | 1) => editDoc((doc) => moveStep(doc, id, delta)),
     setNext: (id: string, next: NextLocation) => editDoc((doc) => setNextLocation(doc, id, next)),
     save,
+    saveStep,
+    stepState,
     reset: () => {
       setEntry(null);
       show({ hints: [], rejected: [], unitErrors: {}, error: null, notice: null });

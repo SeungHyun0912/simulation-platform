@@ -1,4 +1,5 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import { createLimiter } from "../../shared/api/concurrency";
 import { useEffect, useMemo } from "react";
 import { useApiClient, useDataSource } from "../../shared/api/ApiContext";
 import { ApiError } from "../../shared/api/errors";
@@ -72,6 +73,27 @@ export function useEditorState(projectId: string, versionId: string): Loadable<E
   });
   if (source === "static") return success({ positions: {}, viewport: null, rowVersion: 0 });
   return fromQuery(q, (d) => d);
+}
+
+/** 여러 제품의 공정 그래프를 읽을 때 동시에 보내는 요청 수(Backend 권장 6~8). 모든 화면이 함께 쓴다. */
+const graphLimiter = createLimiter(6);
+
+/**
+ * 여러 공정 버전의 그래프(프로젝트 전체 공정 보기). 일괄 조회 API가 없어 버전마다 GET graph를 동시 6개까지 보낸다.
+ * 캐시 키는 제품별 플로우차트·편집 화면과 같아 한 번 읽은 그래프를 다시 받지 않는다.
+ */
+export function useProcessGraphs(projectId: string, versionIds: string[]): Loadable<ProcessGraphView>[] {
+  const source = useDataSource();
+  const client = useApiClient();
+  const results = useQueries({
+    queries: versionIds.map((id) => ({
+      queryKey: graphKey(projectId, source, id),
+      enabled: source === "api" && projectId !== "" && id !== "",
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        graphLimiter(async () => toGraphView((await client.get<Schemas["Single_GraphOut_"]>(`/projects/${projectId}/process-versions/${id}/graph`, { signal })).body.data)),
+    })),
+  });
+  return results.map((q) => fromQuery(q, (d) => d));
 }
 
 export type ProcessDetailResult = { version: ProcessVersionView; graph: ProcessGraphView };

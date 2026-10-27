@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.11.0, openapi_sha256 d6189bb841e61e26c59485e28d1d6af098b505f21f708a7f051a647215455d49
+// 기준 계약: version 0.12.0, openapi_sha256 f0250383ed652ed3702f447ffbd9151abdc82a369e218ce39a6f0c768b299689
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
@@ -624,6 +624,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/runs/{run_id}/bottlenecks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run Bottlenecks
+         * @description 병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로
+         *     돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.
+         */
+        get: operations["get_run_bottlenecks_api_v1_projects__project_id__runs__run_id__bottlenecks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/runs/{run_id}/cancel": {
         parameters: {
             query?: never;
@@ -716,7 +737,7 @@ export interface paths {
         /**
          * List Run Metrics
          * @description 공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.
-         *     공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 하나만 쓸 수 있다.
+         *     공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 함께 쓸 수 있다(모두 만족하는 행만).
          */
         get: operations["list_run_metrics_api_v1_projects__project_id__runs__run_id__metrics_get"];
         put?: never;
@@ -1094,6 +1115,106 @@ export interface components {
             termination_reason: string | null;
             /** Worker Id */
             worker_id: string;
+        };
+        /** BottleneckLocationOut */
+        BottleneckLocationOut: {
+            /** Node Key */
+            node_key?: string | null;
+            /** Node Label */
+            node_label?: string | null;
+            /** Process Version Id */
+            process_version_id?: string | null;
+            /** Product Code */
+            product_code?: string | null;
+            /** Product Id */
+            product_id?: string | null;
+            /** Product Name */
+            product_name?: string | null;
+            /** Step Key */
+            step_key?: string | null;
+            /** Step Label */
+            step_label?: string | null;
+        };
+        /** BottleneckOut */
+        BottleneckOut: {
+            /**
+             * Evidence
+             * @description 근거 수치(종류마다 다름). 숫자는 decimal 문자열
+             */
+            evidence: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Explanation
+             * @description 한국어 한 줄 설명(수치 포함)
+             */
+            explanation: string;
+            /**
+             * Kind
+             * @description space_full: 다음 저장 공간 부족으로 멈춤, equipment_busy: 다음 설비의 가동으로 멈춤, queue_pileup: 대기 자재가 쌓임(운반이 1제품씩이라는 기준)
+             * @enum {string}
+             */
+            kind: "space_full" | "equipment_busy" | "queue_pileup";
+            /**
+             * Level
+             * @description 같은 종류 안의 비율(`share`)과 멈춘 양으로 정한 정도(임시 기준값)
+             * @enum {string}
+             */
+            level: "high" | "medium" | "low";
+            location: components["schemas"]["BottleneckLocationOut"];
+            /**
+             * Rank
+             * @description 전체 순위(level → 종류 순서 → 멈춘 양)
+             */
+            rank: number;
+            /**
+             * Rank In Kind
+             * @description 같은 종류 안에서의 순위(멈춘 양 큰 순)
+             */
+            rank_in_kind: number;
+            /**
+             * Share
+             * @description 같은 종류의 멈춘 양 합계 대비 비율(0~1)
+             */
+            share: string;
+            /**
+             * Stalled Item Min
+             * @description 멈춘 양(작업물·분). 종류가 다르면 겹치므로 합산하지 않는다
+             */
+            stalled_item_min: string;
+        };
+        /** BottleneckSummaryOut */
+        BottleneckSummaryOut: {
+            /** Definition Version */
+            definition_version: string;
+            /** Findings */
+            findings: components["schemas"]["BottleneckOut"][];
+            /** Headline */
+            headline: string;
+            /**
+             * Limitations
+             * @description 이 판정의 한계(가정·모델링하지 않은 것). 화면에 함께 보여야 한다
+             */
+            limitations: string[];
+            /** @description 관측한 가상 시간(실행 종료 시각) */
+            observed: components["schemas"]["MinutesOut"];
+            /**
+             * Quality Status
+             * @enum {string}
+             */
+            quality_status: "complete" | "censored" | "incomplete";
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Thresholds
+             * @description 판정에 쓴 기준값(임시 휴리스틱)
+             */
+            thresholds: {
+                [key: string]: string;
+            };
         };
         /** CandidateDto */
         CandidateDto: {
@@ -1899,9 +2020,10 @@ export interface components {
             description: string;
             /**
              * Dimension
+             * @description `step`은 공정 버전과 단계를 함께(`process_version_id`+`step_key`) 가리킨다
              * @enum {string}
              */
-            dimension: "process_version_id" | "asset_key" | "node_key";
+            dimension: "process_version_id" | "asset_key" | "node_key" | "step";
             /** Metric Key */
             metric_key: string;
             /** Unit */
@@ -2444,8 +2566,15 @@ export interface components {
             last_completion?: components["schemas"]["MinutesOut"] | null;
             /** Process Version Id */
             process_version_id: string;
+            /**
+             * Product Code
+             * @description 제품 표시 코드(실행 요청 당시 값, 이전 run은 현재 제품 목록으로 보충)
+             */
+            product_code?: string | null;
             /** Product Id */
             product_id: string;
+            /** Product Name */
+            product_name?: string | null;
             /** Reached Sink */
             reached_sink: number;
         };
@@ -3047,6 +3176,10 @@ export interface components {
         /** Single[AssetRevisionOut] */
         Single_AssetRevisionOut_: {
             data: components["schemas"]["AssetRevisionOut"];
+        };
+        /** Single[BottleneckSummaryOut] */
+        Single_BottleneckSummaryOut_: {
+            data: components["schemas"]["BottleneckSummaryOut"];
         };
         /** Single[EditorStateOut] */
         Single_EditorStateOut_: {
@@ -6269,6 +6402,68 @@ export interface operations {
             };
         };
     };
+    get_run_bottlenecks_api_v1_projects__project_id__runs__run_id__bottlenecks_get: {
+        parameters: {
+            query?: {
+                /** @description 돌려줄 병목 후보 수(순위순) */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_BottleneckSummaryOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     cancel_run_api_v1_projects__project_id__runs__run_id__cancel_post: {
         parameters: {
             query?: never;
@@ -6537,6 +6732,8 @@ export interface operations {
                 asset_key?: string | null;
                 /** @description 대기 공간 차원 필터 */
                 node_key?: string | null;
+                /** @description 단계 차원 필터(공정 버전 필터와 함께 쓰면 한 단계) */
+                step_key?: string | null;
             };
             header?: never;
             path: {

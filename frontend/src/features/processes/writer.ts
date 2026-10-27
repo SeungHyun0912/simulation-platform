@@ -69,8 +69,11 @@ export function useProcessWriter(projectId: string) {
       },
 
       /** 새 초안. 승인본이 있으면 서버가 그래프를 새 id로 복사한다. 열린 버전이 있으면 409 PROCESS_DRAFT_EXISTS. */
-      async createDraft(productId: string): Promise<ProcessVersionView> {
-        const r = await client.post<Schemas["Single_ProcessVersionOut_"]>(`/projects/${projectId}/products/${productId}/process-versions`);
+      async createDraft(productId: string, baseVersionId?: string): Promise<ProcessVersionView> {
+        // 기준 버전을 고르면(0.5.0 base_version_id) 그 버전을 복사하고, 생략하면 서버가 현재 승인본을 복사한다.
+        const r = await client.post<Schemas["Single_ProcessVersionOut_"]>(`/projects/${projectId}/products/${productId}/process-versions`, {
+          ...(baseVersionId ? { body: { base_version_id: baseVersionId } } : {}),
+        });
         const v = toProcessVersionView(r.body.data);
         putVersion(v);
         void qc.invalidateQueries({ queryKey: graphKey(projectId, source, v.id) });
@@ -98,6 +101,25 @@ export function useProcessWriter(projectId: string) {
         );
         refreshSummaries(null);
         return g;
+      },
+
+      /**
+       * 단계 하나만 수정(PATCH /steps/{id}). 보낸 최상위 필드만 통째로 교체하고 다른 노드·간선은 건드리지 않는다.
+       * If-Match는 공정 버전의 row_version이며 성공하면 그 값이 오른다. 응답에 검증 항목이 없어 그래프 캐시의 그 노드만 고치고
+       * 검증 결과는 다시 불러온다(화면이 깜박이지 않게 노드를 먼저 바꾼다).
+       */
+      async patchStep(versionId: string, stepId: string, body: Schemas["StepPatch"], version: number): Promise<{ rowVersion: number; node: { label: string; step: Schemas["StepDto"] } }> {
+        const r = await client.patch<Schemas["Single_StepOut_"]>(`${base}/${versionId}/steps/${stepId}`, { body, ifMatch: version });
+        const out = r.body.data;
+        const rowVersion = out.row_version;
+        qc.setQueryData<ProcessGraphView>(graphKey(projectId, source, versionId), (cur) =>
+          cur
+            ? { ...cur, rowVersion, doc: { ...cur.doc, nodes: cur.doc.nodes.map((n) => (n.id === stepId ? { ...n, label: out.label, step: out.step } : n)) } }
+            : cur,
+        );
+        qc.setQueryData<ProcessVersionView>(versionKey(projectId, source, versionId), (cur) => (cur ? { ...cur, rowVersion } : cur));
+        void qc.invalidateQueries({ queryKey: graphKey(projectId, source, versionId) });
+        return { rowVersion, node: { label: out.label, step: out.step } };
       },
 
       /** 원자재·완제품 단위 수정(보낸 필드만 교체). */

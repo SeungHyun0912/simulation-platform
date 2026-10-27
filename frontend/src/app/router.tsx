@@ -6,6 +6,7 @@ import { AssetListPage } from "../features/assets/AssetListPage";
 import { ProcessEditorPage } from "../features/processes/ProcessEditorPage";
 import { ProcessFlowPage } from "../features/processes/ProcessFlowPage";
 import { ProcessListPage } from "../features/processes/ProcessListPage";
+import { ProcessOverviewPage } from "../features/processes/ProcessOverviewPage";
 import { MaterialCreatePage } from "../features/materials/MaterialCreatePage";
 import { MaterialDetailPage } from "../features/materials/MaterialDetailPage";
 import { MaterialListPage } from "../features/materials/MaterialListPage";
@@ -38,6 +39,7 @@ export const routes = [
       { path: "/projects/:projectId/products/:productId", element: <ProductDetailPage /> },
       { path: "/projects/:projectId/processes", element: <ProcessListPage /> },
       { path: "/projects/:projectId/flow", element: <ProcessFlowPage /> },
+      { path: "/projects/:projectId/flow/all", element: <ProcessOverviewPage /> },
       { path: "/projects/:projectId/products/:productId/flow", element: <ProcessFlowPage /> },
       { path: "/projects/:projectId/scenarios", element: <ScenarioListPage /> },
       { path: "/projects/:projectId/scenarios/new", element: <ScenarioCreatePage /> },

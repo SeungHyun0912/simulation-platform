@@ -13,6 +13,12 @@ type Props = {
   completionId?: string | null;
   /** 오류가 있는 노드·간선 id(테두리를 굵게 표시) */
   errorIds?: ReadonlySet<string>;
+  /** 강조할 노드(예: 같은 설비를 쓰는 단계). 테두리와 접근 가능한 이름으로 함께 알린다. */
+  highlightIds?: ReadonlySet<string>;
+  /** 도식의 접근 가능한 이름(한 화면에 도식이 여럿일 때 구분) */
+  ariaLabel?: string;
+  /** 범례를 숨긴다(한 화면에 도식이 여럿이면 범례는 한 번만 보인다) */
+  hideLegend?: boolean;
   onSelectNode?: (id: string) => void;
   onSelectEdge?: (id: string) => void;
 };
@@ -24,7 +30,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
  * 같은 내용이 아래 노드·간선 표에 모두 있으므로 도식은 구조를 한눈에 보는 보조 수단이다.
  * 종류는 색뿐 아니라 글자와 테두리 모양(대기 공간은 점선)으로 구분하고, 간선 종류는 선 모양으로 구분한다.
  */
-export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId, errorIds, onSelectNode, onSelectEdge }: Props) {
+export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId, errorIds, highlightIds, ariaLabel, hideLegend, onSelectNode, onSelectEdge }: Props) {
   const layout = useMemo(() => layoutGraph(doc), [doc]);
   const markerId = useId();
   if (doc.nodes.length === 0) return null;
@@ -46,7 +52,7 @@ export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId
           height={layout.height}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           role="group"
-          aria-label="공정 그래프 도식 (아래 노드·간선 표와 같은 내용)"
+          aria-label={ariaLabel ?? "공정 그래프 도식 (아래 노드·간선 표와 같은 내용)"}
         >
           <defs>
             <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -90,9 +96,9 @@ export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId
                 key={n.id}
                 role={onSelectNode ? "button" : undefined}
                 tabIndex={onSelectNode ? 0 : undefined}
-                aria-label={`${NODE_KIND_LABELS[n.kind]} ${n.label || n.node_key} 선택`}
+                aria-label={`${NODE_KIND_LABELS[n.kind]} ${n.label || n.node_key}${highlightIds?.has(n.id) ? " (강조)" : ""}${onSelectNode ? " 선택" : ""}`}
                 aria-pressed={onSelectNode ? sel : undefined}
-                className={[styles.node, styles[n.kind], sel ? styles.selected : "", errorIds?.has(n.id) ? styles.error : ""].join(" ")}
+                className={[styles.node, styles[n.kind], sel ? styles.selected : "", errorIds?.has(n.id) ? styles.error : "", highlightIds?.has(n.id) ? styles.highlight : ""].join(" ")}
                 transform={`translate(${box.x} ${box.y})`}
                 onClick={select}
                 onKeyDown={key(select)}
@@ -111,6 +117,7 @@ export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId
           })}
         </svg>
       </div>
+      {!hideLegend && (
       <ul className={styles.legend} aria-label="도식 범례">
         <li>실선: 물류</li>
         <li>파선: 선후 관계</li>
@@ -118,6 +125,7 @@ export function GraphDiagram({ doc, selectedNodeId, selectedEdgeId, completionId
         <li>위로 휘는 곡선: 되돌아가는(순환) 연결</li>
         <li>점선 테두리 상자: 대기 공간</li>
       </ul>
+      )}
     </div>
   );
 }
