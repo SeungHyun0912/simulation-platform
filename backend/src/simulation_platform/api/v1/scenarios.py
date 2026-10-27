@@ -19,6 +19,8 @@ from simulation_platform.schemas.scenario import (
     ScenarioCreate,
     ScenarioOut,
     ScenarioPatch,
+    ScenarioRefreshIn,
+    ScenarioRefreshOut,
     ScenarioVersionCreate,
     ScenarioVersionListItem,
     ScenarioVersionOut,
@@ -190,3 +192,23 @@ def approve_scenario_version(
                                       request_id_of(request))
     set_etag(response, version.row_version)
     return {"data": version}
+
+
+@router.post("/scenario-versions/{version_id}/refresh", response_model=Single[ScenarioRefreshOut],
+             responses=CONFLICT_ERRORS)
+def refresh_scenario_version(
+    project_id: uuid.UUID,
+    version_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    body: ScenarioRefreshIn | None = None,
+    expected: int = Depends(require_if_match),
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """초안의 제품별 공정 버전을 그 제품의 **현재 승인본**으로 바꾸고 자산 고정을 맞춘다(도착·가정·순서는 그대로).
+    본문은 선택: `product_ids`(일부 제품만), `assets`(latest 기본 | keep). 바뀐 내용은 `process_changes`·`asset_changes`로
+    돌려준다. 승인본은 409 `VERSION_IMMUTABLE`(새 초안을 먼저 만든다)."""
+    out = service.refresh_version(session, principal, project_id, version_id, expected, body, request_id_of(request))
+    set_etag(response, out.version.row_version)
+    return {"data": out}
