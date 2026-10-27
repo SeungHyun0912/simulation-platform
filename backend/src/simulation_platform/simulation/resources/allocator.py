@@ -53,5 +53,9 @@ class EquipmentAllocator:
             waiter.event.succeed(asset_id)
             return
 
+    @property
+    def busy(self) -> frozenset[str]:
+        return frozenset(self._busy)
+
     def is_busy(self, asset_id: str) -> bool:
         return asset_id in self._busy

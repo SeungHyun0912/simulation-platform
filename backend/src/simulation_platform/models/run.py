@@ -5,15 +5,19 @@ run을 만드는 순간 입력 스냅샷과 job이 한 트랜잭션으로 생기
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
+    Numeric,
+    PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
     text,
@@ -130,6 +134,7 @@ class RunAttempt(IdMixin, CreatedMixin, Base):
                              name="fk_run_attempt_run", ondelete="RESTRICT"),
         UniqueConstraint("run_id", "attempt_no", name="uq_run_attempt_no"),
         UniqueConstraint("project_id", "run_id", "id", name="uq_run_attempt_run_id"),
+        UniqueConstraint("project_id", "id", name="uq_run_attempt_project_id"),
         CheckConstraint(_in("state", ATTEMPT_STATES), name="ck_run_attempt_state"),
         CheckConstraint("attempt_no >= 1 AND fencing_token >= 1", name="ck_run_attempt_numbers"),
         Index("ix_run_attempt_run_id", "run_id"),
@@ -149,5 +154,112 @@ class RunAttempt(IdMixin, CreatedMixin, Base):
     result_summary: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
 
 
+def _attempt_fk(table: str) -> ForeignKeyConstraint:
+    return ForeignKeyConstraint(["project_id", "attempt_id"], ["run_attempt.project_id", "run_attempt.id"],
+                                name=f"fk_{table}_attempt", ondelete="RESTRICT")
+
+
+_AMOUNT = Numeric(24, 6)
+
+
+class SimulationEvent(Base):
+    """엔진 이벤트(07 §9). 시도 단위로 저장하며 공식 결과는 선택된 시도의 이벤트뿐이다."""
+
+    __tablename__ = "simulation_event"
+    __table_args__ = (
+        PrimaryKeyConstraint("attempt_id", "event_seq", name="pk_simulation_event"),
+        _attempt_fk("simulation_event"),
+        CheckConstraint("event_seq >= 1 AND sim_time_min >= 0", name="ck_simulation_event_numbers"),
+        CheckConstraint("jsonb_typeof(quantities) = 'object'", name="ck_simulation_event_quantities"),
+        Index("ix_simulation_event_type", "attempt_id", "event_type", "event_seq"),
+        Index("ix_simulation_event_step_key", "attempt_id", "step_key", "event_seq",
+              postgresql_where=text("step_key IS NOT NULL")),
+        Index("ix_simulation_event_asset_key", "attempt_id", "asset_key", "event_seq",
+              postgresql_where=text("asset_key IS NOT NULL")),
+        Index("ix_simulation_event_item_key", "attempt_id", "item_key", "event_seq",
+              postgresql_where=text("item_key IS NOT NULL")),
+    )
+
+    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    event_seq: Mapped[int] = mapped_column(BigInteger)
+    sim_time_min: Mapped[Decimal] = mapped_column(_AMOUNT)
+    sim_time_exact: Mapped[str] = mapped_column(Text)
+    event_type: Mapped[str] = mapped_column(Text)
+    step_key: Mapped[str | None] = mapped_column(Text)
+    operation_id: Mapped[str | None] = mapped_column(Text)
+    asset_key: Mapped[str | None] = mapped_column(Text)
+    item_key: Mapped[str | None] = mapped_column(Text)
+    process_version_id: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(Text)
+    destination: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    quantities: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class RunWorkItem(Base):
+    """실행 중 만들어진 작업물(보빈·롤 단위). 길이·무게가 없으면 null(해당 없음 ≠ 0)."""
+
+    __tablename__ = "work_item"
+    __table_args__ = (
+        PrimaryKeyConstraint("attempt_id", "item_key", name="pk_work_item"),
+        _attempt_fk("work_item"),
+        CheckConstraint("status IN ('active', 'consumed', 'completed')", name="ck_work_item_status"),
+        CheckConstraint("(length_m IS NULL OR length_m >= 0) AND (weight_kg IS NULL OR weight_kg >= 0)",
+                        name="ck_work_item_amounts"),
+        Index("ix_work_item_status", "attempt_id", "status"),
+    )
+
+    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    item_key: Mapped[str] = mapped_column(Text)
+    parent_key: Mapped[str | None] = mapped_column(Text)
+    process_version_id: Mapped[str | None] = mapped_column(Text)
+    lot_key: Mapped[str | None] = mapped_column(Text)
+    state_code: Mapped[str | None] = mapped_column(Text)
+    form: Mapped[str | None] = mapped_column(Text)
+    length_m: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    weight_kg: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    location_key: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    created_at_min: Mapped[Decimal] = mapped_column(_AMOUNT)
+    created_at_exact: Mapped[str] = mapped_column(Text)
+
+
+class RunWorkItemRelation(Base):
+    """작업물 계보: 한 작업(operation)이 부모를 자식으로 바꾼 부모→자식 쌍 하나."""
+
+    __tablename__ = "work_item_relation"
+    __table_args__ = (
+        PrimaryKeyConstraint("attempt_id", "seq", name="pk_work_item_relation"),
+        _attempt_fk("work_item_relation"),
+        ForeignKeyConstraint(["attempt_id", "parent_key"], ["work_item.attempt_id", "work_item.item_key"],
+                             name="fk_work_item_relation_parent", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["attempt_id", "child_key"], ["work_item.attempt_id", "work_item.item_key"],
+                             name="fk_work_item_relation_child", ondelete="RESTRICT"),
+        CheckConstraint("relation_type IN ('split', 'transform', 'supply', 'yield')",
+                        name="ck_work_item_relation_type"),
+        CheckConstraint("accounting_mode IN ('physical', 'abstract_yield')", name="ck_work_item_relation_mode"),
+        Index("ix_work_item_relation_parent", "attempt_id", "parent_key"),
+        Index("ix_work_item_relation_child", "attempt_id", "child_key", postgresql_where=text("child_key IS NOT NULL")),
+    )
+
+    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    seq: Mapped[int] = mapped_column(BigInteger)
+    operation_key: Mapped[str] = mapped_column(Text)
+    step_key: Mapped[str] = mapped_column(Text)
+    relation_type: Mapped[str] = mapped_column(Text)
+    accounting_mode: Mapped[str] = mapped_column(Text)
+    process_version_id: Mapped[str | None] = mapped_column(Text)
+    parent_key: Mapped[str] = mapped_column(Text)
+    child_key: Mapped[str | None] = mapped_column(Text)
+    parent_length_m: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    child_length_m: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    residual_length_m: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    carried_in_m: Mapped[Decimal | None] = mapped_column(_AMOUNT)
+    balanced: Mapped[bool | None] = mapped_column(Boolean)
+
+
 __all__ = ["ATTEMPT_STATES", "JOB_STATES", "RUN_STATUSES", "TERMINAL_RUN_STATUSES", "Job", "RunAttempt",
-           "RunInputSnapshot", "SimulationRun"]
+           "RunInputSnapshot", "RunWorkItem", "RunWorkItemRelation", "SimulationEvent", "SimulationRun"]

@@ -151,3 +151,10 @@ class JobCancelTooLate(DomainError):
 class InvalidStateTransitionError(DomainError):
     code = "INVALID_STATE_TRANSITION"
     status_code = 409
+
+
+class RunResultNotAvailable(DomainError):
+    """아직 공식 결과가 없다(대기·실행 중이거나 실패·취소로 끝나 선택된 시도가 없음)."""
+
+    code = "RUN_RESULT_NOT_AVAILABLE"
+    status_code = 409

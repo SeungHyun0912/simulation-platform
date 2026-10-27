@@ -9,6 +9,8 @@
 """
 
 import random
+from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from fractions import Fraction
 
@@ -22,9 +24,10 @@ from simulation_platform.simulation.handlers.base import PlanError
 from simulation_platform.simulation.items import ItemFactory, LineageRecord, WorkItem
 from simulation_platform.simulation.monitoring import events as ev
 from simulation_platform.simulation.monitoring.events import Event, EventLimitReached, EventLog
-from simulation_platform.simulation.numbers import to_fraction
+from simulation_platform.simulation.numbers import format_decimal, to_fraction
 from simulation_platform.simulation.resources import BatchPool, EquipmentAllocator, SpaceAllocator
 
+DAY_MIN = Fraction(1440)  # 근무 달력이 없어 24시간 연속 기준(1주 = 7일, 1개월 = 30일)
 COMPLETED, STALLED, HORIZON_REACHED = "completed", "stalled", "horizon_reached"
 FAILED, LIMIT_REACHED = "failed", "limit_reached"
 
@@ -52,7 +55,7 @@ class RunResult:
     censored: bool
     end_time: Fraction
     horizon: Fraction | None
-    events: tuple[Event, ...]
+    events: tuple[Event, ...]  # `retain_events=False`(스트리밍)이면 비어 있다
     lineage: tuple[LineageRecord, ...]
     items: tuple[WorkItem, ...]
     assumptions: tuple[AssumptionUse, ...]
@@ -63,6 +66,7 @@ class RunResult:
     residuals: tuple[dict, ...] = ()
     # 입력 부족(stalled/INSUFFICIENT_INPUT)일 때 어느 단계가 몇 개를 기다리는데 몇 개가 필요한지: {step, pool, waiting, needed}
     shortfalls: tuple[dict, ...] = ()
+    event_count: int = 0  # 보관 여부와 상관없이 발생한 이벤트 수
 
     def of_type(self, event_type: str) -> list[Event]:
         return [e for e in self.events if e.event_type == event_type]
@@ -105,12 +109,18 @@ def run_model(model: RuntimeModel, arrivals: list[Arrival] | tuple[Arrival, ...]
 
 
 def run_models(lanes: list[Lane] | tuple[Lane, ...], *, horizon=None, seed: int = 0,
-               event_limit: int | None = 200_000) -> RunResult:
+               event_limit: int | None = 200_000, daily_snapshots: bool = False,
+               event_sink: Callable[[tuple[Event, ...]], None] | None = None, retain_events: bool = True,
+               batch_size: int = 2000) -> RunResult:
     """여러 공정을 한 가상 시간에서 실행한다. 같은 asset_id는 실행에 한 번만 생성되어 공정끼리 경쟁한다(ADR-015).
 
     같은 시각의 동순위는 `lanes` 순서(그 안에서는 도착 순서)로 결정한다. 설비 교체 시간은 더하지 않는다.
+
+    `daily_snapshots=True`면 하루(1,440분)의 경계마다 `STATE_SNAPSHOT` 이벤트를 남긴다(주·월 경계는 `periods`로 표시.
+    상태를 읽기만 하므로 실행 결과는 같다). `event_sink`를 주면 이벤트를 `batch_size`개씩 넘기고 `retain_events=False`로 메모리 보관을 끈다.
     """
-    return _Run(list(lanes), horizon, seed, event_limit).execute()
+    return _Run(list(lanes), horizon, seed, event_limit, daily_snapshots, event_sink, retain_events,
+                batch_size).execute()
 
 
 def _carries(step: StepModel) -> bool:
@@ -150,7 +160,9 @@ class _Lane:
 
 
 class _Run:
-    def __init__(self, lanes: list[Lane], horizon, seed: int, event_limit: int | None) -> None:
+    def __init__(self, lanes: list[Lane], horizon, seed: int, event_limit: int | None,
+                 daily_snapshots: bool = False, event_sink=None, retain_events: bool = True,
+                 batch_size: int = 2000) -> None:
         self.seed = seed
         self.horizon = None if horizon is None else to_fraction(horizon)
         if self.horizon is not None and self.horizon <= 0:
@@ -169,7 +181,9 @@ class _Run:
                 if not amounts or any(a <= 0 for a in amounts) or to_fraction(arrival.at) < 0 or arrival.count < 1:
                     raise ValueError("도착에는 0보다 큰 길이 또는 무게가 있어야 하고 시각은 0 이상, 개수는 1 이상이어야 합니다.")
         self.env = simpy.Environment(initial_time=Fraction(0))
-        self.log = EventLog(event_limit)
+        self.log = EventLog(event_limit, sink=event_sink, retain=retain_events, batch_size=batch_size)
+        self._next_snapshot = DAY_MIN if daily_snapshots else None
+        self._completed: dict[str, list] = {}  # 공정 버전 → [완제품 수, 완제품 길이 합]
         self.factory = ItemFactory()
         self.items: list[WorkItem] = []
         self.lineage: list[LineageRecord] = []
@@ -225,6 +239,7 @@ class _Run:
                 "residual_pools": len(residuals),
                 "state": state, "wip_items": sum(1 for i in self.items if i.status == "active"),
                 "operations_in_progress": self.in_progress})
+        self.log.flush()
         return RunResult(
             state=state, reason=reason, censored=state == HORIZON_REACHED, end_time=self.env.now,
             horizon=self.horizon, events=self.log.events, lineage=tuple(self.lineage),
@@ -232,7 +247,8 @@ class _Run:
             assumptions=tuple(a for lane in self.lanes for a in lane.model.assumptions),
             engine_version=ENGINE_VERSION, seed=self.seed,
             process_version_ids=tuple(lane.version for lane in self.lanes),
-            residuals=tuple(self._residual_report), shortfalls=tuple(self._shortfalls))
+            residuals=tuple(self._residual_report), shortfalls=tuple(self._shortfalls),
+            event_count=self.log.count)
 
     def _final_state(self) -> tuple[str, str | None]:
         wip = sum(1 for i in self.items if i.status == "active") + self.in_progress
@@ -265,10 +281,53 @@ class _Run:
         return starving if starving and held == active and self.in_progress == 0 else []
 
     def emit(self, event_type: str, **fields) -> Event:
-        return self.log.emit(self.env.now, event_type, **fields)
+        self._snapshots_until(self.env.now)
+        return self._note(self.log.emit(self.env.now, event_type, **fields))
 
     def emit_for(self, lane: _Lane, event_type: str, **fields) -> Event:
-        return self.log.emit(self.env.now, event_type, process_version_id=lane.version, **fields)
+        self._snapshots_until(self.env.now)
+        return self._note(self.log.emit(self.env.now, event_type, process_version_id=lane.version, **fields))
+
+    def _note(self, event: Event) -> Event:
+        if event.event_type == ev.MILESTONE_REACHED and event.reason == "completion":
+            done = self._completed.setdefault(event.process_version_id, [0, Fraction(0)])
+            done[0] += 1
+            done[1] += event.quantities.get("length_m", Fraction(0))
+        return event
+
+    # --- 관측용 상태 요약(하루·주·월 경계) --------------------------------------------------------
+    def _snapshots_until(self, now: Fraction) -> None:
+        """경계 시각 이하의 이벤트가 나오기 전에 그 경계의 상태를 남긴다. 경계 사이에는 상태가 바뀌지 않으므로
+        "이벤트가 나오기 직전 상태"가 곧 그 경계의 상태다(SimPy 이벤트를 더하지 않아 실행 순서가 바뀌지 않는다)."""
+        while self._next_snapshot is not None and self._next_snapshot <= now:
+            at = self._next_snapshot
+            self._next_snapshot += DAY_MIN
+            self._note(self.log.emit(at, ev.STATE_SNAPSHOT, quantities=self._state_at(at)))
+
+    def _state_at(self, at: Fraction) -> dict:
+        day = int(at / DAY_MIN)
+        periods = ["day"] + (["week"] if day % 7 == 0 else []) + (["month"] if day % 30 == 0 else [])
+        wip: dict[tuple[str, str], list] = defaultdict(lambda: [0, Fraction(0), False])
+        for item in self.items:
+            if item.status == "active" and item.location is not None:
+                cell = wip[(item.process_version_id, item.location)]
+                cell[0] += 1
+                if item.length_m is not None:
+                    cell[1] += item.length_m
+                    cell[2] = True
+        return {
+            "periods": periods, "day_index": day,
+            "wip": [{"process_version_id": v, "node_key": k, "items": n,
+                     "length_m": format_decimal(length) if known else None}
+                    for (v, k), (n, length, known) in sorted(wip.items())],
+            "operations_in_progress": self.in_progress,
+            "busy_assets": sorted(self.allocator.busy),
+            "space_used": {k: n for k, n in sorted(self.spaces.used.items()) if n},
+            "completed": [{"process_version_id": v, "items": n, "length_m": format_decimal(length)}
+                          for v, (n, length) in sorted(self._completed.items())],
+            "residual_pools": [{"pool": k, "length_m": format_decimal(sum((e.length_m for e in entries), Fraction(0)))}
+                               for k, entries in sorted(self.pools.items()) if entries],
+        }
 
     # --- 흐름 -------------------------------------------------------------------------------
     def _arrive(self, lane: _Lane, arrival: Arrival):

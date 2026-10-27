@@ -47,8 +47,16 @@ def process_one(sessions: sessionmaker[Session], settings: Settings, worker_id: 
             except queue.LeaseLost:
                 return LOST
 
+    def on_batch(kind: str, rows: list[dict]) -> str:
+        with sessions() as session:
+            try:
+                stop = queue.write_batch(session, claim, kind, rows, settings.worker_lease_seconds)
+            except queue.LeaseLost:
+                return LOST
+        return CANCEL if stop else CONTINUE
+
     outcome = runner(snapshot, tick, tick_seconds=settings.worker_heartbeat_seconds,
-                     wall_timeout_seconds=settings.worker_wall_timeout_seconds)
+                     wall_timeout_seconds=settings.worker_wall_timeout_seconds, on_batch=on_batch)
     if outcome.kind == "ok":
         return _finish(sessions, claim, outcome="finished", summary=outcome.summary,
                        reason=outcome.summary.get("reason"))

@@ -10,11 +10,20 @@
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
-from simulation_platform.models import Job, RunAttempt, RunInputSnapshot, SimulationRun
+from simulation_platform.models import (
+    Job,
+    RunAttempt,
+    RunInputSnapshot,
+    RunWorkItem,
+    RunWorkItemRelation,
+    SimulationEvent,
+    SimulationRun,
+)
 
 
 class LeaseLost(Exception):
@@ -91,6 +100,60 @@ def heartbeat(session: Session, claim: Claim, lease_seconds: float) -> bool:
     if row is None:
         session.rollback()
         raise LeaseLost(str(claim.job_id))
+    session.execute(update(RunAttempt).where(
+        RunAttempt.id == claim.attempt_id, RunAttempt.fencing_token == claim.fencing_token,
+        RunAttempt.state == "running").values(heartbeat_at=func.now()))
+    cancel = session.scalar(select(SimulationRun.cancel_requested_at).where(
+        SimulationRun.id == claim.run_id, SimulationRun.project_id == claim.project_id)) is not None
+    session.commit()
+    return cancel
+
+
+def _dec(value: str | None) -> Decimal | None:
+    return None if value is None else Decimal(value)
+
+
+def _event_row(claim: Claim, row: dict) -> dict:
+    return {"attempt_id": claim.attempt_id, "project_id": claim.project_id, "event_seq": row["event_seq"],
+            "sim_time_min": Decimal(row["sim_time_min"]), "sim_time_exact": row["sim_time_exact"],
+            "event_type": row["event_type"], "step_key": row["step_key"], "operation_id": row["operation_id"],
+            "asset_key": row["asset_key"], "item_key": row["item_key"],
+            "process_version_id": row["process_version_id"], "source": row["source"],
+            "destination": row["destination"], "reason": row["reason"], "quantities": row["quantities"]}
+
+
+def _item_row(claim: Claim, row: dict) -> dict:
+    return {"attempt_id": claim.attempt_id, "project_id": claim.project_id, "item_key": row["item_key"],
+            "parent_key": row["parent_key"], "process_version_id": row["process_version_id"],
+            "lot_key": row["lot_key"], "state_code": row["state_code"], "form": row["form"],
+            "length_m": _dec(row["length_m"]), "weight_kg": _dec(row["weight_kg"]),
+            "location_key": row["location_key"], "status": row["status"],
+            "created_at_min": Decimal(row["created_at_min"]["min"]), "created_at_exact": row["created_at_min"]["exact"]}
+
+
+def _relation_row(claim: Claim, row: dict) -> dict:
+    amounts = {k: _dec(row[k]) for k in ("parent_length_m", "child_length_m", "residual_length_m", "carried_in_m")}
+    plain = {k: row[k] for k in ("seq", "operation_key", "step_key", "relation_type", "accounting_mode",
+                                 "process_version_id", "parent_key", "child_key", "balanced")}
+    return {"attempt_id": claim.attempt_id, "project_id": claim.project_id, **plain, **amounts}
+
+
+BATCH_KINDS = {"events": (SimulationEvent, _event_row), "items": (RunWorkItem, _item_row),
+               "relations": (RunWorkItemRelation, _relation_row)}
+
+
+def write_batch(session: Session, claim: Claim, kind: str, rows: list[dict], lease_seconds: float) -> bool:
+    """엔진이 낸 이벤트·작업물·계보 한 묶음을 이 시도에 저장한다. 임대·fencing을 같은 트랜잭션에서 확인하고(옛 worker의
+    쓰기를 거부, `LeaseLost`) 임대도 함께 늘린다. 취소가 요청됐으면 True."""
+    model, convert = BATCH_KINDS[kind]
+    leased = session.execute(update(Job).where(
+        Job.id == claim.job_id, Job.lease_token == claim.lease_token, Job.state == "claimed",
+        Job.attempt_count == claim.fencing_token).values(lease_expires_at=_after(lease_seconds)).returning(Job.id)
+    ).first()
+    if leased is None:
+        session.rollback()
+        raise LeaseLost(str(claim.job_id))
+    session.execute(insert(model), [convert(claim, row) for row in rows])
     session.execute(update(RunAttempt).where(
         RunAttempt.id == claim.attempt_id, RunAttempt.fencing_token == claim.fencing_token,
         RunAttempt.state == "running").values(heartbeat_at=func.now()))
