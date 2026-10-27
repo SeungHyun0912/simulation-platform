@@ -752,6 +752,238 @@
         "title": "AttemptOut",
         "type": "object"
       },
+      "BottleneckLocationOut": {
+        "properties": {
+          "node_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Key"
+          },
+          "node_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Label"
+          },
+          "process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Version Id"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "step_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Key"
+          },
+          "step_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Label"
+          }
+        },
+        "title": "BottleneckLocationOut",
+        "type": "object"
+      },
+      "BottleneckOut": {
+        "properties": {
+          "evidence": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "근거 수치(종류마다 다름). 숫자는 decimal 문자열",
+            "title": "Evidence",
+            "type": "object"
+          },
+          "explanation": {
+            "description": "한국어 한 줄 설명(수치 포함)",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "kind": {
+            "description": "space_full: 다음 저장 공간 부족으로 멈춤, equipment_busy: 다음 설비의 가동으로 멈춤, queue_pileup: 대기 자재가 쌓임(운반이 1제품씩이라는 기준)",
+            "enum": [
+              "space_full",
+              "equipment_busy",
+              "queue_pileup"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "description": "같은 종류 안의 비율(`share`)과 멈춘 양으로 정한 정도(임시 기준값)",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/BottleneckLocationOut"
+          },
+          "rank": {
+            "description": "전체 순위(level → 종류 순서 → 멈춘 양)",
+            "title": "Rank",
+            "type": "integer"
+          },
+          "rank_in_kind": {
+            "description": "같은 종류 안에서의 순위(멈춘 양 큰 순)",
+            "title": "Rank In Kind",
+            "type": "integer"
+          },
+          "share": {
+            "description": "같은 종류의 멈춘 양 합계 대비 비율(0~1)",
+            "title": "Share",
+            "type": "string"
+          },
+          "stalled_item_min": {
+            "description": "멈춘 양(작업물·분). 종류가 다르면 겹치므로 합산하지 않는다",
+            "title": "Stalled Item Min",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "rank_in_kind",
+          "kind",
+          "level",
+          "stalled_item_min",
+          "share",
+          "location",
+          "explanation",
+          "evidence"
+        ],
+        "title": "BottleneckOut",
+        "type": "object"
+      },
+      "BottleneckSummaryOut": {
+        "properties": {
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/BottleneckOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "limitations": {
+            "description": "이 판정의 한계(가정·모델링하지 않은 것). 화면에 함께 보여야 한다",
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "observed": {
+            "$ref": "#/components/schemas/MinutesOut",
+            "description": "관측한 가상 시간(실행 종료 시각)"
+          },
+          "quality_status": {
+            "enum": [
+              "complete",
+              "censored",
+              "incomplete"
+            ],
+            "title": "Quality Status",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "판정에 쓴 기준값(임시 휴리스틱)",
+            "title": "Thresholds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "quality_status",
+          "observed",
+          "definition_version",
+          "headline",
+          "findings",
+          "limitations",
+          "thresholds"
+        ],
+        "title": "BottleneckSummaryOut",
+        "type": "object"
+      },
       "CandidateDto": {
         "additionalProperties": false,
         "properties": {
@@ -2959,10 +3191,12 @@
             "type": "string"
           },
           "dimension": {
+            "description": "`step`은 공정 버전과 단계를 함께(`process_version_id`+`step_key`) 가리킨다",
             "enum": [
               "process_version_id",
               "asset_key",
-              "node_key"
+              "node_key",
+              "step"
             ],
             "title": "Dimension",
             "type": "string"
@@ -4443,9 +4677,32 @@
             "title": "Process Version Id",
             "type": "string"
           },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "제품 표시 코드(실행 요청 당시 값, 이전 run은 현재 제품 목록으로 보충)",
+            "title": "Product Code"
+          },
           "product_id": {
             "title": "Product Id",
             "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
           },
           "reached_sink": {
             "title": "Reached Sink",
@@ -6034,6 +6291,18 @@
           "data"
         ],
         "title": "Single[AssetRevisionOut]",
+        "type": "object"
+      },
+      "Single_BottleneckSummaryOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BottleneckSummaryOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[BottleneckSummaryOut]",
         "type": "object"
       },
       "Single_EditorStateOut_": {
@@ -11544,6 +11813,104 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/runs/{run_id}/bottlenecks": {
+      "get": {
+        "description": "병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로\n돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.",
+        "operationId": "get_run_bottlenecks_api_v1_projects__project_id__runs__run_id__bottlenecks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "돌려줄 병목 후보 수(순위순)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "돌려줄 병목 후보 수(순위순)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_BottleneckSummaryOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Run Bottlenecks",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/runs/{run_id}/cancel": {
       "post": {
         "description": "취소를 요청한다(202). 시작 전이면 바로 `cancelled`가 되고, 실행 중이면 `cancel_requested_at`만 기록되며 worker가\n확인해 멈춘 뒤 `cancelled`가 된다(요청과 실제 취소를 구분). 이미 끝났으면 409 `JOB_CANCEL_TOO_LATE`.",
@@ -12035,7 +12402,7 @@
     },
     "/api/v1/projects/{project_id}/runs/{run_id}/metrics": {
       "get": {
-        "description": "공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.\n공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 하나만 쓸 수 있다.",
+        "description": "공식 결과(선택된 시도)의 지표를 구간별로 돌려준다. 값은 이벤트로만 계산했고 분모가 0이거나 해당 없으면 null이다.\n공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 함께 쓸 수 있다(모두 만족하는 행만).",
         "operationId": "list_run_metrics_api_v1_projects__project_id__runs__run_id__metrics_get",
         "parameters": [
           {
@@ -12188,6 +12555,25 @@
               ],
               "description": "대기 공간 차원 필터",
               "title": "Node Key"
+            }
+          },
+          {
+            "description": "단계 차원 필터(공정 버전 필터와 함께 쓰면 한 단계)",
+            "in": "query",
+            "name": "step_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "단계 차원 필터(공정 버전 필터와 함께 쓰면 한 단계)",
+              "title": "Step Key"
             }
           }
         ],

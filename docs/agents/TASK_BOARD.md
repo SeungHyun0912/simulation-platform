@@ -27,6 +27,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-06b | 실행 플랫폼 2단계: 이벤트·작업물·계보 저장과 조회, 하루 경계 상태 요약, 계약 0.10.0 | Backend | **구현완료·검증대기** | BE-06a, CR be08 | de74230 이후 / contract 0.10.0 | HANDOFF-backend-20261027-BE-06b-events-lineage |
 | BE-06c | 실행 플랫폼 3단계: 지표 엔진·저장·조회(24종), 설비 안 재료 포함 WIP, 지표 정의 목록, 계약 0.11.0 | Backend | **구현완료·검증대기** | BE-06b, CR be08 | ca09d19 이후 / contract 0.11.0 | HANDOFF-backend-20261027-BE-06c-metrics |
 | BE-06d | 실제 6공정 API 실행 시연과 이벤트 저장 성능 수정(ORM 벌크 → Core 삽입) | Backend | **구현완료·검증대기** | BE-06c | 3d7cd2a 이후 / contract 0.11.0(변경 없음) | HANDOFF-backend-20261027-BE-06d-real-run-demo |
+| BE-10 | 단계별 지표·병목 요약 API·결과의 제품 코드·이름, 계약 0.12.0 | Backend | **구현완료·검증대기** | BE-06d, CR be10 | 61f7938 이후 / contract 0.12.0 | HANDOFF-backend-20261027-BE-10-bottleneck |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |
