@@ -272,7 +272,7 @@ def test_user_decisions_of_the_six_groups_are_applied_to_every_step(client, wire
                 assert [(r["role_key"], r["capacity_mode"]) for r in step["resources"]] == [("carrier", "unlimited")]
 
 
-def test_every_graph_passes_structure_checks_and_only_p04_p05_have_run_template_errors(client, wire):
+def test_every_graph_passes_structure_checks_and_has_no_run_template_errors(client, wire):
     for code in seed_wire_factory.PRODUCTS:
         version, _graph, _ = graph_of(client, wire, code)
         knowledge = client.post(f"{API}/projects/{wire['project']}/process-versions/{version['id']}/validate",
@@ -282,10 +282,7 @@ def test_every_graph_passes_structure_checks_and_only_p04_p05_have_run_template_
         assert "VAL-GRAPH-011" not in rules and "VAL-GRAPH-012" not in rules  # 순환·고립 단계 없음
         run = client.post(f"{API}/projects/{wire['project']}/process-versions/{version['id']}/validate",
                           params={"scope": "run_template"}, headers=admin(wire)).json()["data"]
-        if code in ("P04", "P05"):  # 멀티신선의 동시/순차 시간 기준이 아직 미정이다(숨기지 않는다)
-            assert {i["rule_id"] for i in run["issues"] if i["severity"] == "error"} == {"VAL-TIME-003"}, code
-        else:
-            assert run["error_count"] == 0, (code, run["issues"][:3])  # 도메인 미정이 모두 정리됨
+        assert run["error_count"] == 0, (code, run["issues"][:3])  # 도메인 미정이 모두 정리됨(멀티신선은 순차 산출)
         assert not [i for i in run["issues"] if i["rule_id"] == "UNSUPPORTED_HANDLER"]  # handler는 모두 지원 목록
 
 
@@ -448,3 +445,23 @@ def test_intake_reapplies_to_pre_intake_drafts_once_and_keeps_ids(client, engine
     assert restored["completion_node_id"] == now["complete"]  # 완제품 milestone이 다시 생겼다
     assert version["notes"].startswith(seed_wire_factory.notes_head("P02"))
     assert seed_wire_factory.seed(engine)["processes"] == {"created": [], "upgraded": [], "reapplied": []}
+
+
+def test_second_round_decisions_residual_scope_and_sequential_multi_drawing(client, wire):
+    """P01 쉬스 잔량은 설비 범위로 모으고 다른 제품이 시작되면 폐기, 태신선·멀티신선은 스트림 1·순차로 하나씩 만든다."""
+    _, _, p01 = graph_of(client, wire, "P01")
+    residual = p01["sheath"]["step"]["residual_rule"]
+    assert (residual["mode"], residual["scope"], residual["on_product_change"]) == (
+        "carry_same_product", "machine", "discard")
+    sequential = {"kind": "output_speed", "basis": "per_stream", "output_schedule": "sequential_units",
+                  "parallel_streams": {"mode": "known", "value": 1}}
+    _, _, p04 = graph_of(client, wire, "P04")
+    _, _, p05 = graph_of(client, wire, "P05")
+    for node, speed in ((p04["multi"], "100"), (p04["single-main"], "32"), (p05["multi"], "60")):
+        got = proc(node)
+        assert {k: got[k] for k in sequential} == sequential and got["speed_m_per_min"]["value"] == speed
+    draw = proc(p05["draw"])
+    assert (draw["kind"], draw["duration_min"]["value"], draw["output_schedule"]) == (
+        "per_output_unit", "22", "sequential_units")
+    main_feed = next(m for m in p04["single-main"]["step"]["material_specs"] if m["spec_key"] == "feed")
+    assert (main_feed["strand_count"]["value"], main_feed["unit_count"]["value"]) == (12, 12)  # 공급 12보빈(03 §12)

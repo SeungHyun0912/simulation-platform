@@ -208,6 +208,7 @@ def test_steps_sharing_a_space_take_their_batches_in_request_order():
 
 def test_an_incomplete_batch_waits_and_is_reported_as_stalled():
     result = run_model(model_of(Line().snapshot()), [Arrival("4000", count=12)])  # 공급 준비에 1개 부족
-    assert (result.state, result.reason) == ("stalled", "WIP_REMAINING")
+    assert (result.state, result.reason) == ("stalled", "INSUFFICIENT_INPUT")  # 진짜 교착(WIP_REMAINING)과 구분한다
+    assert {(f["step"], f["needed"]) for f in result.shortfalls} >= {("feed", 12)}
     assert not times(result, ev.PROCESS_STARTED, step_key="feed")  # 일부만 가져가 시작하지 않는다
     assert all(i.status == "active" for i in result.items)  # 12개는 공간에서 계속 기다린다

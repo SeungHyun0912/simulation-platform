@@ -5,8 +5,10 @@
 - inspection: 산출 단위당 고정 시간(작업자 무제한이어도 각 작업물에 시간이 걸린다)
 - transport_manual: 시나리오가 명시한 이동 시간
 - configured_yield: 투입을 한 번 확보하고 지정한 산출(단위 길이 × 개수)을 만든다(abstract_yield, 03 §5·07 §5)
+- output_units_by_time: 투입 여러 개(예: 태신선 11개)를 한 번에 확보해 지정한 산출(단위 길이 또는 단위 무게 × 개수)을
+  **순차로 하나씩** 만든다. 시간은 산출 단위마다(단위당 고정 시간 또는 단위 길이 ÷ 선속)이며 투입에 길이가 없어도 된다
 - supply_delay: 투입 작업물들을 복제하지 않고 그대로 공급 상태로 바꾼다(03 §12). 대기 시간은 준비 대기(precondition_delay)
-아직 없는 것: output_units_by_time(병렬 스트림 산출, 컴파일이 ENGINE_HANDLER_NOT_AVAILABLE로 알린다).
+아직 없는 것: 산출을 동시에(병렬 스트림) 만드는 방식(컴파일이 TIMING_UNSUPPORTED로 막는다).
 """
 
 from fractions import Fraction
@@ -21,10 +23,20 @@ from simulation_platform.simulation.handlers.base import (
 from simulation_platform.simulation.items import WorkItem
 
 
-def _offsets(step: StepModel, unit_length: Fraction, count: int) -> list[Fraction]:
+def _need_length(step: StepModel, item: WorkItem) -> None:
+    """길이를 쓰는 단계에 길이 없는 작업물이 오면 0으로 계산하지 않고 실패시킨다(해당 없음 ≠ 0)."""
+    if item.length_m is None:
+        raise PlanError("INPUT_LENGTH_MISSING",
+                        f"{step.key}: 이 단계는 길이로 계산하는데 작업물 {item.key}에 길이가 없습니다"
+                        "(길이는 앞 단계의 산출이 정한다).")
+
+
+def _offsets(step: StepModel, unit_length: Fraction | None, count: int) -> list[Fraction]:
     """산출 단위 k(1..count)가 준비되는 시각(가공 시작 기준). 선속 순차 산출: k × 단위 길이 / 선속."""
     timing = step.timing
     if timing.kind == "speed":
+        if unit_length is None:
+            raise PlanError("TIMING_LENGTH_MISSING", f"{step.key}: 선속으로 시간을 재려면 산출 길이가 필요합니다.")
         unit = unit_length / timing.speed_m_per_min
     elif timing.kind == "per_unit":
         unit = timing.unit_minutes
@@ -38,6 +50,7 @@ def _offsets(step: StepModel, unit_length: Fraction, count: int) -> list[Fractio
 def plan_split_length(step: StepModel, items: tuple[WorkItem, ...], carried: Fraction = Fraction(0)) -> OperationPlan:
     """이월받은 잔량(carried)은 투입 길이에 더해 같은 길이 풀로 다룬다(abstract_length_pool, 03 §6)."""
     item = items[0]
+    _need_length(step, item)
     unit = step.output.unit_length_m
     available = item.length_m + carried
     target = step.output.unit_count if step.output.quantity_basis == "per_input_unit" else None
@@ -54,6 +67,7 @@ def plan_split_length(step: StepModel, items: tuple[WorkItem, ...], carried: Fra
 def plan_pass_through_length(step: StepModel, items: tuple[WorkItem, ...], carried: Fraction = Fraction(0)) -> OperationPlan:
     # 선속은 입력 전체 길이가 지나가는 시간이다(길이 변화 없음). 단위당 시간이면 한 단위의 시간이다.
     item = items[0]
+    _need_length(step, item)
     offset = _offsets(step, item.length_m, 1)[0]
     return OperationPlan("transform", (PlannedOutput(1, offset, item.length_m),))
 
@@ -76,6 +90,21 @@ def plan_configured_yield(step: StepModel, items: tuple[WorkItem, ...],
     return OperationPlan("yield", outputs)
 
 
+def plan_output_units_by_time(step: StepModel, items: tuple[WorkItem, ...],
+                              carried: Fraction = Fraction(0)) -> OperationPlan:
+    """투입 전부를 한 번에 확보해 지정한 산출을 순차로 하나씩 만든다. 투입 길이·무게에서 산출을 계산하지 않는다
+    (무게 ↔ 길이는 환산하지 않으므로 물량 보존을 주장하지 않는 `yield`)."""
+    out = step.output
+    count = out.unit_count
+    if out.mode == "fixed_mass_units":
+        length, weight = None, out.unit_weight_kg
+    else:
+        length, weight = out.unit_length_m, None
+    outputs = tuple(PlannedOutput(k, offset, length, weight)
+                    for k, offset in enumerate(_offsets(step, length, count), start=1))
+    return OperationPlan("yield", outputs)
+
+
 def plan_supply_delay(step: StepModel, items: tuple[WorkItem, ...],
                       carried: Fraction = Fraction(0)) -> OperationPlan:
     """공급 준비: 투입 작업물 k가 그대로 산출 k다(새 작업물을 만들지 않음). 대기는 runtime이 준비 대기로 처리한다."""
@@ -95,7 +124,11 @@ STANDARD_HANDLERS = (
                timing_kinds=frozenset({"none"}), needs_equipment=False),
     HandlerDef("configured_yield", "1", plan_configured_yield, output_modes=frozenset({"configured_units"}),
                timing_kinds=frozenset({"speed", "per_unit"}), needs_output_length=True, multiple_outputs=True,
-               batch=True, consume_policies=frozenset({"consume", "transfer"})),
+               batch=True, consume_policies=frozenset({"consume", "transfer"}), abstract_yield_only=True),
+    HandlerDef("output_units_by_time", "1", plan_output_units_by_time,
+               output_modes=frozenset({"configured_units", "fixed_mass_units"}),
+               timing_kinds=frozenset({"speed", "per_unit"}), multiple_outputs=True, batch=True,
+               consume_policies=frozenset({"consume"})),
     HandlerDef("supply_delay", "1", plan_supply_delay, output_modes=frozenset({"pass_through"}),
                timing_kinds=frozenset({"none"}), batch=True, consume_policies=frozenset({"transfer"})),
 )

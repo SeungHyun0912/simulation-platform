@@ -24,7 +24,8 @@ class PlanError(Exception):
 class PlannedOutput:
     ordinal: int
     ready_offset: Fraction  # 가공 시작(준비 이후)부터 이 산출이 준비되는 시간(분)
-    length_m: Fraction
+    length_m: Fraction | None  # None = 길이 없음(무게 단위 산출 등)
+    weight_kg: Fraction | None = None
 
 
 @dataclass(frozen=True)
@@ -53,3 +54,4 @@ class HandlerDef:
     multiple_outputs: bool = False  # 한 작업이 여러 산출을 낼 수 있어 설비 점유 정책이 필요하다
     batch: bool = False  # 작업 한 번에 여러 작업물·여러 입력을 받는다(아니면 작업물 하나)
     consume_policies: frozenset[str] = frozenset()  # batch handler가 실행하는 input_rule.consume_policy
+    abstract_yield_only: bool = False  # 투입과 맞추는 물리 규칙이 없어 abstract_yield로만 실행(configured_yield)
