@@ -4,6 +4,7 @@ import { AssetCreatePage } from "../features/assets/AssetCreatePage";
 import { AssetDetailPage } from "../features/assets/AssetDetailPage";
 import { AssetListPage } from "../features/assets/AssetListPage";
 import { ProcessEditorPage } from "../features/processes/ProcessEditorPage";
+import { ProcessListPage } from "../features/processes/ProcessListPage";
 import { MaterialCreatePage } from "../features/materials/MaterialCreatePage";
 import { MaterialDetailPage } from "../features/materials/MaterialDetailPage";
 import { MaterialListPage } from "../features/materials/MaterialListPage";
@@ -28,6 +29,7 @@ export const routes = [
       { path: "/projects/:projectId/products", element: <ProductListPage /> },
       { path: "/projects/:projectId/products/new", element: <ProductCreatePage /> },
       { path: "/projects/:projectId/products/:productId", element: <ProductDetailPage /> },
+      { path: "/projects/:projectId/processes", element: <ProcessListPage /> },
       {
         path: "/projects/:projectId/products/:productId/processes/:versionId",
         element: <ProcessEditorPage />,

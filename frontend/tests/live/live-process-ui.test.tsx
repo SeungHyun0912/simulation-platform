@@ -54,6 +54,13 @@ describe.skipIf(!LIVE)("실제 서버 데이터로 그린 공정 화면 (읽기 
     expect(screen.getByRole("button", { name: /^저장/ })).toBeDisabled(); // 변경 전에는 저장할 수 없다
   });
 
+  it("공정 메뉴의 목록은 실제 제품과 공정 버전 요약을 보여 주고 최신 버전 링크로 편집 화면에 간다", async () => {
+    renderApp(`/projects/${PROJECT_A}/processes`, { source: "api", fetchImpl: realFetch() });
+    const table = await screen.findByRole("table", { name: "제품별 공정 버전" }, slow);
+    expect(within(table).getByRole("link", { name: /P-004 최신 공정 v2 열기/ })).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: /P-004 승인본 v1 열기/ })).toBeInTheDocument();
+  });
+
   it("공정이 없는 제품(P-005)의 상세는 공정 버전 빈 상태와 새 초안 버튼을 보여 준다", async () => {
     const [p5] = (await json<{ id: string; code: string }[]>(`/projects/${PROJECT_A}/products?q=P-005`)).filter((p) => p.code === "P-005");
     renderApp(`/projects/${PROJECT_A}/products/${p5!.id}`, { source: "api", fetchImpl: realFetch() });

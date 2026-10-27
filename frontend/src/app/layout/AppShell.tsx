@@ -13,7 +13,7 @@ const MENU = [
   { to: "assets", label: "설비·공간" },
   { to: "products", label: "제품" },
   { to: "materials", label: "재료" },
-  { to: "processes", label: "공정", pending: true },
+  { to: "processes", label: "공정" },
   { to: "scenarios", label: "시나리오", pending: true },
   { to: "runs", label: "실행 결과", pending: true },
 ];
