@@ -12,7 +12,7 @@ from simulation_platform.simulation.compiler import (
     ScenarioAssumptions,
     compile_snapshot,
 )
-from simulation_platform.simulation.numbers import to_fraction
+from simulation_platform.simulation.compiler.assumptions import assumptions_from_scenario
 
 FROZEN_PROCESS_STATUSES = frozenset({"approved", "superseded"})  # 승인됐던 버전(내용 동결)
 FROZEN_REVISION_STATUSES = frozenset({"approved", "superseded"})
@@ -75,12 +75,7 @@ def referenced_assets(graph: dict) -> set[str]:
 
 
 def engine_assumptions(assumptions: dict) -> ScenarioAssumptions:
-    return ScenarioAssumptions(
-        equipment_hold=assumptions.get("equipment_hold"),
-        unbounded_buffers=bool(assumptions.get("unbounded_buffers")),
-        manual_transport_minutes={k: to_fraction(v) for k, v in
-                                  (assumptions.get("manual_transport_minutes") or {}).items()},
-        residual_scope=dict(assumptions.get("residual_scope") or {}))
+    return assumptions_from_scenario(assumptions)
 
 
 def assumptions_used(assumptions: dict) -> bool:

@@ -36,5 +36,22 @@ def require_if_match(
     return int(match.group(1))
 
 
+def require_idempotency_key(
+    idempotency_key: Annotated[str | None, Header(
+        description="실행 요청마다 클라이언트가 만든 고유 값(1~128자). 같은 키·같은 본문이면 기존 결과를 돌려준다.")] = None,
+) -> str:
+    """Idempotency-Key를 읽는다. 누락 428, 길이·문자 오류 422."""
+    if idempotency_key is None:
+        raise PreconditionRequiredError(
+            "Idempotency-Key 헤더가 필요합니다.",
+            [ErrorDetail(message="재시도해도 실행이 두 번 만들어지지 않도록 요청마다 고유한 값을 보내세요.")])
+    key = idempotency_key.strip()
+    if not 1 <= len(key) <= 128 or not key.isprintable():
+        raise ValidationFailed(
+            "Idempotency-Key 형식이 올바르지 않습니다.",
+            [ErrorDetail(message="1~128자의 출력 가능한 문자여야 합니다.", field_path="/idempotency-key")])
+    return key
+
+
 def set_etag(response: Response, row_version: int) -> None:
     response.headers["ETag"] = f'"{row_version}"'

@@ -127,6 +127,27 @@ class ScenarioNotRunnable(DomainError):
     status_code = 422
 
 
+class RunNotRunnable(DomainError):
+    """실행할 수 없는 시나리오 버전(승인 전이거나 사전검증 오류가 있음). details에 이유."""
+
+    code = "RUN_NOT_RUNNABLE"
+    status_code = 422
+
+
+class IdempotencyConflict(DomainError):
+    """같은 Idempotency-Key로 다른 본문이 왔다."""
+
+    code = "IDEMPOTENCY_CONFLICT"
+    status_code = 409
+
+
+class JobCancelTooLate(DomainError):
+    """이미 끝난 실행은 취소할 수 없다."""
+
+    code = "JOB_CANCEL_TOO_LATE"
+    status_code = 409
+
+
 class InvalidStateTransitionError(DomainError):
     code = "INVALID_STATE_TRANSITION"
     status_code = 409
