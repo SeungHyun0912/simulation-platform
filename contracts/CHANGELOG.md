@@ -5,6 +5,12 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.15.0 — 2026-10-28 · scope `scenario-versions`(확장, BE-15) · sha256 `f4df60cd…859a` · 기준 commit `4d03a3e`
+- **호환성: 0.14.0과 호환(추가만).** operation 변경 없음. 시나리오 가정(`ScenarioProductDto.assumptions`)에 선택 필드 `out_release`("hold"|null)·`carrier_empty_move_minutes`(decimal|null)가 늘었다(응답에도 나온다). 엔진의 열린 목록에 이벤트 `CARRIER_MOVED`, 가정 코드 `OUT_RELEASE_HOLD`·`CARRIER_EMPTY_MOVE`·`UNBOUNDED_HANDOFFS`, 컴파일 오류 `CARRIER_EMPTY_MOVE_UNKNOWN`이 늘었다.
+- 근거: CR be15(사용자 결정 2026-10-28: 공간 용량 22개, 지게차·AMR 경로 공유, 다음 명령이 없으면 목적지 대기). 상세는 04 §5.9.
+- **동작 변경:** 단계 사이 직접 인계만 무제한이면 가정 코드가 `UNBOUNDED_BUFFERS`가 아니라 `UNBOUNDED_HANDOFFS`로 나온다(공간 용량이 모두 정해진 실행은 공간 부족 병목이 평가된다).
+- **프런트가 해야 할 일:** 타입 재생성. 시나리오 가정 편집 화면에 "공간이 가득 차면 설비가 산출을 쥐고 기다림"(`out_release`)과 "운반 자원 빈 차 이동 시간(분)"(`carrier_empty_move_minutes`)을 추가할 수 있다. 결과 화면에서 `CARRIER_MOVED` 이벤트와 새 가정 코드는 열린 목록으로 표시한다. 지게차·AMR은 설비 목록에 설비로 보인다(FL-*, AMR-*).
+
 ## 0.14.0 — 2026-10-27 · scope `process-versions`·`scenario-versions`(확장, BE-13·BE-14) · sha256 `48dd386b…d4d5` · 기준 commit `0980ab1`
 - **호환성: 0.13.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 3개: `GET /process-graphs`(공정 일괄 조회), `GET /assets/{asset_id}/uses`(자산 사용처), `POST /scenario-versions/{v}/refresh`(시나리오 초안을 현재 승인 공정·자산 버전으로 갱신). 새 오류 코드 없음.
 - 근거: CR be13(FE 제안)·CR be14, 사용자 명시 승인(2026-10-27). 상세는 04 §5.8.

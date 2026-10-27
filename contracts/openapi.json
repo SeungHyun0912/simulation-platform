@@ -869,6 +869,18 @@
         "additionalProperties": false,
         "description": "공정의 미정을 이 시나리오에서만 해소하는 가정(master 공정은 바뀌지 않는다, ADR-017).\n\n키는 그 공정 버전의 node_key다. 값이 하나라도 있으면 시나리오 버전의 `assumption_reason`이 필요하다.",
         "properties": {
+          "carrier_empty_move_minutes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "운반 자원(지게차·AMR)이 다른 곳에서 일을 받으면 빈 차로 옮겨 가는 시간(분). 운반 단계에 설비 후보가 있으면 필요(0.15.0)",
+            "title": "Carrier Empty Move Minutes"
+          },
           "equipment_hold": {
             "anyOf": [
               {
@@ -894,6 +906,19 @@
             },
             "title": "Manual Transport Minutes",
             "type": "object"
+          },
+          "out_release": {
+            "anyOf": [
+              {
+                "const": "hold",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "다음 공간이 가득 찼을 때, 승인된 자산 버전에 OUT 배출 정책이 없는 설비는 산출을 쥐고 기다린다(0.15.0)",
+            "title": "Out Release"
           },
           "residual_scope": {
             "additionalProperties": {
