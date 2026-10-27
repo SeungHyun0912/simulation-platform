@@ -144,7 +144,9 @@ class HandoffRule(StrictIn):
 
 
 class ResidualRule(StrictIn):
-    mode: Literal["unknown", "none", "carry_same_product"] = "unknown"
+    # discard(0.8.0): 단계가 계획한 산출을 만들고 남은 길이를 그 자리에서 폐기한다(예: 100,000m 투입, 24,000m×4 산출,
+    # 4,000m 폐기). 폐기 길이는 이벤트·계보에 기록된다. carry_same_product와 달리 잔량을 모아 두지 않는다.
+    mode: Literal["unknown", "none", "carry_same_product", "discard"] = "unknown"
     on_product_change: Literal["unknown", "discard", "carry"] = "unknown"
     on_run_end: Literal["unknown", "discard", "carry"] = "unknown"
     scope: Literal["unknown", "machine", "product", "operation", "lot"] = "unknown"

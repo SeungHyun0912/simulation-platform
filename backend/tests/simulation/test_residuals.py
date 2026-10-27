@@ -170,3 +170,47 @@ def test_the_same_inputs_give_the_same_residual_events():
     two = run_model(model, [Arrival("1000", count=3)])
     assert [e.to_dict() for e in one.events] == [e.to_dict() for e in two.events]
     assert EQUIPMENT_1 in {e.asset_key for e in one.of_type("PROCESS_STARTED")}
+
+
+# --- 잔량 폐기(discard, 계약 0.8.0): 단계가 남긴 길이를 그 자리에서 버린다 ----------------------------------------
+
+def discarding(**args):
+    rule = {"mode": "discard", "on_product_change": "unknown", "on_run_end": "unknown", "scope": "unknown",
+            "physical_join_mode": "unknown"}
+    return single_insulation(unit=24000, count=4, basis="per_input_unit", speed_value="160", residual_rule=rule,
+                             project_id=PROJECT, **args)
+
+
+def test_discard_throws_away_the_remainder_in_place_and_records_it():
+    """100,000m 투입 → 24,000m × 4 산출 + 4,000m 폐기(P05 절연과 같은 구조, 시험 전용 수치)."""
+    result = run_model(model_of(discarding()), [Arrival("100000", count=2)])
+    assert (result.state, result.reason) == ("completed", None)
+    discarded = result.of_type("RESIDUAL_DISCARDED")
+    assert [(e.reason, e.quantities["length_m"]) for e in discarded] == [("STEP_REMAINDER", 4000)] * 2
+    assert all(e.operation_id and e.step_key == "insulate" for e in discarded)
+    assert len(result.of_type("SINK_REACHED")) == 8  # 폐기한 길이는 산출이 아니다
+    record = result.lineage[0]
+    assert record.residual_length_m == 4000 and record.balanced  # 자식 96,000 + 폐기 4,000 = 부모 100,000
+    assert result.residuals == ()  # 모아 둔 잔량 풀은 없다
+
+
+def test_without_a_discard_rule_the_same_remainder_still_fails_instead_of_disappearing():
+    for mode, reason in (("unknown", "RESIDUAL_POLICY_UNKNOWN"), ("none", "RESIDUAL_UNEXPECTED")):
+        snapshot = single_insulation(unit=24000, count=4, basis="per_input_unit", speed_value="160",
+                                     residual=mode, project_id=PROJECT)
+        result = run_model(model_of(snapshot), [Arrival("100000")])
+        assert (result.state, result.reason) == ("failed", reason), mode
+
+
+def test_discard_is_only_for_split_steps():
+    from fixtures import Graph, out_pass, speed, step
+
+    g = Graph()
+    g.node("src", "source")
+    g.node("pass", "operation", step("pass_through_length", processing=speed("10"), output=out_pass(),
+                                     assets=(EQUIPMENT_1,), residual_rule={
+                                         "mode": "discard", "on_product_change": "unknown", "on_run_end": "unknown",
+                                         "scope": "unknown", "physical_join_mode": "unknown"}))
+    g.node("complete", "milestone")
+    g.node("sink", "sink")
+    assert rules(g.chain().snapshot()) == {"RESIDUAL_MODE_UNSUPPORTED"}

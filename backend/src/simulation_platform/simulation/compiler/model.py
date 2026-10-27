@@ -60,7 +60,7 @@ class OutPolicy:
 class ResidualModel:
     """잔량 규칙(03 §6). mode가 carry_same_product일 때만 scope·join_mode가 확정되어 있다."""
 
-    mode: str  # unknown | none | carry_same_product
+    mode: str  # unknown | none | carry_same_product | discard
     on_product_change: str = "unknown"  # discard | carry | unknown
     on_run_end: str = "unknown"  # discard | carry | unknown
     scope: str | None = None  # machine | product | operation | lot

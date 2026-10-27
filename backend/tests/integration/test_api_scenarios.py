@@ -151,7 +151,8 @@ def test_products_pin_the_current_approved_revisions_of_the_assets_they_use(clie
     saved = ok(patch(client, ctx, version, {"products": [product_entry(ctx)]}))
     assert {(a["asset_id"], a["asset_revision_id"]) for a in saved["assets"]} == {
         (ctx["equipment"], ctx["equipment_rev"]), (ctx["storage"], ctx["storage_rev"])}
-    assert saved["products"][0]["arrivals"] == [{"at_min": "0", "count": 2, "length_m": "1000", "lot": None}]
+    assert saved["products"][0]["arrivals"] == [
+        {"at_min": "0", "count": 2, "length_m": "1000", "weight_kg": None, "lot": None}]
     assert saved["row_version"] == version["row_version"] + 1
 
 
@@ -292,3 +293,24 @@ def test_database_rejects_a_process_version_of_another_product(client, ctx, engi
             " position, arrivals, assumptions) VALUES (:i, :p, :v, :prod, :pv, 0, '[]', '{}')"),
             {"i": uid(), "p": str(ctx["pid"]), "v": version["id"], "prod": other_product, "pv": ctx["process"]})
     assert e.value.orig.sqlstate == FK
+
+
+# --- 계약 0.8.0: 도착은 길이 또는 무게 ---------------------------------------------------------------------
+
+def test_arrivals_may_have_weight_instead_of_length_for_raw_material_without_length(client, ctx):
+    version = version_of(client, ctx, new_scenario(client, ctx))
+    weight_only = {"at_min": "0", "count": 24, "weight_kg": "3300"}
+    saved = ok(patch(client, ctx, version, {"products": [product_entry(ctx, arrivals=[weight_only])]}))
+    assert saved["products"][0]["arrivals"] == [
+        {"at_min": "0", "count": 24, "length_m": None, "weight_kg": "3300", "lot": None}]  # 길이를 0으로 채우지 않는다
+    both = {"at_min": "10", "count": 1, "length_m": "2000", "weight_kg": "2000"}  # 둘 다 있어도 된다(서로 환산하지 않음)
+    again = ok(patch(client, ctx, saved, {"products": [product_entry(ctx, arrivals=[weight_only, both])]}))
+    assert [a["weight_kg"] for a in again["products"][0]["arrivals"]] == ["3300", "2000"]
+
+
+def test_an_arrival_with_neither_length_nor_weight_or_a_zero_amount_is_rejected(client, ctx):
+    version = version_of(client, ctx, new_scenario(client, ctx))
+    for arrival in ({"count": 1}, {"count": 1, "weight_kg": "0"}, {"count": 1, "length_m": None, "weight_kg": None},
+                    {"count": 1, "weight_kg": 3300}):  # 숫자(JSON number)는 decimal 문자열이 아니다
+        r = patch(client, ctx, version, {"products": [product_entry(ctx, arrivals=[arrival])]})
+        assert r.status_code == 422, arrival

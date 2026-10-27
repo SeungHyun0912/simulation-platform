@@ -1,8 +1,8 @@
 """실제 기준정보(DEMO-WIRE) 공정 6종을 엔진에 통과시켜 **지금 어디까지 실행되고 어디서 막히는지**를 고정한다.
 
 사용자가 6묶음 미정을 정리하고(CR be09, 2026-10-27) 잔량 규칙·멀티신선 순차 산출을 정한 뒤 **6종 모두 컴파일**된다.
-P01·P02·P03·P06은 끝까지 실행되고, P04는 원자재 24개 기준 입력 부족(싱글-12가 12개 필요한데 9개 남음)으로, P05는 절연
-4,000m 잔량의 처리 정책이 없어 그 시점에 이유와 함께 멈춘다. 입고 수량(24개)과 공간 용량 가정(`unbounded_buffers`)은
+P01·P02·P03·P06은 끝까지 실행되고, P04·P05는 원자재 24개 기준 마지막 묶음이 모자라 입력 부족으로 끝난다
+(P04는 싱글-12가 12개 필요한데 9개, P05는 태신선이 11개 필요한데 2개 남음). P05 절연 4,000m 잔량은 폐기(계약 0.8.0). 입고 수량(24개)과 공간 용량 가정(`unbounded_buffers`)은
 시나리오 쪽 값이며 문서의 사실이 아니다.
 """
 
@@ -133,15 +133,21 @@ def test_p04_runs_for_months_and_stops_with_insufficient_input_for_the_last_supp
     assert not any(e.quantities.get("length_m") is not None for e in result.of_type("MATERIAL_ARRIVED"))
 
 
-def test_p05_stops_at_the_insulation_residual_whose_policy_is_still_undecided(client, wire):
+def test_p05_runs_for_six_weeks_discarding_the_insulation_remainder_and_leaves_two_raw_bobbins(client, wire):
+    """원자재 24개: 태신선이 11개씩 2회(22개) → 보빈 72 → 멀티신선 3회 → 100,000m 27개 → 절연 27회(24,000m × 4 + 4,000m 폐기)
+    → 편조 216 → 재권취 × 20 = 600m 보빈 4,320개. 남은 원자재 2개는 입력 부족이다."""
     model = compiled(client, wire, "P05").require_model()
     result = run_model(model, [Arrival(weight_kg=RAW_WEIGHT_KG["P05"], count=RAW_COUNT)])
-    assert (result.state, result.reason) == ("failed", "RESIDUAL_POLICY_UNKNOWN")
-    terminated = result.of_type("RUN_TERMINATED")[-1]
-    assert terminated.step_key == "insulate" and "4000m" in terminated.quantities["message"]
-    # 태신선은 11개씩 2회(36보빈 × 2), 멀티신선은 24보빈을 한 번에 받아 9보빈(100,000m)을 순차로 만든 뒤 연선까지 갔다
+    assert (result.state, result.reason) == ("stalled", "INSUFFICIENT_INPUT")
+    assert [(f["step"], f["waiting"], f["needed"]) for f in result.shortfalls] == [("draw", 2, 11)]
+    assert len(result.of_type("SINK_REACHED")) == 4320
+    discarded = [e for e in result.of_type("RESIDUAL_DISCARDED") if e.reason == "STEP_REMAINDER"]
+    assert len(discarded) == 27 and {e.quantities["length_m"] for e in discarded} == {4000}
+    assert {e.step_key for e in discarded} == {"insulate"}
+    assert all(r.balanced for r in result.lineage if r.step_key == "insulate")  # 96,000 + 폐기 4,000 = 100,000
     started = Counter(e.step_key for e in result.of_type("PROCESS_STARTED"))
-    assert started["draw"] == 2 and started["multi"] == 1 and started["strand"] == 1
+    assert (started["draw"], started["multi"], started["strand"], started["insulate"]) == (2, 3, 27, 27)
+    assert Fraction(40 * 1440) < result.end_time < Fraction(50 * 1440)  # 약 44일
 
 
 def test_a_scenario_that_does_not_state_the_unknowns_stays_blocked(client, wire):

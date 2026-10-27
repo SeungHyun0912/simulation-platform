@@ -270,10 +270,20 @@ def test_scenario_0_7_0_schemas_are_closed_and_keep_units_and_unknowns_explicit(
                  "FixedHorizonRule"):
         assert schemas[name].get("additionalProperties") is False, name
     arrival = schemas["ArrivalDto"]["properties"]
-    assert arrival["length_m"]["type"] == "string" and arrival["count"]["type"] == "integer"
+    assert arrival["count"]["type"] == "integer"
+    for field in ("length_m", "weight_kg"):  # 0.8.0: 길이 또는 무게(해당 없음 ≠ 0), 둘 다 decimal 문자열 또는 null
+        kinds = {x.get("type") for x in arrival[field]["anyOf"]}
+        assert kinds == {"string", "null"}, field
+        assert field not in schemas["ArrivalDto"].get("required", [])
     stopping = schemas["ScenarioVersionOut"]["properties"]["stopping_rule"]
     assert set(stopping["discriminator"]["mapping"]) == {"drain", "fixed_horizon"}
     create = paths["/api/v1/projects/{project_id}/scenarios/{scenario_id}/versions"]["post"]
     assert create["requestBody"].get("required", False) is False
     assert {"403", "409", "412", "422", "428"} <= set(paths[f"{SCENARIO_VERSION}/approve"]["post"]["responses"])
     assert set(schemas["PrecheckOut"]["properties"]) >= {"runnable", "issues", "products", "engine_version"}
+
+
+def test_process_0_8_0_residual_rule_gains_discard_and_stays_compatible():
+    """0.7.0 클라이언트와 호환: 잔량 모드에 값 하나(discard)가 더해지고 기존 값은 그대로다."""
+    modes = _schema()["components"]["schemas"]["ResidualRule"]["properties"]["mode"]["enum"]
+    assert modes == ["unknown", "none", "carry_same_product", "discard"]

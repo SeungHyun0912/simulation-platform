@@ -33,15 +33,39 @@
             "field_path": "/products/0"
           },
           {
-            "message": "insulate: handler output_units_by_time v1은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.",
+            "message": "insulate: handler output_units_by_time은(는) 처리 시간 종류 none을(를) 쓸 수 없습니다.",
             "severity": "error",
-            "rule_id": "ENGINE_HANDLER_NOT_AVAILABLE",
+            "rule_id": "HANDLER_TIMING_MISMATCH",
             "field_path": "/products/0"
           },
           {
-            "message": "sheath: handler output_units_by_time v1은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.",
+            "message": "insulate: 준비 시점 unknown은(는) 아직 실행하지 않습니다(per_operation과 0분만 지원).",
             "severity": "error",
-            "rule_id": "ENGINE_HANDLER_NOT_AVAILABLE",
+            "rule_id": "SETUP_TRIGGER_UNSUPPORTED",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "insulate: src에서 작업 한 번에 가져올 작업물 수(입력 spec의 unit_count)가 미정입니다. 가닥 수·길이로 개수를 추정하지 않습니다.",
+            "severity": "error",
+            "rule_id": "INPUT_COUNT_UNKNOWN",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "insulate: 한 작업이 여러 산출을 내는데 설비 점유 정책이 미정입니다. 시나리오가 `equipment_hold`(hold_for_operation)를 명시해야 합니다(\"보빈별 인계\"는 설비 재배정 정책이 아님).",
+            "severity": "error",
+            "rule_id": "EQUIPMENT_HOLD_POLICY_REQUIRED",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "sheath: wait에서 작업 한 번에 가져올 작업물 수(입력 spec의 unit_count)가 미정입니다. 가닥 수·길이로 개수를 추정하지 않습니다.",
+            "severity": "error",
+            "rule_id": "INPUT_COUNT_UNKNOWN",
+            "field_path": "/products/0"
+          },
+          {
+            "message": "sheath: 한 작업이 여러 산출을 내는데 설비 점유 정책이 미정입니다. 시나리오가 `equipment_hold`(hold_for_operation)를 명시해야 합니다(\"보빈별 인계\"는 설비 재배정 정책이 아님).",
+            "severity": "error",
+            "rule_id": "EQUIPMENT_HOLD_POLICY_REQUIRED",
             "field_path": "/products/0"
           }
         ]

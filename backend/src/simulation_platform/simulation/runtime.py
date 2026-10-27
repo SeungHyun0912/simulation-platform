@@ -466,6 +466,9 @@ class _Run:
         if consume_at_end:
             self._consume(lane, step, op_id, asset, items, plan.relation)
         self._record_lineage(lane, step, op_id, items, children, plan)
+        if step.residual_mode == "discard" and plan.residual_m > 0:
+            self.emit_for(lane, ev.RESIDUAL_DISCARDED, step_key=step.key, operation_id=op_id, asset_key=asset,
+                          reason="STEP_REMAINDER", quantities={"length_m": plan.residual_m})
         if carry and plan.residual_m > 0:
             self.pools.setdefault(pool_key, []).append(
                 _PoolEntry(plan.residual_m, lane.version, step.residual.on_run_end, step.residual.on_product_change))
@@ -528,8 +531,8 @@ class _Run:
 
     def _reject_unhandled_residual(self, lane: _Lane, step: StepModel, plan) -> None:
         """이월하지 않는 단계에서 잔량이 생기면 성공으로 덮지 않는다."""
-        if plan.residual_m <= 0:
-            return
+        if plan.residual_m <= 0 or step.residual_mode == "discard":
+            return  # discard: 작업이 끝날 때 남은 길이를 그 자리에서 폐기하고 기록한다
         reason = "RESIDUAL_UNEXPECTED" if step.residual_mode == "none" else "RESIDUAL_POLICY_UNKNOWN"
         raise RunFailure(reason, f"{step.key}: 잔량 {plan.residual_m}m가 남지만 잔량 정책({step.residual_mode})으로 "
                                  "처리할 수 없습니다(이월은 carry_same_product만).", step.key, lane.version)

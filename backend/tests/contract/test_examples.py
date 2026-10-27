@@ -249,12 +249,15 @@ def test_scenario_examples_show_draft_saving_precheck_and_the_approval_gate():
     patched = _load("scenario-version.patch")["response"]
     assert patched["headers"]["ETag"] == '"2"'
     version = patched["body"]["data"]
-    assert version["products"][0]["arrivals"][0] == {"at_min": "0", "count": 2, "length_m": "2000", "lot": "LOT-1"}
+    assert version["products"][0]["arrivals"][0] == {
+        "at_min": "0", "count": 2, "length_m": "2000", "weight_kg": None, "lot": "LOT-1"}
     assert version["stopping_rule"] == {"mode": "fixed_horizon", "horizon_min": "960"}
     precheck = _load("scenario-version.validate")["response"]["body"]["data"]
     assert precheck["runnable"] is False  # 미정·엔진 미구현이 남은 초안도 저장은 된다
     compile_rules = {i["rule_id"] for i in precheck["products"][0]["compile_issues"]}
-    assert "ENGINE_HANDLER_NOT_AVAILABLE" in compile_rules  # 엔진 코드를 번역하지 않고 그대로
+    # 도메인 실행 검증(VAL-*)과 엔진 컴파일 코드를 번역하지 않고 그대로 담는다
+    assert {"INPUT_COUNT_UNKNOWN", "EQUIPMENT_HOLD_POLICY_REQUIRED"} <= compile_rules
+    assert any(r.startswith("VAL-") for r in compile_rules)
     assert [a["code"] for a in precheck["products"][0]["assumptions_used"]] == ["UNBOUNDED_BUFFERS"]
     error = _load("error.scenario-not-runnable")["response"]["body"]["error"]
     assert error["code"] == "SCENARIO_NOT_RUNNABLE" and error["details"]

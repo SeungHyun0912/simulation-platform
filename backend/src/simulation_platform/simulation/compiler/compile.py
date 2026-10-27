@@ -510,6 +510,10 @@ class _Compiler:
         model = ResidualModel(rule["mode"], rule["on_product_change"], rule["on_run_end"],
                               None if rule["scope"] == "unknown" else rule["scope"],
                               rule["physical_join_mode"])
+        if rule["mode"] == "discard" and handler.name != "split_length":
+            self.issue("RESIDUAL_MODE_UNSUPPORTED",
+                       f"{key}: 잔량 폐기(discard)는 분할(split_length) 단계에서만 쓸 수 있습니다(다른 단계는 잔량이 생기지 않음).", key)
+            return model
         if rule["mode"] != "carry_same_product" or handler.name != "split_length":
             return model
         scope = model.scope

@@ -465,3 +465,11 @@ def test_second_round_decisions_residual_scope_and_sequential_multi_drawing(clie
         "per_output_unit", "22", "sequential_units")
     main_feed = next(m for m in p04["single-main"]["step"]["material_specs"] if m["spec_key"] == "feed")
     assert (main_feed["strand_count"]["value"], main_feed["unit_count"]["value"]) == (12, 12)  # 공급 12보빈(03 §12)
+
+
+def test_p05_insulation_remainder_is_discarded_by_user_decision(client, wire):
+    _, _, p05 = graph_of(client, wire, "P05")
+    rule = p05["insulate"]["step"]["residual_rule"]
+    assert rule["mode"] == "discard"  # 100,000m 투입·24,000m×4 산출의 4,000m는 폐기(계약 0.8.0)
+    assert all(n["step"]["residual_rule"]["mode"] != "discard" for k, n in p05.items()
+               if n["step"] and k != "insulate")

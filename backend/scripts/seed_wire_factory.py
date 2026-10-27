@@ -10,6 +10,8 @@
   모든 인계 보빈별, 값이 없는 준비·대기 시간 0분, 120분 준비는 제품이 바뀔 때(`on_product_change`), 싱글-12 대기 120분은 작업 시간,
   P01~P03 검사 작업자 무제한 10분/보빈·완제품은 쉬스 완료, P04·P05 원자재 길이 해당 없음, P05 출발 공간 ST-005,
   운반은 보빈 1개씩 이동 3분 + 상하차 1분(운반 자원 무제한).
+- **3차 반영(2026-10-27)**: P05 절연의 4,000m 잔량(100,000m 투입, 24,000m × 4 산출)은 그 자리에서 **폐기**한다
+  (잔량 규칙 `discard`, 계약 0.8.0).
 - **2차 반영(2026-10-27)**: P01 쉬스 잔량은 같은 제품이 이어지면 유지하고 다른 제품이 그 설비에서 시작되면 모두 폐기
   (범위 `machine`·제품 전환 `discard`), 태신선·멀티신선(과 싱글 메인)은 입력 여러 개를 한 번에 받아 산출을 **순차로 하나씩**
   만든다(스트림 1, 순차), 싱글 메인의 공급 입력은 싱글-12가 준비한 12보빈(1보빈 = 1가닥, 03 §12)이다.
@@ -112,7 +114,7 @@ def count(value: int) -> dict:
 UNKNOWN = {"mode": "unknown"}
 NOT_APPLICABLE = {"mode": "not_applicable"}
 NA = "n/a"  # 길이 없음(해당 없음). 값이 정해지지 않은 unknown과 다르다
-INTAKE_MARK = "정리 반영(2026-10-27 2차)"
+INTAKE_MARK = "정리 반영(2026-10-27 3차)"
 TRANSPORT_MINUTES = 4  # 이동 3분 + 상하차 1분(사용자 결정, 해석은 CR be09 §6-⑥)
 
 
@@ -120,6 +122,10 @@ def measure(name, value) -> dict:
     if value == NA:
         return NOT_APPLICABLE
     return count(value) if name in ("unit_count", "strand_count") else known(value)
+
+
+DISCARD = {"mode": "discard", "on_product_change": "unknown", "on_run_end": "unknown", "scope": "unknown",
+           "physical_join_mode": "unknown"}  # 남은 길이를 그 자리에서 폐기(계약 0.8.0)
 
 
 def codes(first: int, last: int | None = None) -> list[str]:
@@ -409,7 +415,7 @@ def p05(assets) -> dict:
              **{**N, "setup": setup_minutes(120)}),
         r.space("ST-008"),
         r.op("insulate", "절연", "split_length", codes(32, 33), processing=speed(160),
-             output=out_split(24000, 4),
+             output=out_split(24000, 4), residual=DISCARD,
              specs=io(b100k, {"length_m": "24000", "unit_count": 4}, src_state="연선 후", dst_state="절연 후"),
              **N),
         r.space("ST-011", "-1"),
@@ -507,7 +513,9 @@ def previous_notes_heads(product) -> tuple[str, ...]:
     """이전 세대의 시드 메모 머리말(사람이 고치지 않은 시드 메모인지 알아보는 데만 쓴다)."""
     first = (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). 정리 반영(2026-10-27): 사용자가 확정한 값은 문서 값과 구분해 "
              "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
-    return legacy_notes_head(product), first
+    second = (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). 정리 반영(2026-10-27 2차): 사용자가 확정한 값은 문서 값과 구분해 "
+              "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
+    return legacy_notes_head(product), first, second
 
 
 def notes_head(product) -> str:
@@ -557,7 +565,8 @@ def definitions(assets: dict[str, str]) -> dict[str, dict]:
         "P05": {"raw": _spec(weight_kg=3300, length_m=NA, unit_count=1), "finished": _spec(length_m=600),
                 "notes": _notes("P05", [
                     "단계별 투입·산출 수량은 각 단계의 재료 spec에 있다(태신선 3.3t×11개 동시→1t×36보빈, 재권취 12,000m→600m×20 등).",
-                    "잔량(현재 스키마에 필드 없음): 태신선 36.3t 투입·36t 산출 차이 300kg 폐기, 절연 100,000m 투입·96,000m 산출 차이 4,000m 처리 미정.",
+                    ("잔량: 태신선 36.3t 투입·36t 산출 차이 300kg 폐기(무게 잔량은 모형에 없어 메모로만 남김), 절연 100,000m 투입·"
+                     "96,000m 산출 차이 4,000m는 폐기(사용자 확정, 잔량 규칙 discard)."),
                     "되돌리지 말 정정: 연선은 100,000→100,000(24,000×4 아님), 절연에서 24,000×4 분할, 1차 조사는 1→1, 검사 600→600.",
                     ("사용자 확정: 원자재는 길이가 없고(해당 없음) 태신선·멀티신선을 거치며 길이가 생긴다, 원자재 첫 공간은 ST-005, "
                      "입고 24개여도 태신선이 11개씩 확보하므로 2개가 남아 입력 부족으로 끝나는 것은 정상(공정 정보는 사용자가 수정해 다시 실행). "
