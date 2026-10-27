@@ -35,7 +35,7 @@
 ## 4. 쪼개서 구현(각각 PR, 앞 것이 머지된 뒤 다음)
 1. **be08a:** migration 0008(run·snapshot·job·attempt), 실행 요청·스냅샷·`input_hash`, queue claim·lease·fencing, worker 프로세스(엔진 실행, 결과는 상태·종료 사유까지), 취소. 계약 **0.9.0**(`POST/GET runs`, `input`, `cancel`; 0.8.0은 BE-09가 먼저 사용함). **2026-10-27 구현·승격 완료**(HANDOFF-backend-20261027-BE-06a-run-platform).
 2. **be08b:** migration 0009(event·work_item·relation), 이벤트·계보 저장과 조회 API, 하루 경계 `STATE_SNAPSHOT`. 계약 0.10.0. **2026-10-27 구현·승격 완료**(HANDOFF-backend-20261027-BE-06b-events-lineage). 상태 요약은 일 단위 1건이며 주·월은 `periods` 표시로 구분한다.
-3. **be08c:** migration 0010(metric_result), 지표 엔진과 조회 API. 계약 0.11.0.
+3. **be08c:** migration 0010(metric_result), 지표 엔진과 조회 API. 계약 0.11.0. **2026-10-27 구현·승격 완료**(HANDOFF-backend-20261027-BE-06c-metrics). 검사 완료량·운반 대기 지표는 해당 이벤트가 엔진에 없어 제외했다.
 각 단계마다 인계 문서와 FE 공지를 남긴다.
 
 ## 5. 결정이 필요한 항목(권장안)

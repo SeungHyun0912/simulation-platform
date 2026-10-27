@@ -362,7 +362,7 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 ## 5. 시나리오·실행 API
 
 > 아래 표에서 시나리오 6행(목록~승인)은 §5.1로, 실행 5행(요청·목록·조회·input·cancel)은 §5.2로, `events`·`lineage`
-> 2행은 §5.3으로 **승인**(contract 0.7.0·0.9.0·0.10.0)되었다. `rerun`·`metrics`·비교 행은 PROPOSED이며 CR be08c 등에서 다룬다.
+> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0)되었다. `rerun`·비교 행은 PROPOSED이며 후속 CR에서 다룬다.
 
 | Method | Path | 의미 |
 |---|---|---|
@@ -457,10 +457,30 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 
 - **공식 결과:** 이벤트·작업물·계보는 시도(attempt)마다 저장되고 API는 run의 **선택된 시도**(끝까지 실행된 시도)만 보여 준다. 대기·실행 중이거나 실패·취소로 끝나 선택된 시도가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 실패한 시도·버려진 시도의 부분 기록은 조회에서 자동으로 빠진다(불완전 로그를 공식 결과에서 제외).
 - **이벤트(`EventOut`):** `event_seq`(1부터 빠짐없이), `sim_time{min,exact}`(가상 시간 분, 표시용 소수 6자리 + 정확한 분수), `event_type`, `step_key`·`operation_id`·`asset_key`·`item_key`·`process_version_id`·`source`·`destination`·`reason`(없으면 null), `quantities`(길이·무게는 decimal 문자열). 종류는 07 §9 표준 목록과 엔진 확장(`MILESTONE_REACHED`·`SINK_REACHED`·`RESIDUAL_*`·`OUT_*`·`STATE_SNAPSHOT` 등)이며 열린 문자열 목록이다.
-- **상태 요약 `STATE_SNAPSHOT`:** 가상 시간 1일(1,440분)마다 1건(`quantities.periods`가 `["day"]`, 7일째마다 `"week"`, 30일째마다 `"month"`가 더해짐, `day_index`). 내용: `wip`(공정 버전·노드별 작업물 수·길이, 길이 없는 작업물만 있으면 null), `operations_in_progress`, `busy_assets`, `space_used`, `completed`(공정 버전별 완제품 수·길이), `residual_pools`. 근무 달력이 없어 **24시간 연속** 기준이며 **재개용 체크포인트가 아니다**. 상태를 읽기만 해 실행 결과를 바꾸지 않는다. `event_type=STATE_SNAPSHOT`으로 모아 본다. 설비 안에서 처리 중인 재료의 재공품 환산은 지표 단계(be08c)에서 정한다.
+- **상태 요약 `STATE_SNAPSHOT`:** 가상 시간 1일(1,440분)마다 1건(`quantities.periods`가 `["day"]`, 7일째마다 `"week"`, 30일째마다 `"month"`가 더해짐, `day_index`). 내용: `wip`(공정 버전·노드별 작업물 수·길이, 길이 없는 작업물만 있으면 null, 설비·인계 대기 중이라 위치가 없으면 `node_key` null), `in_machine`(0.11.0: 설비 안에서 처리 중인 소비된 부모 — 공정 버전·단계별 작업물 수와 **남은 길이**), `wip_total`(0.11.0: 공정 버전별 재공품 합계 = 활성 작업물 + 설비 안 부모, 길이·무게는 따로 센다), `operations_in_progress`, `busy_assets`, `space_used`, `completed`(공정 버전별 완제품 수·길이), `residual_pools`. 마지막 `RUN_TERMINATED` 이벤트에도 `wip_total`(종료 시점)이 담긴다. 근무 달력이 없어 **24시간 연속** 기준이며 **재개용 체크포인트가 아니다**. 상태를 읽기만 해 실행 결과를 바꾸지 않는다. `event_type=STATE_SNAPSHOT`으로 모아 본다. 경계 상태는 그 경계 시각에 일어나는 이벤트가 처리되기 **전**의 상태다(예: 정확히 1,440분에 도착하는 원자재는 1일차 요약에 없다).
 - **계보(`LineageOut`):** `items[]`(계보에 나온 작업물: `length_m`·`weight_kg`는 없으면 null, `status` active|consumed|completed, `created_at{min,exact}`), `operations[]`(`operation_key`·`step_key`·`relation_type` split|transform|supply|yield·`accounting_mode` physical|abstract_yield·`residual_length_m`·`carried_in_m`·`balanced`·`links[]{parent_key, child_key, parent_length_m, child_length_m}`). 자식이 없는 작업(전부 잔량·폐기)은 `child_key`가 null인 link로 나온다. `balanced`는 자식 길이 합 + 잔량 = 부모 길이(+이월)이며 `abstract_yield`거나 길이가 없으면 null(검증 대상 아님). 작업물이 5,000개를 넘으면 `truncated: true`.
 - **오류:** 없는 작업물 404, 필터가 달라진 cursor 재사용·`from_min`/`to_min` 형식 위반 422, 다른 프로젝트의 run 404.
 - 예제: 성공 응답은 worker가 끝낸 실행이 필요해 시험(`tests/integration/test_api_run_events.py`)이 정본이다.
+
+### 5.4 승인 scope `runs` 확장 — BE-06c (contract 0.11.0)
+근거: CR be08 §4의 be08c(보드 DEC-008), 지표 정의는 07 §10. 필드·타입의 정본은 openapi.json이고 지표 정의의 정본은 `GET /metric-definitions`다.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/runs/{r}/metrics | viewer | 공식 결과의 지표를 구간별로. 필터 `metric_key`, `window`(run 기본·day·week·month), 차원 `process_version_id`·`asset_key`·`node_key`(하나만), `limit`·`cursor` |
+| GET | /metric-definitions | 로그인 사용자 | 지표 정의 목록(key·단위·차원·설명·`definition_version`) |
+
+- **공식 결과:** 이벤트·계보와 같다. 선택된 시도의 지표만 보이고, 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
+- **계산:** 이벤트로만 계산한다(엔진 내부 상태를 직접 읽지 않음). 하루(1,440분) 단위로 모은 값을 하루·주(7일)·월(30일)·전체 구간으로 합산한다. 마지막 구간은 실행이 끝난 시각까지로 잘린다(관측 시간 = `window.end − window.start`). 근무 달력이 없어 24시간 연속 기준이다.
+- **행(`MetricOut`):** `metric_key`, `dimensions`(`process_version_id` | `asset_key` | `node_key` 중 하나), `window{kind,start,end}`(`{min,exact}` 가상 시간), `value`(decimal 문자열 또는 null), `unit`, `definition_version`, `quality_status`.
+- **null 규칙:** 분모가 0이면(관측 시간 0·완료 없음 등) null, 해당 없는 양(길이 없는 원자재의 길이 합, 무게 기록이 없는 폐기 무게)도 null이다. **0과 null은 다르다**: 관측했지만 없었던 값(예: 완료가 없는 날의 `completed_items`)은 0이다. 사용 기록이 없는 설비·공간은 행이 없다(0이 아니라 "기록 없음").
+- **`quality_status`:** `complete`(끝까지 실행됨), `censored`(고정 지평선에서 끊긴 관측), `incomplete`(입력 부족·이벤트 한도 등으로 끝나지 못함). run 단위 값이며 모든 행에 같다.
+- **지표 목록(`definition_version` 1):** 공정 버전별 — `arrived_*`(입고 수·길이·무게), `completed_*`(완제품 milestone 도달 수·길이·무게, 최종 작업물 기준), `sunk_*`(경로 끝 도달), `discarded_length_m`·`discarded_weight_kg`, `throughput_items_per_day`, `lead_time_avg_min`·`lead_time_max_min`(완료 시각 − 원자재 입고 시각, 분할·합류를 따라 가장 이른 입고 기준), `wip_items`·`wip_length_m`·`wip_weight_kg`(구간 끝 시점, **설비 안에서 처리 중인 재료 포함**, 수·길이·무게 따로, 단위가 다른 작업물을 섞어 센다). 대기 공간별 — `buffer_wait_avg_min`·`buffer_wait_max_min`(구간에 떠난 작업물의 대기), `buffer_occupancy_avg_items`(시간적분 ÷ 구간 길이). 설비별 — `processing_time_min`·`setup_time_min`·`reserved_time_min`·`blocked_time_min`, `utilization`(= 처리 시간 ÷ 구간 길이, 0~1, **가동 달력이 없어 24시간 기준**).
+- **합산 금지:** 서로 다른 공정(제품)의 생산량을 더한 값은 만들지 않는다(07 §10). 화면·답변도 공정 버전별로 보여야 한다.
+- **아직 없는 것:** 검사 완료량(검사 완료 이벤트가 엔진에 없음), 운반 대기(이동 이벤트 없음), 달력 기준 가동률, 목표 대비 달성률.
+- 예제: 성공 응답은 worker가 끝낸 실행이 필요해 시험(`tests/integration/test_api_run_metrics.py`, `test_engine_real_catalog.py`의 P05 한 달치)이 정본이다.
+
+## 6. LLM·위키 API
 
 
 | Method | Path | 의미 |
