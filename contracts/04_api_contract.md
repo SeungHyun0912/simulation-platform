@@ -362,7 +362,7 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 ## 5. 시나리오·실행 API
 
 > 아래 표에서 시나리오 6행(목록~승인)은 §5.1로, 실행 5행(요청·목록·조회·input·cancel)은 §5.2로, `events`·`lineage`
-> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0)되었다. `rerun`·비교 행은 PROPOSED이며 후속 CR에서 다룬다.
+> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로, 설비 타임라인은 §5.6, 두 실행 비교는 §5.7로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0·0.13.0)되었다. `rerun`과 저장형 `comparisons` 행은 PROPOSED이며 후속 CR에서 다룬다.
 
 | Method | Path | 의미 |
 |---|---|---|
@@ -499,6 +499,33 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 - **지표 조회 변경(호환):** `GET /runs/{r}/metrics`에 `step_key` 필터가 늘었고 차원 필터(`process_version_id`·`step_key`·`asset_key`·`node_key`)를 **함께 쓸 수 있다**(모두 만족하는 행만). 0.11.0까지는 둘 이상 보내면 422였다. `MetricDefinition.dimension`에 `step`이 늘었다.
 - **결과의 제품 코드·이름:** `GET /runs/{r}`의 `result.products[]`에 `product_code`·`product_name`(선택)이 늘었다. 값은 실행 요청 당시 입력 스냅샷에 고정되며(스냅샷 `products[].product`) 이전 run은 현재 제품 목록으로 보충한다.
 - 예제: 성공 응답은 worker가 끝낸 실행이 필요해 시험(`tests/integration/test_api_run_bottlenecks.py`, `tests/unit/test_bottleneck.py`)이 정본이다. 실제 6공정 실행 결과는 인계 문서 BE-10에 있다.
+
+### 5.6 승인 scope `runs` 확장 — BE-11 (contract 0.13.0): 설비 상태 타임라인
+근거: `docs/change-requests/CR-backend-20261027-be11-asset-timeline.md`. 필드·타입의 정본은 openapi.json.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/runs/{r}/asset-timeline | viewer | 설비마다 구간별 상태 시간 구성. 쿼리 `window`(day 기본·week·month·run), `asset_id`, `limit`·`cursor`(설비 코드 순) |
+| GET | /projects/{p}/runs/{r}/assets/{asset_id}/states | viewer | 설비 하나의 상태 구간(간트). 쿼리 `from_min`(그 시각에 걸친 구간부터)·`to_min`(그 시각 전에 시작한 구간까지), `limit`·`cursor` |
+
+- **타임라인(`AssetTimelineOut`):** `asset_id`·`asset_code`·`asset_name`, `used`(이 실행에서 배정된 적이 있는가), `uses[]`(이 설비를 후보로 가진 제품·단계), `buckets[]`(`start`·`end`, `processing_min`·`setup_min`·`reserved_min`·`blocked_min`, `idle_min` = 구간 길이 − 나머지, `utilization` = 처리 ÷ 구간 길이). **공정이 후보로 둔 설비 전체**를 보여 주며 쓰이지 않은 설비는 `used=false`, 전 구간 유휴다(지표에는 행이 없던 설비). 구간은 지표와 같다(마지막 구간은 종료 시각까지).
+- **상태 구간(`AssetStateSegmentOut`):** `state`(IDLE·RESERVED·SETUP·PROCESSING·BLOCKED, 열린 목록), `start`·`end`·`duration_min`, `operation_id`·`step_key`·`process_version_id`·`product_code`. 같은 시각의 연속 전이(길이 0)는 빼고 마지막 구간은 실행 종료 시각까지다. 쓰이지 않은 설비는 빈 목록.
+- **크기 주의:** 일 단위 타임라인은 설비 수 × 일 수라 크다(6공정 한 달치: 설비 83대 × 97일 ≈ 2MB). 화면은 `limit`으로 나눠 받거나 `window=week`로 먼저 본다.
+- 운반 설비(지게차·AMR)는 엔진이 자원으로 모델링하지 않아 타임라인에 없다. 유휴는 24시간 기준이다(가동 달력 없음).
+
+### 5.7 승인 scope `runs` 확장 — BE-12 (contract 0.13.0): 두 실행 비교
+근거: `docs/change-requests/CR-backend-20261027-be12-run-comparison.md`. 위 §5 표의 `POST /comparisons`·`GET /comparisons/{id}`(저장형)는 두지 않고 **저장 없는 조회형**으로 시작한다(결과·입력이 불변이라 같은 두 run의 비교는 늘 같다).
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/runs/{r}/compare/{other} | viewer | 비교 요약(`r` = 기준, `other` = 비교 대상) |
+| GET | /projects/{p}/runs/{r}/compare/{other}/metrics | viewer | 지표 차이 행. 쿼리 `metric_key`, `window`(run 기본, 일·주·월이면 `metric_key` 필수), `changed_only`, `limit`·`cursor` |
+
+- **요약(`RunComparisonOut`):** `comparable`(엔진 버전이 같은가)·`warnings`(한쪽에만 있는 제품, 끝까지 못 간 실행, 종료 규칙이 달라 관측 기간이 다름 등), `base_status`·`other_status`, `base_end_time`·`other_end_time`, `input_changes[]`(`path`·`base`·`other`·`note`: seed·replicate_index·엔진 버전·이벤트 한도·시나리오 버전·종료 규칙·가정 사유, 제품별(제품 코드로 표시) 추가/삭제·공정 버전·도착·가정, 처리 순서, 고정 자산의 엔진 입력), `products[]`(두 실행에 모두 있는 제품의 완료 수·길이·처리량·리드타임·끝 재공품·폐기의 기준·비교·차이·비율과 마지막 완료 시각), `bottlenecks`(양쪽 병목 상위 5개).
+- **지표 차이(`MetricComparisonOut`):** 같은 지표·차원·구간끼리 `base`·`other`·`delta`(비교 − 기준)·`ratio`(비교 ÷ 기준, 기준이 0·null이면 null). **공정 버전이 달라도 같은 제품이면 맞춘다**: 차원의 `process_version_id` 대신 `product_id`(+`product_code`)를 쓰고 양쪽 공정 버전 id(`base_process_version_id`·`other_process_version_id`)를 함께 준다. 한쪽에만 있는 행은 다른 쪽이 null이다. `changed_only=true`면 같은 값(둘 다 null 포함)은 뺀다.
+- **오류:** 같은 run끼리 422, 다른 프로젝트·없는 run 404, 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
+- **해석 원칙:** 엔진은 결정적이라(같은 입력이면 같은 결과) 차이는 입력 차이에서 온다. 공정 내용의 차이는 `GET /process-versions/{v}/diff?against=`로 본다(비교 요약에는 버전 id만). 서로 다른 제품의 생산량은 합산하지 않는다.
+- **재시뮬레이션 흐름(참고):** 공정 정보를 고치려면 승인본에서 새 초안을 만들어(`POST /products/{p}/process-versions`, `base_version_id`) 수정·승인하고, 시나리오의 새 버전에서 그 공정 버전을 고른 뒤 승인·실행한다. 두 run을 이 API로 비교한다.
 
 ## 6. LLM·위키 API
 

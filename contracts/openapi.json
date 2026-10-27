@@ -593,6 +593,230 @@
         "title": "AssetRevisionOut",
         "type": "object"
       },
+      "AssetStateSegmentOut": {
+        "properties": {
+          "duration_min": {
+            "title": "Duration Min",
+            "type": "string"
+          },
+          "end": {
+            "$ref": "#/components/schemas/MinutesOut"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Version Id"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "start": {
+            "$ref": "#/components/schemas/MinutesOut"
+          },
+          "state": {
+            "description": "IDLE·RESERVED·SETUP·PROCESSING·BLOCKED(열린 목록)",
+            "title": "State",
+            "type": "string"
+          },
+          "step_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Key"
+          }
+        },
+        "required": [
+          "state",
+          "start",
+          "end",
+          "duration_min"
+        ],
+        "title": "AssetStateSegmentOut",
+        "type": "object"
+      },
+      "AssetTimelineBucketOut": {
+        "properties": {
+          "blocked_min": {
+            "title": "Blocked Min",
+            "type": "string"
+          },
+          "end": {
+            "$ref": "#/components/schemas/MinutesOut"
+          },
+          "idle_min": {
+            "description": "구간 길이 − (처리+준비+예약+막힘). 가동 달력이 없어 24시간 기준",
+            "title": "Idle Min",
+            "type": "string"
+          },
+          "processing_min": {
+            "title": "Processing Min",
+            "type": "string"
+          },
+          "reserved_min": {
+            "title": "Reserved Min",
+            "type": "string"
+          },
+          "setup_min": {
+            "title": "Setup Min",
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/MinutesOut"
+          },
+          "utilization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "처리 ÷ 구간 길이(0~1). 구간 길이가 0이면 null",
+            "title": "Utilization"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "processing_min",
+          "setup_min",
+          "reserved_min",
+          "blocked_min",
+          "idle_min",
+          "utilization"
+        ],
+        "title": "AssetTimelineBucketOut",
+        "type": "object"
+      },
+      "AssetTimelineOut": {
+        "properties": {
+          "asset_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Code"
+          },
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "asset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Name"
+          },
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/AssetTimelineBucketOut"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "used": {
+            "description": "이 실행에서 한 번이라도 배정됐는가. false면 후보였지만 쓰이지 않아 전 구간 유휴",
+            "title": "Used",
+            "type": "boolean"
+          },
+          "uses": {
+            "description": "이 설비를 후보로 가진 제품·단계",
+            "items": {
+              "$ref": "#/components/schemas/AssetUseOut"
+            },
+            "title": "Uses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_id",
+          "used",
+          "uses",
+          "buckets"
+        ],
+        "title": "AssetTimelineOut",
+        "type": "object"
+      },
+      "AssetUseOut": {
+        "properties": {
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          },
+          "step_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Label"
+          }
+        },
+        "required": [
+          "process_version_id",
+          "step_key"
+        ],
+        "title": "AssetUseOut",
+        "type": "object"
+      },
       "AssumptionUseOut": {
         "properties": {
           "code": {
@@ -1071,6 +1295,30 @@
           "mode"
         ],
         "title": "Capacity",
+        "type": "object"
+      },
+      "ComparisonBottlenecksOut": {
+        "properties": {
+          "base": {
+            "items": {
+              "$ref": "#/components/schemas/BottleneckOut"
+            },
+            "title": "Base",
+            "type": "array"
+          },
+          "other": {
+            "items": {
+              "$ref": "#/components/schemas/BottleneckOut"
+            },
+            "title": "Other",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base",
+          "other"
+        ],
+        "title": "ComparisonBottlenecksOut",
         "type": "object"
       },
       "CompileIssueOut": {
@@ -2224,6 +2472,37 @@
         "title": "HandoffRule",
         "type": "object"
       },
+      "InputChangeOut": {
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "other": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "path": {
+            "description": "바뀐 입력의 위치(예: `products.P04.arrivals`, `assets.{asset_id}`, `seed`)",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "InputChangeOut",
+        "type": "object"
+      },
       "InputRule": {
         "additionalProperties": false,
         "properties": {
@@ -2571,6 +2850,46 @@
         "title": "ListOut[AssetRevisionOut]",
         "type": "object"
       },
+      "ListOut_AssetStateSegmentOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AssetStateSegmentOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[AssetStateSegmentOut]",
+        "type": "object"
+      },
+      "ListOut_AssetTimelineOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AssetTimelineOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[AssetTimelineOut]",
+        "type": "object"
+      },
       "ListOut_EventOut_": {
         "properties": {
           "data": {
@@ -2609,6 +2928,26 @@
           "page"
         ],
         "title": "ListOut[MaterialOut]",
+        "type": "object"
+      },
+      "ListOut_MetricComparisonOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MetricComparisonOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[MetricComparisonOut]",
         "type": "object"
       },
       "ListOut_MetricDefinitionOut_": {
@@ -3180,6 +3519,109 @@
         "title": "MeUser",
         "type": "object"
       },
+      "MetricComparisonOut": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "base_process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Process Version Id"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "공정 버전 대신 `product_id`(+`product_code`)로 맞춘 차원",
+            "title": "Dimensions",
+            "type": "object"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other"
+          },
+          "other_process_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Process Version Id"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "window": {
+            "$ref": "#/components/schemas/MetricWindowOut"
+          }
+        },
+        "required": [
+          "metric_key",
+          "dimensions",
+          "window"
+        ],
+        "title": "MetricComparisonOut",
+        "type": "object"
+      },
       "MetricDefinitionOut": {
         "properties": {
           "definition_version": {
@@ -3278,6 +3720,76 @@
           "quality_status"
         ],
         "title": "MetricOut",
+        "type": "object"
+      },
+      "MetricPairOut": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "비교 − 기준. 한쪽이 없으면 null",
+            "title": "Delta"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "비교 ÷ 기준. 한쪽이 없거나 기준이 0이면 null",
+            "title": "Ratio"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "metric_key"
+        ],
+        "title": "MetricPairOut",
         "type": "object"
       },
       "MetricWindowOut": {
@@ -4372,6 +4884,79 @@
         "title": "ProcessingUnknown",
         "type": "object"
       },
+      "ProductComparisonOut": {
+        "properties": {
+          "base_last_completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_process_version_id": {
+            "title": "Base Process Version Id",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricPairOut"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "other_last_completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "other_process_version_id": {
+            "title": "Other Process Version Id",
+            "type": "string"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          }
+        },
+        "required": [
+          "product_id",
+          "base_process_version_id",
+          "other_process_version_id",
+          "metrics"
+        ],
+        "title": "ProductComparisonOut",
+        "type": "object"
+      },
       "ProductCreate": {
         "additionalProperties": false,
         "properties": {
@@ -5182,6 +5767,92 @@
           "approved_at"
         ],
         "title": "RevisionSummary",
+        "type": "object"
+      },
+      "RunComparisonOut": {
+        "properties": {
+          "base_end_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_run_id": {
+            "format": "uuid",
+            "title": "Base Run Id",
+            "type": "string"
+          },
+          "base_status": {
+            "title": "Base Status",
+            "type": "string"
+          },
+          "bottlenecks": {
+            "$ref": "#/components/schemas/ComparisonBottlenecksOut",
+            "description": "양쪽 병목 요약 상위 5개"
+          },
+          "comparable": {
+            "description": "엔진 버전이 같아 결과 차이를 입력 차이로 설명할 수 있는가",
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "input_changes": {
+            "items": {
+              "$ref": "#/components/schemas/InputChangeOut"
+            },
+            "title": "Input Changes",
+            "type": "array"
+          },
+          "other_end_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "other_run_id": {
+            "format": "uuid",
+            "title": "Other Run Id",
+            "type": "string"
+          },
+          "other_status": {
+            "title": "Other Status",
+            "type": "string"
+          },
+          "products": {
+            "description": "두 실행에 모두 있는 제품(제품 id로 맞춤)의 핵심 지표 비교",
+            "items": {
+              "$ref": "#/components/schemas/ProductComparisonOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base_run_id",
+          "other_run_id",
+          "comparable",
+          "warnings",
+          "base_status",
+          "other_status",
+          "input_changes",
+          "products",
+          "bottlenecks"
+        ],
+        "title": "RunComparisonOut",
         "type": "object"
       },
       "RunCreate": {
@@ -6411,6 +7082,18 @@
           "data"
         ],
         "title": "Single[ProjectOut]",
+        "type": "object"
+      },
+      "Single_RunComparisonOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunComparisonOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[RunComparisonOut]",
         "type": "object"
       },
       "Single_RunInputOut_": {
@@ -11813,6 +12496,333 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/runs/{run_id}/asset-timeline": {
+      "get": {
+        "description": "설비마다 구간별 상태 시간 구성(처리·준비·예약·막힘·유휴·가동률). 공정이 후보로 둔 설비 전체를 보여 주며 쓰이지 않은\n설비는 `used=false`(전 구간 유휴)다. 설비 코드 순. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.",
+        "operationId": "get_asset_timeline_api_v1_projects__project_id__runs__run_id__asset_timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "구간 종류: day(기본)·week·month·run",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "description": "구간 종류: day(기본)·week·month·run",
+              "enum": [
+                "run",
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "description": "설비 하나만",
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "설비 하나만",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_AssetTimelineOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Asset Timeline",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/assets/{asset_id}/states": {
+      "get": {
+        "description": "설비 하나의 상태 구간(간트용): 상태·시작·끝·길이와 그때의 작업·단계·제품. 길이 0인 전이는 빼고 마지막 구간은 실행\n종료 시각까지. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.",
+        "operationId": "list_asset_states_api_v1_projects__project_id__runs__run_id__assets__asset_id__states_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "이 시각에 걸친 구간부터(가상 시간 분, decimal 문자열)",
+            "in": "query",
+            "name": "from_min",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 시각에 걸친 구간부터(가상 시간 분, decimal 문자열)",
+              "title": "From Min"
+            }
+          },
+          {
+            "description": "이 시각 전에 시작한 구간까지",
+            "in": "query",
+            "name": "to_min",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 시각 전에 시작한 구간까지",
+              "title": "To Min"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_AssetStateSegmentOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Asset States",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/runs/{run_id}/bottlenecks": {
       "get": {
         "description": "병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로\n돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.",
@@ -12000,6 +13010,281 @@
           }
         },
         "summary": "Cancel Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/compare/{other_run_id}": {
+      "get": {
+        "description": "두 실행 비교 요약: 비교 가능 여부·주의, 입력 스냅샷 차이, 제품별 핵심 지표(기준·비교·차이·비율), 양쪽 병목 상위 5개.\n`run_id`가 기준, `other_run_id`가 비교 대상이다. 같은 프로젝트여야 하고 둘 다 공식 결과가 있어야 한다.",
+        "operationId": "compare_runs_api_v1_projects__project_id__runs__run_id__compare__other_run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "other_run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Other Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_RunComparisonOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Compare Runs",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/compare/{other_run_id}/metrics": {
+      "get": {
+        "description": "지표별 기준값·비교값·차이(비교 − 기준)·비율(비교 ÷ 기준). 공정 버전이 달라도 같은 제품이면 맞춘다(차원의 공정 버전을\n제품 id로 바꿈). 한쪽에만 있는 행은 다른 쪽 값이 null이다.",
+        "operationId": "compare_run_metrics_api_v1_projects__project_id__runs__run_id__compare__other_run_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "other_run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Other Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "지표 하나만(일·주·월 구간이면 필수)",
+            "in": "query",
+            "name": "metric_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "지표 하나만(일·주·월 구간이면 필수)",
+              "title": "Metric Key"
+            }
+          },
+          {
+            "description": "구간 종류: run(기본)·day·week·month",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "run",
+              "description": "구간 종류: run(기본)·day·week·month",
+              "enum": [
+                "run",
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "description": "값이 다른 행만(한쪽에만 있는 행 포함)",
+            "in": "query",
+            "name": "changed_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "값이 다른 행만(한쪽에만 있는 행 포함)",
+              "title": "Changed Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_MetricComparisonOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Compare Run Metrics",
         "tags": [
           "runs"
         ]
