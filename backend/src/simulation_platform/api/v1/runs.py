@@ -15,6 +15,8 @@ from simulation_platform.auth.principal import Principal, get_principal
 from simulation_platform.db import get_session
 from simulation_platform.schemas.common import ListOut, Single
 from simulation_platform.schemas.run import (
+    AssetStateSegmentOut,
+    AssetTimelineOut,
     BottleneckSummaryOut,
     EventOut,
     LineageOut,
@@ -176,3 +178,41 @@ def get_run_bottlenecks(
     """병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로
     돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다."""
     return {"data": service.get_bottlenecks(session, principal, project_id, run_id, limit)}
+
+
+@router.get("/runs/{run_id}/asset-timeline", response_model=ListOut[AssetTimelineOut], responses={**READ_ERRORS, 409: ERR})
+def get_asset_timeline(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    limit: LimitQuery = None,
+    cursor: CursorQuery = None,
+    window: Annotated[MetricWindowKind, Query(description="구간 종류: day(기본)·week·month·run")] = "day",
+    asset_id: Annotated[uuid.UUID | None, Query(description="설비 하나만")] = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """설비마다 구간별 상태 시간 구성(처리·준비·예약·막힘·유휴·가동률). 공정이 후보로 둔 설비 전체를 보여 주며 쓰이지 않은
+    설비는 `used=false`(전 구간 유휴)다. 설비 코드 순. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`."""
+    items, page = service.asset_timeline(session, principal, project_id, run_id, window=window, asset_id=asset_id,
+                                         limit=limit, cursor=cursor)
+    return {"data": items, "page": page}
+
+
+@router.get("/runs/{run_id}/assets/{asset_id}/states", response_model=ListOut[AssetStateSegmentOut],
+            responses={**READ_ERRORS, 409: ERR})
+def list_asset_states(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    limit: LimitQuery = None,
+    cursor: CursorQuery = None,
+    from_min: Annotated[str | None, Query(description="이 시각에 걸친 구간부터(가상 시간 분, decimal 문자열)")] = None,
+    to_min: Annotated[str | None, Query(description="이 시각 전에 시작한 구간까지")] = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """설비 하나의 상태 구간(간트용): 상태·시작·끝·길이와 그때의 작업·단계·제품. 길이 0인 전이는 빼고 마지막 구간은 실행
+    종료 시각까지. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`."""
+    items, page = service.asset_states(session, principal, project_id, run_id, asset_id, from_min=from_min,
+                                       to_min=to_min, limit=limit, cursor=cursor)
+    return {"data": items, "page": page}

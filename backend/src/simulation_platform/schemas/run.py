@@ -252,3 +252,41 @@ class BottleneckSummaryOut(Out):
     findings: list[BottleneckOut]
     limitations: list[str] = Field(description="이 판정의 한계(가정·모델링하지 않은 것). 화면에 함께 보여야 한다")
     thresholds: dict[str, str] = Field(description="판정에 쓴 기준값(임시 휴리스틱)")
+
+
+class AssetUseOut(Out):
+    process_version_id: str
+    product_code: str | None = None
+    step_key: str
+    step_label: str | None = None
+
+
+class AssetTimelineBucketOut(Out):
+    start: MinutesOut
+    end: MinutesOut
+    processing_min: str
+    setup_min: str
+    reserved_min: str
+    blocked_min: str
+    idle_min: str = Field(description="구간 길이 − (처리+준비+예약+막힘). 가동 달력이 없어 24시간 기준")
+    utilization: str | None = Field(description="처리 ÷ 구간 길이(0~1). 구간 길이가 0이면 null")
+
+
+class AssetTimelineOut(Out):
+    asset_id: str
+    asset_code: str | None = None
+    asset_name: str | None = None
+    used: bool = Field(description="이 실행에서 한 번이라도 배정됐는가. false면 후보였지만 쓰이지 않아 전 구간 유휴")
+    uses: list[AssetUseOut] = Field(description="이 설비를 후보로 가진 제품·단계")
+    buckets: list[AssetTimelineBucketOut]
+
+
+class AssetStateSegmentOut(Out):
+    state: str = Field(description="IDLE·RESERVED·SETUP·PROCESSING·BLOCKED(열린 목록)")
+    start: MinutesOut
+    end: MinutesOut
+    duration_min: str
+    operation_id: str | None = None
+    step_key: str | None = None
+    process_version_id: str | None = None
+    product_code: str | None = None
