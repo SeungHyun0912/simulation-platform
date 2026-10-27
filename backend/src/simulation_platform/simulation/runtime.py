@@ -194,7 +194,8 @@ class _Run:
         self.env = simpy.Environment(initial_time=Fraction(0))
         self.log = EventLog(event_limit, sink=event_sink, retain=retain_events, batch_size=batch_size)
         self._next_snapshot = DAY_MIN if daily_snapshots else None
-        self._machine: dict[str, _Held] = {}  # 작업 id → 설비 안에서 처리 중인 소비된 부모
+        self._machine: dict[str, _Held] = {}
+        self.carrier_at: dict[str, str] = {}  # 운반 자원 → 지금 있는 노드(마지막으로 내려놓은 곳). 처음에는 모른다  # 작업 id → 설비 안에서 처리 중인 소비된 부모
         self._completed: dict[str, list] = {}  # 공정 버전 → [완제품 수, 완제품 길이 합]
         self.factory = ItemFactory()
         self.items: list[WorkItem] = []
@@ -551,6 +552,8 @@ class _Run:
             asset = yield self.allocator.acquire(step.candidates)
             self._asset_state(lane, step, op_id, asset, ev.RESERVED)
             self._clear_foreign_residual(lane, step, op_id, asset)
+            if step.carrier_move_minutes is not None:
+                yield from self._carrier_to_pickup(lane, step, op_id, asset)
         if delay is not None and delay.occupancy == "occupies_machine":
             yield from self._precondition_delay(lane, step, op_id, asset, delay)  # 설비를 쥔 채 기다린다
         pool_key = None
@@ -607,11 +610,25 @@ class _Run:
         for child in held:  # 일괄 인계는 설비를 놓기 전에 내보낸다(막히면 설비가 점유된 채 기다림)
             yield from self._deliver(lane, step, op_id, asset, child, None)
         if asset is not None:
+            if step.carrier_move_minutes is not None:  # 다음 명령이 없으면 내려놓은 곳(목적지)에서 기다린다
+                self.carrier_at[asset] = lane.model.nodes[step.key].next_key or step.key
             self._asset_state(lane, step, op_id, asset, ev.IDLE)
             self.last_version[asset] = lane.version
             self.allocator.release(asset)
         self._machine.pop(op_id, None)
         self.in_progress -= 1
+
+    def _carrier_to_pickup(self, lane: _Lane, step: StepModel, op_id: str, asset: str):
+        """운반 자원이 다른 곳(직전 목적지)에 있으면 일을 받은 곳까지 빈 차로 옮겨 간다. 처음 쓰는 자원은 그 자리에 있다고 본다
+        (초기 위치를 모름). 이동 중 자원은 예약(RESERVED) 상태로 남는다."""
+        pickup = step.inputs[0].pool if step.inputs else None
+        where = self.carrier_at.get(asset)
+        if where is None or where == pickup or not step.carrier_move_minutes:
+            return
+        self.emit_for(lane, ev.CARRIER_MOVED, step_key=step.key, operation_id=op_id, asset_key=asset,
+                      source=where, destination=pickup, quantities={"minutes": step.carrier_move_minutes})
+        yield self.env.timeout(step.carrier_move_minutes)
+        self.carrier_at[asset] = pickup
 
     def _product_changed(self, lane: _Lane, asset: str | None) -> bool:
         """설비의 직전 작업이 다른 제품(공정 버전)이었는가. 첫 작업(직전 작업 없음)은 준비 없이 시작한다."""

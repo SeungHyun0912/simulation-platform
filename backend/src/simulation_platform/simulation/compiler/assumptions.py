@@ -23,6 +23,10 @@ class ScenarioAssumptions:
     manual_transport_minutes: Mapping[str, Fraction] = field(default_factory=dict)
     # 잔량 이월 단계(node_key)별 잔량 범위. 공정에 scope가 미정일 때만 쓰며 사용자가 승인한 가정이어야 한다.
     residual_scope: Mapping[str, str] = field(default_factory=dict)
+    # 다음 공간이 가득 찼을 때 설비의 OUT 배출 정책이 승인된 자산 버전에 없으면 쓰는 값. "hold" = 산출을 쥐고 설비가 기다린다.
+    out_release: str | None = None
+    # 운반 자원(지게차·AMR)이 일을 받은 곳이 지금 있는 곳과 다를 때 빈 차로 옮겨 가는 시간(분). 운반 단계에 설비 후보가 있으면 필요.
+    carrier_empty_move_minutes: Fraction | None = None
 
 
 def assumptions_from_scenario(data: Mapping | None) -> ScenarioAssumptions:
@@ -38,4 +42,7 @@ def assumptions_from_scenario(data: Mapping | None) -> ScenarioAssumptions:
         equipment_hold=data.get("equipment_hold") or HOLD_FOR_OPERATION,
         unbounded_buffers=bool(data.get("unbounded_buffers")),
         manual_transport_minutes={k: to_fraction(v) for k, v in (data.get("manual_transport_minutes") or {}).items()},
-        residual_scope=dict(data.get("residual_scope") or {}))
+        residual_scope=dict(data.get("residual_scope") or {}),
+        out_release=data.get("out_release"),
+        carrier_empty_move_minutes=(None if data.get("carrier_empty_move_minutes") is None
+                                    else to_fraction(data["carrier_empty_move_minutes"])))

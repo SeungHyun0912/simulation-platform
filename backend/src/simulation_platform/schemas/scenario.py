@@ -74,11 +74,17 @@ class AssumptionsDto(StrictIn):
         default_factory=dict, max_length=200, description="수동 운반 단계(node_key)별 이동 시간(분, 0도 명시해야 함)")
     residual_scope: dict[Code, ResidualScope] = Field(
         default_factory=dict, max_length=200, description="잔량 이월 단계(node_key)별 잔량 범위(공정에 미정일 때만)")
+    out_release: Literal["hold"] | None = Field(
+        default=None, description="다음 공간이 가득 찼을 때, 승인된 자산 버전에 OUT 배출 정책이 없는 설비는 산출을 쥐고 기다린다(0.15.0)")
+    carrier_empty_move_minutes: NonNegativeDecimal | None = Field(
+        default=None, description="운반 자원(지게차·AMR)이 다른 곳에서 일을 받으면 빈 차로 옮겨 가는 시간(분). 운반 단계에 "
+                                  "설비 후보가 있으면 필요(0.15.0)")
 
     @property
     def used(self) -> bool:
         return (self.equipment_hold is not None or self.unbounded_buffers
-                or bool(self.manual_transport_minutes) or bool(self.residual_scope))
+                or bool(self.manual_transport_minutes) or bool(self.residual_scope)
+                or self.out_release is not None or self.carrier_empty_move_minutes is not None)
 
 
 class ScenarioProductDto(StrictIn):
