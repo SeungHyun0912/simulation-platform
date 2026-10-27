@@ -231,3 +231,21 @@ def test_the_database_keeps_events_and_lineage_inside_one_attempt_and_project(cl
     assert e.value.orig.sqlstate == "23503"
     assert run["id"]  # 시도가 속한 run
     _ = uuid
+
+
+def test_a_full_batch_of_events_is_stored_in_well_under_a_second_or_two(client, ctx, db, engine):
+    """저장이 느리면 한 달치 실행(이벤트 16만 건)이 수십 분이 된다. ORM 벌크 삽입은 2,000행에 16초가 걸렸고 Core는 0.2초다."""
+    import time
+
+    run = ok(request_run(client, ctx, approved_scenario(client, ctx)["id"]), 202)
+    isolate(db, ctx["pid"])
+    with sessionmaker(engine)() as s:
+        claim = queue.claim_next(s, "w-speed", 30)
+    rows = [one_event(seq) for seq in range(1, 2001)]
+    with sessionmaker(engine)() as s:
+        started = time.perf_counter()
+        queue.write_batch(s, claim, "events", rows, 30)
+        took = time.perf_counter() - started
+    assert db.scalar("SELECT count(*) FROM simulation_event WHERE attempt_id = :a", a=claim.attempt_id) == 2000
+    assert took < 3.0, f"이벤트 2,000건 저장에 {took:.1f}초"
+    assert run["id"]
