@@ -8,6 +8,8 @@
   --text-md: 1rem;
   --text-lg: 1.25rem;
   --text-xl: 1.5rem;
+  /* 공정 그래프의 노드 종류 표시 전용(SVG). 일반 화면 글자에는 쓰지 않는다. */
+  --text-2xs: 0.625rem;
   --leading: 1.5;
 
   /* 간격 (4px 단위) */
@@ -24,6 +26,15 @@
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --border-width: 1px;
+  /* 선택·편집 중인 영역 강조 테두리 */
+  --border-width-strong: 2px;
+  /* 프로젝트 구분 띠 두께 */
+  --accent-band-width: 0.25rem;
+  /* 포커스 외곽선 */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  /* 숫자(값+단위) 입력 상자 너비 */
+  --number-input-width: 10rem;
   --shadow-popover: 0 4px 16px rgb(0 0 0 / 0.16);
 
   /* 면·글자·테두리 */
@@ -33,6 +44,8 @@
   --color-text-muted: #525a68;
   --color-border: #c4cad4;
   --color-focus: #1d4ed8;
+  /* 대화상자 뒤 배경 */
+  --color-overlay: rgb(0 0 0 / 0.4);
 
   /* 강조 */
   --color-primary: #1d4ed8;

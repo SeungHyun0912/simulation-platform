@@ -47,6 +47,6 @@
   min-width: 0;
   margin: 0;
   padding: var(--space-3);
-  border: 1px solid var(--color-border);
+  border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
 }

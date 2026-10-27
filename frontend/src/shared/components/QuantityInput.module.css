@@ -20,7 +20,7 @@
 }
 
 .input {
-  width: 10rem;
+  width: var(--number-input-width);
   height: var(--control-height);
   padding: 0 var(--space-2);
   font: inherit;
@@ -32,6 +32,14 @@
 
 .input[aria-invalid="true"] {
   border-color: var(--status-danger-fg);
+}
+
+/* 비활성·읽기 전용은 Fields와 같게 보인다(디자인 시스템 규칙) */
+.input:disabled,
+.input[readonly],
+.select:disabled {
+  color: var(--color-text-muted);
+  background: var(--status-neutral-bg);
 }
 
 .select {
