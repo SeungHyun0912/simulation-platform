@@ -366,7 +366,8 @@ def patch_version(session: Session, principal: Principal, project_id: uuid.UUID,
 
 # --- 사전검증·승인 --------------------------------------------------------------------------------
 
-def _run_precheck(session: Session, version: ScenarioVersion) -> rules.PrecheckResult:
+def collect_inputs(session: Session, version: ScenarioVersion) -> tuple[list[rules.ProductInput], dict[str, dict]]:
+    """시나리오 버전이 고른 공정 버전·그래프·고정한 자산 버전을 엔진 입력 모양으로 읽는다(사전검증·실행 요청이 같이 쓴다)."""
     project_id = version.project_id
     rows = repo.products_of(session, project_id, version.id)
     versions = repo.process_versions(session, project_id, {p.process_version_id for p in rows})
@@ -385,6 +386,11 @@ def _run_precheck(session: Session, version: ScenarioVersion) -> rules.PrecheckR
     pinned = repo.assets_of(session, project_id, version.id)
     revisions = repo.asset_revisions(session, project_id, {a.asset_revision_id for a in pinned})
     engine_assets = repo.revision_engine_data(session, project_id, [revisions[a.asset_revision_id] for a in pinned])
+    return inputs, engine_assets
+
+
+def _run_precheck(session: Session, version: ScenarioVersion) -> rules.PrecheckResult:
+    inputs, engine_assets = collect_inputs(session, version)
     return rules.precheck(inputs, engine_assets, version.assumption_reason)
 
 

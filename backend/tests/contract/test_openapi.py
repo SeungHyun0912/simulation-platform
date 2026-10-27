@@ -63,6 +63,12 @@ EXPECTED = {
     ("patch", "/api/v1/projects/{project_id}/scenario-versions/{version_id}"),
     ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/validate"),
     ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/approve"),
+    # scope runs (contract 0.9.0)
+    ("get", "/api/v1/projects/{project_id}/runs"),
+    ("post", "/api/v1/projects/{project_id}/runs"),
+    ("get", "/api/v1/projects/{project_id}/runs/{run_id}"),
+    ("get", "/api/v1/projects/{project_id}/runs/{run_id}/input"),
+    ("post", "/api/v1/projects/{project_id}/runs/{run_id}/cancel"),
 }
 
 
@@ -216,8 +222,8 @@ def test_contract_status_hash_matches_snapshot():
     assert status["openapi_sha256"] == digest
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
-                                         "products-materials", "process-versions", "scenario-versions"]
-    assert status["contract_version"] == "0.8.0"
+                                         "products-materials", "process-versions", "scenario-versions", "runs"]
+    assert status["contract_version"] == "0.9.0"
 
 
 def test_process_0_5_0_additions_are_compatible_and_closed():

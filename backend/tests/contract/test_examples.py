@@ -106,6 +106,8 @@ EXPECTED = {
     "scenario-version.patch": (ScenarioVersionPatch, Single[ScenarioVersionOut], 200),
     "scenario-version.validate": (None, Single[PrecheckOut], 200),
     "error.scenario-not-runnable": (None, ERROR, 422),
+    # contract 0.9.0
+    "error.run-not-runnable": (None, ERROR, 422),
 }
 
 
@@ -256,8 +258,17 @@ def test_scenario_examples_show_draft_saving_precheck_and_the_approval_gate():
     assert precheck["runnable"] is False  # 미정·엔진 미구현이 남은 초안도 저장은 된다
     compile_rules = {i["rule_id"] for i in precheck["products"][0]["compile_issues"]}
     # 도메인 실행 검증(VAL-*)과 엔진 컴파일 코드를 번역하지 않고 그대로 담는다
-    assert {"INPUT_COUNT_UNKNOWN", "EQUIPMENT_HOLD_POLICY_REQUIRED"} <= compile_rules
+    assert "INPUT_COUNT_UNKNOWN" in compile_rules  # 0.9.0: 설비 점유는 시나리오 기본값(hold_for_operation)이라 더는 미정이 아니다
+    assert "EQUIPMENT_HOLD_POLICY_REQUIRED" not in compile_rules
     assert any(r.startswith("VAL-") for r in compile_rules)
-    assert [a["code"] for a in precheck["products"][0]["assumptions_used"]] == ["UNBOUNDED_BUFFERS"]
+    used = {a["code"] for a in precheck["products"][0]["assumptions_used"]}
+    assert used == {"UNBOUNDED_BUFFERS", "EQUIPMENT_HOLD_FOR_OPERATION"}  # 설비 점유 기본값도 사용한 가정으로 보인다
     error = _load("error.scenario-not-runnable")["response"]["body"]["error"]
     assert error["code"] == "SCENARIO_NOT_RUNNABLE" and error["details"]
+
+
+def test_run_example_shows_that_only_approved_versions_run():
+    example = _load("error.run-not-runnable")
+    assert example["request"]["headers"]["Idempotency-Key"]
+    error = example["response"]["body"]["error"]
+    assert error["code"] == "RUN_NOT_RUNNABLE" and error["details"][0]["rule_id"] == "RUN-SCN-001"

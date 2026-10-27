@@ -9,7 +9,7 @@
       "data": {
         "scenario_version_id": "00000000-0000-4000-8000-000000000042",
         "runnable": false,
-        "error_count": 9,
+        "error_count": 7,
         "warning_count": 1,
         "issues": [
           {
@@ -62,22 +62,10 @@
                 "message": "insulate: src에서 작업 한 번에 가져올 작업물 수(입력 spec의 unit_count)가 미정입니다. 가닥 수·길이로 개수를 추정하지 않습니다."
               },
               {
-                "rule_id": "EQUIPMENT_HOLD_POLICY_REQUIRED",
-                "node_key": "insulate",
-                "field_path": null,
-                "message": "insulate: 한 작업이 여러 산출을 내는데 설비 점유 정책이 미정입니다. 시나리오가 `equipment_hold`(hold_for_operation)를 명시해야 합니다(\"보빈별 인계\"는 설비 재배정 정책이 아님)."
-              },
-              {
                 "rule_id": "INPUT_COUNT_UNKNOWN",
                 "node_key": "sheath",
                 "field_path": null,
                 "message": "sheath: wait에서 작업 한 번에 가져올 작업물 수(입력 spec의 unit_count)가 미정입니다. 가닥 수·길이로 개수를 추정하지 않습니다."
-              },
-              {
-                "rule_id": "EQUIPMENT_HOLD_POLICY_REQUIRED",
-                "node_key": "sheath",
-                "field_path": null,
-                "message": "sheath: 한 작업이 여러 산출을 내는데 설비 점유 정책이 미정입니다. 시나리오가 `equipment_hold`(hold_for_operation)를 명시해야 합니다(\"보빈별 인계\"는 설비 재배정 정책이 아님)."
               }
             ],
             "assumptions_used": [
@@ -85,6 +73,16 @@
                 "code": "UNBOUNDED_BUFFERS",
                 "node_key": null,
                 "message": "용량을 모르는 대기 장소 1곳을 용량 제한 없이 대기하는 것으로 가정"
+              },
+              {
+                "code": "EQUIPMENT_HOLD_FOR_OPERATION",
+                "node_key": "insulate",
+                "message": "insulate: 모든 산출이 끝날 때까지 설비를 점유(시나리오 가정)"
+              },
+              {
+                "code": "EQUIPMENT_HOLD_FOR_OPERATION",
+                "node_key": "sheath",
+                "message": "sheath: 모든 산출이 끝날 때까지 설비를 점유(시나리오 가정)"
               }
             ],
             "waived": []

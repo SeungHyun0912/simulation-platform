@@ -23,3 +23,19 @@ class ScenarioAssumptions:
     manual_transport_minutes: Mapping[str, Fraction] = field(default_factory=dict)
     # 잔량 이월 단계(node_key)별 잔량 범위. 공정에 scope가 미정일 때만 쓰며 사용자가 승인한 가정이어야 한다.
     residual_scope: Mapping[str, str] = field(default_factory=dict)
+
+
+def assumptions_from_scenario(data: Mapping | None) -> ScenarioAssumptions:
+    """시나리오 버전이 제품별로 저장한 가정(dict)을 엔진 가정으로 바꾼다. 값은 decimal 문자열이라 정확한 분수로 읽는다.
+
+    `equipment_hold`는 사용자가 사실로 확정했다(2026-10-27: "같은 설비에 입력이 더 들어오면 안 된다" = 작업이 끝날 때까지
+    설비를 독점)이므로 시나리오가 말하지 않아도 `hold_for_operation`이 기본값이다. 다른 값(공간 용량 무제한 등)은
+    시나리오가 명시해야 한다."""
+    from simulation_platform.simulation.numbers import to_fraction
+
+    data = data or {}
+    return ScenarioAssumptions(
+        equipment_hold=data.get("equipment_hold") or HOLD_FOR_OPERATION,
+        unbounded_buffers=bool(data.get("unbounded_buffers")),
+        manual_transport_minutes={k: to_fraction(v) for k, v in (data.get("manual_transport_minutes") or {}).items()},
+        residual_scope=dict(data.get("residual_scope") or {}))

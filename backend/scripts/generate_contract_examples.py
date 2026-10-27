@@ -392,6 +392,11 @@ def main(out_dir: Path) -> None:
     r = client.post(f"{scenario_version_path}/approve", headers=match(2))
     record("error.scenario-not-runnable", "POST", f"{scenario_version_path}/approve", r, None,
            {"If-Match": '"2"'})
+    # --- 실행 요청 (contract 0.9.0): 승인되지 않은(초안) 버전은 실행할 수 없다 ---------------------------
+    run_body = {"scenario_version_id": scenario_version_path.rsplit("/", 1)[1], "seed": 42}
+    r = client.post(f"{api}/projects/{pid}/runs", json=run_body, headers={**base, "Idempotency-Key": "demo-run-1"})
+    record("error.run-not-runnable", "POST", f"{api}/projects/{pid}/runs", r, run_body,
+           {"Idempotency-Key": "demo-run-1"})
     print(f"{len(list(out_dir.glob('*.json')))} examples -> {out_dir}")
 
 

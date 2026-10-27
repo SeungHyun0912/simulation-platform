@@ -5,6 +5,13 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.9.0 — 2026-10-27 · scope `runs`(신규, BE-06a) · sha256 `229cc091…ae74` · 기준 commit `424475f`
+- **호환성: 0.8.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 5개(`POST·GET /runs`, `GET /runs/{r}`, `GET /runs/{r}/input`, `POST /runs/{r}/cancel`)와 새 오류 코드 `RUN_NOT_RUNNABLE`(422)·`IDEMPOTENCY_CONFLICT`(409)·`JOB_CANCEL_TOO_LATE`(409), 요청 헤더 `Idempotency-Key`(필수, 없으면 428).
+- 근거: CR be08 / 보드 DEC-008(사용자 '다음 단계 이어가 줘', 2026-10-27, 권장안 승인으로 해석). 상세는 04 §5.2.
+- 핵심 규칙: 승인된 시나리오 버전만 실행. 요청은 스냅샷·run·job을 한 번에 만들고 **202**로 응답하며 진행은 polling. 같은 키+같은 본문은 같은 run(200), 다른 본문은 409. 입력 스냅샷은 해시로 고정되고 DB가 수정을 막는다. 취소는 요청과 실제 취소를 구분한다. `stalled`(입력 부족)는 오류가 아니라 관측 결과다.
+- **동작 변경(스키마 불변):** 시나리오 사전검증에서 `equipment_hold`를 정하지 않으면 `EQUIPMENT_HOLD_POLICY_REQUIRED` 대신 기본값 `hold_for_operation`(작업이 끝날 때까지 설비 점유, 확정 사실)을 쓴다.
+- **프런트가 해야 할 일:** 실행 화면을 만들 때 타입 재생성. 실행 요청마다 새 `Idempotency-Key`(UUID)를 만들고 네트워크 재시도에는 같은 키를 다시 보낸다. 상태는 2~5초 간격 polling, `queued`·`running`은 진행 중, 그 밖의 값은 종료. 시각 표시는 `end_time.min`, 정확한 값은 `exact`. `termination_reason`·`result.state`는 열린 문자열 목록으로 다룬다.
+
 ## 0.8.0 — 2026-10-27 · scope `process-versions`·`scenario-versions`(확장) · sha256 `656d57a0…cd21` · 기준 commit `416a62e`
 - **호환성: 0.7.0과 호환(operation 추가·삭제 없음).** 요청은 0.7.0 요청이 그대로 유효하다. 응답에서 달라지는 것: 시나리오 도착 객체에 `weight_kg`(null 가능)가 늘고 `length_m`이 null일 수 있다.
 - **잔량 규칙 `discard`:** `residual_rule.mode` 열거에 값 하나 추가. 단계가 남긴 길이를 그 자리에서 폐기한다(P05 절연 4,000m). 상세는 04 §4.1.3.

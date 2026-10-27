@@ -33,9 +33,9 @@
 - **API(초안, project 아래):** `POST /runs`(202, `Idempotency-Key`), `GET /runs`, `GET /runs/{r}`, `GET /runs/{r}/input`, `POST /runs/{r}/cancel`, `GET /runs/{r}/events`(`event_seq` 커서, step/asset/item 필터), `GET /runs/{r}/metrics`, `GET /runs/{r}/items/{item_key}/lineage`. 권한: 실행 요청·취소 editor, 조회 viewer. 오류 코드 추가: `RUN_NOT_RUNNABLE`(422), `IDEMPOTENCY_CONFLICT`(409), `JOB_CANCEL_TOO_LATE`(409).
 
 ## 4. 쪼개서 구현(각각 PR, 앞 것이 머지된 뒤 다음)
-1. **be08a:** migration 0008(run·snapshot·job·attempt), 실행 요청·스냅샷·`input_hash`, queue claim·lease·fencing, worker 프로세스(엔진 실행, 결과는 상태·종료 사유까지), 취소. 계약 0.8.0(`POST/GET runs`, `input`, `cancel`).
-2. **be08b:** migration 0009(event·work_item·relation), 이벤트·계보 저장과 조회 API. 계약 0.9.0.
-3. **be08c:** migration 0010(metric_result), 지표 엔진과 조회 API. 계약 0.10.0.
+1. **be08a:** migration 0008(run·snapshot·job·attempt), 실행 요청·스냅샷·`input_hash`, queue claim·lease·fencing, worker 프로세스(엔진 실행, 결과는 상태·종료 사유까지), 취소. 계약 **0.9.0**(`POST/GET runs`, `input`, `cancel`; 0.8.0은 BE-09가 먼저 사용함). **2026-10-27 구현·승격 완료**(HANDOFF-backend-20261027-BE-06a-run-platform).
+2. **be08b:** migration 0009(event·work_item·relation), 이벤트·계보 저장과 조회 API. 계약 0.10.0.
+3. **be08c:** migration 0010(metric_result), 지표 엔진과 조회 API. 계약 0.11.0.
 각 단계마다 인계 문서와 FE 공지를 남긴다.
 
 ## 5. 결정이 필요한 항목(권장안)

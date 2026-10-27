@@ -681,6 +681,77 @@
         "title": "AssumptionsDto",
         "type": "object"
       },
+      "AttemptOut": {
+        "properties": {
+          "attempt_no": {
+            "title": "Attempt No",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "finished",
+              "failed",
+              "cancelled",
+              "abandoned"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "termination_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Termination Reason"
+          },
+          "worker_id": {
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_no",
+          "state",
+          "worker_id",
+          "started_at",
+          "heartbeat_at",
+          "finished_at",
+          "termination_reason"
+        ],
+        "title": "AttemptOut",
+        "type": "object"
+      },
       "CandidateDto": {
         "additionalProperties": false,
         "properties": {
@@ -809,6 +880,40 @@
           "message"
         ],
         "title": "CompileIssueOut",
+        "type": "object"
+      },
+      "CompileProblemOut": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "node_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Key"
+          },
+          "product_index": {
+            "title": "Product Index",
+            "type": "integer"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_index",
+          "rule_id",
+          "message"
+        ],
+        "title": "CompileProblemOut",
         "type": "object"
       },
       "CountMeasure": {
@@ -1441,6 +1546,41 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "FailureOut": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "step_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Key"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "FailureOut",
+        "type": "object"
+      },
       "FixedHorizonRule": {
         "additionalProperties": false,
         "description": "고정 지평선 `[0, H)`: H 시각의 사건은 처리하지 않는다(07 §11).",
@@ -1983,6 +2123,26 @@
         "title": "ListOut[ProjectOut]",
         "type": "object"
       },
+      "ListOut_RunListItem_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RunListItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[RunListItem]",
+        "type": "object"
+      },
       "ListOut_ScenarioOut_": {
         "properties": {
           "data": {
@@ -2430,6 +2590,26 @@
           "display_name"
         ],
         "title": "MeUser",
+        "type": "object"
+      },
+      "MinutesOut": {
+        "properties": {
+          "exact": {
+            "description": "정확한 값(분수 문자열, 예: 100/3)",
+            "title": "Exact",
+            "type": "string"
+          },
+          "min": {
+            "description": "가상 시간(분), 소수 6자리 decimal 문자열(표시용 반올림)",
+            "title": "Min",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min",
+          "exact"
+        ],
+        "title": "MinutesOut",
         "type": "object"
       },
       "MovementRule": {
@@ -3740,6 +3920,66 @@
         "title": "ProductPrecheck",
         "type": "object"
       },
+      "ProductResultOut": {
+        "properties": {
+          "completed_items": {
+            "description": "완제품 milestone에 도달한 작업물 수",
+            "title": "Completed Items",
+            "type": "integer"
+          },
+          "completed_length_m": {
+            "title": "Completed Length M",
+            "type": "string"
+          },
+          "discarded_length_m": {
+            "description": "잔량 폐기 길이 합계(m)",
+            "title": "Discarded Length M",
+            "type": "string"
+          },
+          "first_completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "reached_sink": {
+            "title": "Reached Sink",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_id",
+          "process_version_id",
+          "completed_items",
+          "completed_length_m",
+          "reached_sink",
+          "discarded_length_m"
+        ],
+        "title": "ProductResultOut",
+        "type": "object"
+      },
       "ProjectCreate": {
         "additionalProperties": false,
         "properties": {
@@ -4027,6 +4267,34 @@
         "title": "RequirementDto",
         "type": "object"
       },
+      "ResidualOut": {
+        "properties": {
+          "disposition": {
+            "title": "Disposition",
+            "type": "string"
+          },
+          "length_m": {
+            "title": "Length M",
+            "type": "string"
+          },
+          "pool": {
+            "title": "Pool",
+            "type": "string"
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pool",
+          "length_m",
+          "process_version_id",
+          "disposition"
+        ],
+        "title": "ResidualOut",
+        "type": "object"
+      },
       "ResidualRule": {
         "additionalProperties": false,
         "properties": {
@@ -4174,6 +4442,431 @@
           "approved_at"
         ],
         "title": "RevisionSummary",
+        "type": "object"
+      },
+      "RunCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "replicate_index": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Replicate Index",
+            "type": "integer"
+          },
+          "scenario_version_id": {
+            "description": "승인된 시나리오 버전",
+            "format": "uuid",
+            "title": "Scenario Version Id",
+            "type": "string"
+          },
+          "seed": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_version_id"
+        ],
+        "title": "RunCreate",
+        "type": "object"
+      },
+      "RunInputOut": {
+        "properties": {
+          "hash_verified": {
+            "description": "저장된 스냅샷을 다시 정규화해 해시가 맞는지 확인한 결과",
+            "title": "Hash Verified",
+            "type": "boolean"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "정규화 JSON의 SHA-256(= run.input_hash)",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Snapshot",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "schema_version",
+          "sha256",
+          "hash_verified",
+          "snapshot"
+        ],
+        "title": "RunInputOut",
+        "type": "object"
+      },
+      "RunListItem": {
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "replicate_index": {
+            "title": "Replicate Index",
+            "type": "integer"
+          },
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "scenario_version_id": {
+            "format": "uuid",
+            "title": "Scenario Version Id",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "stalled",
+              "horizon_reached",
+              "failed",
+              "limit_reached",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "scenario_version_id",
+          "status",
+          "requested_at",
+          "started_at",
+          "finished_at",
+          "seed",
+          "replicate_index",
+          "input_hash"
+        ],
+        "title": "RunListItem",
+        "type": "object"
+      },
+      "RunOut": {
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptOut"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "replicate_index": {
+            "title": "Replicate Index",
+            "type": "integer"
+          },
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "requested_by": {
+            "format": "uuid",
+            "title": "Requested By",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "공식 결과 시도의 요약. 아직 끝나지 않았거나 취소·인프라 실패면 null"
+          },
+          "scenario_version_id": {
+            "format": "uuid",
+            "title": "Scenario Version Id",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "stalled",
+              "horizon_reached",
+              "failed",
+              "limit_reached",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "termination_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Termination Reason"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "scenario_version_id",
+          "status",
+          "requested_at",
+          "started_at",
+          "finished_at",
+          "seed",
+          "replicate_index",
+          "input_hash",
+          "requested_by",
+          "engine_version",
+          "cancel_requested_at",
+          "termination_reason",
+          "attempts",
+          "result"
+        ],
+        "title": "RunOut",
+        "type": "object"
+      },
+      "RunResultOut": {
+        "properties": {
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionUseOut"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "censored": {
+            "default": false,
+            "description": "고정 지평선에서 끊긴 관측 중단",
+            "title": "Censored",
+            "type": "boolean"
+          },
+          "compile_issues": {
+            "items": {
+              "$ref": "#/components/schemas/CompileProblemOut"
+            },
+            "title": "Compile Issues",
+            "type": "array"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "event_count": {
+            "default": 0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ProductResultOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "residuals": {
+            "items": {
+              "$ref": "#/components/schemas/ResidualOut"
+            },
+            "title": "Residuals",
+            "type": "array"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "shortfalls": {
+            "items": {
+              "$ref": "#/components/schemas/ShortfallOut"
+            },
+            "title": "Shortfalls",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "stalled",
+              "horizon_reached",
+              "failed",
+              "limit_reached",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "wip_items": {
+            "default": 0,
+            "title": "Wip Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "engine_version"
+        ],
+        "title": "RunResultOut",
         "type": "object"
       },
       "ScenarioAssetDto": {
@@ -4791,6 +5484,51 @@
         "title": "Setup",
         "type": "object"
       },
+      "ShortfallOut": {
+        "description": "입력 부족: 어느 단계가 몇 개를 기다리는데 몇 개가 필요한지.",
+        "properties": {
+          "held": {
+            "title": "Held",
+            "type": "integer"
+          },
+          "needed": {
+            "title": "Needed",
+            "type": "integer"
+          },
+          "pool": {
+            "title": "Pool",
+            "type": "string"
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "process_version_id",
+          "pool",
+          "waiting",
+          "held",
+          "needed"
+        ],
+        "title": "ShortfallOut",
+        "type": "object"
+      },
       "Single_AssetOut_": {
         "properties": {
           "data": {
@@ -4909,6 +5647,30 @@
           "data"
         ],
         "title": "Single[ProjectOut]",
+        "type": "object"
+      },
+      "Single_RunInputOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunInputOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[RunInputOut]",
+        "type": "object"
+      },
+      "Single_RunOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[RunOut]",
         "type": "object"
       },
       "Single_ScenarioOut_": {
@@ -9783,6 +10545,517 @@
         "summary": "Create Process Version",
         "tags": [
           "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs": {
+      "get": {
+        "description": "실행 목록(최근 요청부터).",
+        "operationId": "list_runs_api_v1_projects__project_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "상태 필터",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "stalled",
+                    "horizon_reached",
+                    "failed",
+                    "limit_reached",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "상태 필터",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "시나리오 버전 필터",
+            "in": "query",
+            "name": "scenario_version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "시나리오 버전 필터",
+              "title": "Scenario Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_RunListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "runs"
+        ]
+      },
+      "post": {
+        "description": "실행을 요청한다(202). 승인된 시나리오 버전만, 사전검증을 통과해야 한다(422 `RUN_NOT_RUNNABLE`).\n\n요청하는 순간 입력 스냅샷·run·job이 한 트랜잭션으로 만들어지고 worker가 가져가 실행한다. `Idempotency-Key`가 필수이며\n같은 키·같은 본문이면 기존 run을 돌려주고(200), 같은 키·다른 본문이면 409 `IDEMPOTENCY_CONFLICT`다.",
+        "operationId": "create_run_api_v1_projects__project_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "실행 요청마다 클라이언트가 만든 고유 값(1~128자). 같은 키·같은 본문이면 기존 결과를 돌려준다.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "실행 요청마다 클라이언트가 만든 고유 값(1~128자). 같은 키·같은 본문이면 기존 결과를 돌려준다.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_RunOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Create Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}": {
+      "get": {
+        "description": "상태·시도·종료 사유와, 끝났다면 공식 결과 요약. 상태는 엔진 종료 상태 그대로다(`completed`와 `stalled`를 구분).",
+        "operationId": "get_run_api_v1_projects__project_id__runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_RunOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/cancel": {
+      "post": {
+        "description": "취소를 요청한다(202). 시작 전이면 바로 `cancelled`가 되고, 실행 중이면 `cancel_requested_at`만 기록되며 worker가\n확인해 멈춘 뒤 `cancelled`가 된다(요청과 실제 취소를 구분). 이미 끝났으면 409 `JOB_CANCEL_TOO_LATE`.",
+        "operationId": "cancel_run_api_v1_projects__project_id__runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_RunOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/input": {
+      "get": {
+        "description": "실행을 요청한 당시의 입력 스냅샷(불변)과 해시. 과거 실행을 현재 설정이 아니라 이 입력으로 설명해야 한다.",
+        "operationId": "get_run_input_api_v1_projects__project_id__runs__run_id__input_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_RunInputOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Run Input",
+        "tags": [
+          "runs"
         ]
       }
     },

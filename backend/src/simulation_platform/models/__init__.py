@@ -20,6 +20,7 @@ from simulation_platform.models.process import (
     StepMaterialSpec,
 )
 from simulation_platform.models.revision import AssetRevision, PortPolicy
+from simulation_platform.models.run import Job, RunAttempt, RunInputSnapshot, SimulationRun
 from simulation_platform.models.scenario import (
     Scenario,
     ScenarioAsset,
@@ -37,6 +38,7 @@ __all__ = [
     "EquipmentDetail",
     "FlowEdge",
     "FlowNode",
+    "Job",
     "MaterialDefinition",
     "Organization",
     "OrganizationMember",
@@ -49,10 +51,13 @@ __all__ = [
     "ProjectMember",
     "RequirementCandidate",
     "ResourceRequirement",
+    "RunAttempt",
+    "RunInputSnapshot",
     "Scenario",
     "ScenarioAsset",
     "ScenarioProduct",
     "ScenarioVersion",
+    "SimulationRun",
     "SpaceDetail",
     "StepMaterialSpec",
 ]
