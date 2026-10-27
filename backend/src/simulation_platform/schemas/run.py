@@ -252,3 +252,100 @@ class BottleneckSummaryOut(Out):
     findings: list[BottleneckOut]
     limitations: list[str] = Field(description="이 판정의 한계(가정·모델링하지 않은 것). 화면에 함께 보여야 한다")
     thresholds: dict[str, str] = Field(description="판정에 쓴 기준값(임시 휴리스틱)")
+
+
+class AssetUseOut(Out):
+    process_version_id: str
+    product_code: str | None = None
+    step_key: str
+    step_label: str | None = None
+
+
+class AssetTimelineBucketOut(Out):
+    start: MinutesOut
+    end: MinutesOut
+    processing_min: str
+    setup_min: str
+    reserved_min: str
+    blocked_min: str
+    idle_min: str = Field(description="구간 길이 − (처리+준비+예약+막힘). 가동 달력이 없어 24시간 기준")
+    utilization: str | None = Field(description="처리 ÷ 구간 길이(0~1). 구간 길이가 0이면 null")
+
+
+class AssetTimelineOut(Out):
+    asset_id: str
+    asset_code: str | None = None
+    asset_name: str | None = None
+    used: bool = Field(description="이 실행에서 한 번이라도 배정됐는가. false면 후보였지만 쓰이지 않아 전 구간 유휴")
+    uses: list[AssetUseOut] = Field(description="이 설비를 후보로 가진 제품·단계")
+    buckets: list[AssetTimelineBucketOut]
+
+
+class AssetStateSegmentOut(Out):
+    state: str = Field(description="IDLE·RESERVED·SETUP·PROCESSING·BLOCKED(열린 목록)")
+    start: MinutesOut
+    end: MinutesOut
+    duration_min: str
+    operation_id: str | None = None
+    step_key: str | None = None
+    process_version_id: str | None = None
+    product_code: str | None = None
+
+
+class InputChangeOut(Out):
+    path: str = Field(description="바뀐 입력의 위치(예: `products.P04.arrivals`, `assets.{asset_id}`, `seed`)")
+    base: JsonValue = None
+    other: JsonValue = None
+    note: str | None = None
+
+
+class MetricPairOut(Out):
+    metric_key: str
+    unit: str | None = None
+    base: str | None = None
+    other: str | None = None
+    delta: str | None = Field(default=None, description="비교 − 기준. 한쪽이 없으면 null")
+    ratio: str | None = Field(default=None, description="비교 ÷ 기준. 한쪽이 없거나 기준이 0이면 null")
+
+
+class ProductComparisonOut(Out):
+    product_id: str
+    product_code: str | None = None
+    product_name: str | None = None
+    base_process_version_id: str
+    other_process_version_id: str
+    metrics: list[MetricPairOut]
+    base_last_completion: MinutesOut | None = None
+    other_last_completion: MinutesOut | None = None
+
+
+class ComparisonBottlenecksOut(Out):
+    base: list[BottleneckOut]
+    other: list[BottleneckOut]
+
+
+class RunComparisonOut(Out):
+    base_run_id: uuid.UUID
+    other_run_id: uuid.UUID
+    comparable: bool = Field(description="엔진 버전이 같아 결과 차이를 입력 차이로 설명할 수 있는가")
+    warnings: list[str]
+    base_status: str
+    other_status: str
+    base_end_time: MinutesOut | None = None
+    other_end_time: MinutesOut | None = None
+    input_changes: list[InputChangeOut]
+    products: list[ProductComparisonOut] = Field(description="두 실행에 모두 있는 제품(제품 id로 맞춤)의 핵심 지표 비교")
+    bottlenecks: ComparisonBottlenecksOut = Field(description="양쪽 병목 요약 상위 5개")
+
+
+class MetricComparisonOut(Out):
+    metric_key: str
+    unit: str | None = None
+    dimensions: dict[str, str] = Field(description="공정 버전 대신 `product_id`(+`product_code`)로 맞춘 차원")
+    base_process_version_id: str | None = None
+    other_process_version_id: str | None = None
+    window: MetricWindowOut
+    base: str | None = None
+    other: str | None = None
+    delta: str | None = None
+    ratio: str | None = None

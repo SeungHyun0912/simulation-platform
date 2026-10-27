@@ -5,6 +5,12 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.13.0 — 2026-10-27 · scope `runs`(확장, BE-11·BE-12) · sha256 `ea8ee823…c704` · 기준 commit `2d14408`
+- **호환성: 0.12.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 4개(`GET /runs/{r}/asset-timeline`, `GET /runs/{r}/assets/{asset_id}/states`, `GET /runs/{r}/compare/{other}`, `GET /runs/{r}/compare/{other}/metrics`). 새 오류 코드 없음.
+- 근거: CR be11(설비 상태 타임라인)·CR be12(두 실행 비교), 사용자 '후보로 정해준 API들을 순서대로 개발해 줘'(2026-10-27). 상세는 04 §5.6·§5.7. 04 초안의 저장형 `POST /comparisons`는 두지 않고 조회형으로 시작했다.
+- 핵심 규칙: 타임라인은 공정의 **후보 설비 전체**를 보여 주며 쓰이지 않은 설비는 `used=false`(전 구간 유휴). 상태 구간은 길이 0 전이를 빼고 종료 시각까지. 비교는 저장된 입력 스냅샷·지표만 쓰고, 공정 버전이 달라도 **같은 제품이면 맞춘다**(차원의 공정 버전 → 제품 id). 엔진 버전이 다르면 `comparable=false`.
+- **프런트가 해야 할 일:** 결과·비교 화면을 만들 때 타입 재생성. 일 단위 타임라인은 크므로(6공정 한 달치 ≈ 2MB) `limit`으로 나눠 받거나 주 단위로 먼저 보여 준다. 간트는 설비를 고른 뒤 `/assets/{id}/states`를 `from_min`·`to_min`으로 잘라 받는다. 비교 화면은 `warnings`·`comparable`을 먼저 보여 주고, `input_changes`의 `path`는 열린 문자열로 다루며, 지표 차이는 `changed_only=true`로 시작한다. `ratio`·`delta`가 null이면 "비교 불가/해당 없음"으로 표시한다.
+
 ## 0.12.0 — 2026-10-27 · scope `runs`(확장, BE-10) · sha256 `f0250383…9689` · 기준 commit `6738ff7`
 - **호환성: 0.11.0과 호환(추가만, 지표 필터는 완화).** 기존 operation·필드 삭제·변경 없음. 새 operation 1개(`GET /runs/{r}/bottlenecks`). 새 오류 코드 없음. `result.products[]`에 `product_code`·`product_name`(선택) 추가, `GET /runs/{r}/metrics`에 `step_key` 필터 추가와 차원 필터 조합 허용(0.11.0에서는 둘 이상이면 422였던 요청이 이제 AND로 동작), 지표 정의의 `dimension`에 값 `step` 추가.
 - 근거: CR be10(사용자 병목 판정 기준, '후보로 정해준 API들을 순서대로 개발해 줘', 2026-10-27) + FE 요청(제품 코드·이름). 상세는 04 §5.5.
