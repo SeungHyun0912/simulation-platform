@@ -299,12 +299,24 @@ function FlowEditor({
     return () => clearTimeout(t);
     // stepJson: 같은 단계를 계속 고치면 타이머를 다시 건다
   }, [autoActive, stepNodeId, stepJson, stepHasError, editor.busy, stepState, runAutoSave]);
+  // 다른 노드를 고르면 이전 단계의 남은 변경을 저장 대기열에 넣고, 진행 중인 저장이 끝나면 하나씩 보낸다(요청을 겹치지 않는다).
   const prevStep = useRef<string | null>(null);
+  const queue = useRef<string[]>([]);
+  const busyNow = editor.busy;
   useEffect(() => {
     const prev = prevStep.current;
     prevStep.current = stepNodeId;
-    if (prev && prev !== stepNodeId && autoActive && stepState(prev) === "changed") runAutoSave(prev);
-  }, [stepNodeId, autoActive, stepState, runAutoSave]);
+    if (prev && prev !== stepNodeId && autoActive && stepState(prev) === "changed" && !queue.current.includes(prev)) queue.current.push(prev);
+    if (busyNow !== null || !autoActive) return;
+    // 진행 중인 저장이 없을 때 대기열의 다음 단계를 보낸다(한 번에 하나)
+    while (queue.current.length > 0) {
+      const next = queue.current.shift()!;
+      if (stepState(next) === "changed") {
+        runAutoSave(next);
+        break;
+      }
+    }
+  }, [stepNodeId, autoActive, busyNow, stepState, runAutoSave]);
 
   const summaryOf = (n: (typeof doc.nodes)[number]) => {
     if (n.kind === "operation") return resourcesText(stepOf(n), assetCode);

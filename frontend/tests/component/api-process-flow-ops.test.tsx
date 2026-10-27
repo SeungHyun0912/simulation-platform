@@ -196,6 +196,58 @@ describe("플로우차트: 단계 단위 저장(PATCH)", () => {
     expect(screen.getByLabelText("단계 변경 자동 저장")).not.toBeChecked();
   });
 
+  it("단계 저장 요청이 진행되는 동안 더 입력한 내용은 사라지지 않고, 다음 저장은 앞 저장이 끝난 뒤 오른 버전으로 간다(요청이 겹치지 않음)", async () => {
+    const user = userEvent.setup();
+    let release: (() => void) | null = null;
+    let inFlight = 0;
+    let peak = 0;
+    const server = createFakeServer(async (req, std) => {
+      if (req.method === "PATCH" && req.path.includes("/steps/")) {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        if (!release) await new Promise<void>((r) => (release = r)); // 첫 저장의 응답을 붙잡아 둔다
+        inFlight--;
+      }
+      return std(req);
+    });
+    open(flow5, server);
+    await ready();
+    await user.click(node(/공정 단계 가닥 B/));
+    await user.type(screen.getByLabelText("공정명"), "1");
+    await waitFor(() => expect(patches(server)).toHaveLength(1), slow); // 첫 저장이 나갔고 응답 대기 중
+    await user.type(screen.getByLabelText("공정명"), "2"); // 요청 중에 더 입력
+    release!();
+    await waitFor(() => expect(patches(server)).toHaveLength(2), slow);
+    expect(screen.getByLabelText("공정명")).toHaveValue("가닥 B12"); // 요청 중 입력이 남아 있다
+    expect(patches(server)[0]!.body.label).toBe("가닥 B1");
+    expect(patches(server)[1]!.body.label).toBe("가닥 B12");
+    expect(patches(server)[1]!.headers["If-Match"]).toBe('"3"'); // 앞 저장으로 오른 버전
+    expect(peak).toBe(1); // 동시에 두 요청이 나가지 않았다
+    await waitFor(() => expect(stepB(server).label).toBe("가닥 B12"), slow);
+  });
+
+  it("그래프 저장 중에 더 입력한 단계 내용도 사라지지 않는다", async () => {
+    const user = userEvent.setup();
+    let release: (() => void) | null = null;
+    const server = createFakeServer(async (req, std) => {
+      if (req.method === "PUT" && req.path.endsWith("/graph") && !release) await new Promise<void>((r) => (release = r));
+      return std(req);
+    });
+    open(flow5, server);
+    await ready();
+    await user.click(screen.getByLabelText("단계 변경 자동 저장")); // 자동 저장 끔: 그래프 저장 경로만 본다
+    await user.type(screen.getByLabelText("새 노드 이름"), "검사");
+    await user.click(screen.getByRole("button", { name: "노드 추가" }));
+    await user.click(screen.getByRole("button", { name: /^저장/ }));
+    await waitFor(() => expect(graphPuts(server)).toHaveLength(1), slow);
+    await user.click(node(/공정 단계 가닥 B/));
+    await user.type(screen.getByLabelText("공정명"), "!"); // 저장 응답 전에 입력
+    release!();
+    await screen.findByText(/공정을 저장했습니다/, {}, slow);
+    expect(screen.getByLabelText("공정명")).toHaveValue("가닥 B!");
+    expect(screen.getByText("● 저장하지 않은 변경이 있습니다")).toBeInTheDocument();
+  });
+
   it("초안이 아니면 자동 저장 선택이 보이지 않는다", async () => {
     open(`${flow1}?version=${processVersionId(1)}`);
     await ready(/공정 단계 압출/);
