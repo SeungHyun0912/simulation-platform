@@ -5,6 +5,12 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.14.0 — 2026-10-27 · scope `process-versions`·`scenario-versions`(확장, BE-13·BE-14) · sha256 `48dd386b…d4d5` · 기준 commit `0980ab1`
+- **호환성: 0.13.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 3개: `GET /process-graphs`(공정 일괄 조회), `GET /assets/{asset_id}/uses`(자산 사용처), `POST /scenario-versions/{v}/refresh`(시나리오 초안을 현재 승인 공정·자산 버전으로 갱신). 새 오류 코드 없음.
+- 근거: CR be13(FE 제안)·CR be14, 사용자 명시 승인(2026-10-27). 상세는 04 §5.8.
+- 핵심 규칙: 일괄 조회는 기본이 노드·간선 요약(`mode=summary`)이고 항목마다 ETag가 있다(한 번에 최대 50개). 시나리오 갱신은 **초안만**, 도착·가정·순서는 그대로 두고 공정 버전·자산 고정만 바꾸며 바뀐 내용을 `process_changes`·`asset_changes`로 돌려준다.
+- **프런트가 해야 할 일:** 타입 재생성. 프로젝트 전체 공정 화면은 제품마다 그래프를 따로 부르는 대신 `GET /process-graphs?mode=summary`(필요하면 `limit`·`cursor`)로 바꿀 수 있고, 여러 제품이 함께 쓰는 설비는 `GET /assets/{id}/uses`로 서버가 계산한 값을 쓸 수 있다. 공정을 고친 뒤 "최신 공정으로 갱신" 버튼은 `POST /scenarios/{s}/versions` → `POST /scenario-versions/{v}/refresh`(If-Match) 순서로 부르고, `process_changes`·`asset_changes`를 사용자에게 보여 준다.
+
 ## 0.13.0 — 2026-10-27 · scope `runs`(확장, BE-11·BE-12) · sha256 `ea8ee823…c704` · 기준 commit `2d14408`
 - **호환성: 0.12.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 4개(`GET /runs/{r}/asset-timeline`, `GET /runs/{r}/assets/{asset_id}/states`, `GET /runs/{r}/compare/{other}`, `GET /runs/{r}/compare/{other}/metrics`). 새 오류 코드 없음.
 - 근거: CR be11(설비 상태 타임라인)·CR be12(두 실행 비교), 사용자 '후보로 정해준 API들을 순서대로 개발해 줘'(2026-10-27). 상세는 04 §5.6·§5.7. 04 초안의 저장형 `POST /comparisons`는 두지 않고 조회형으로 시작했다.
