@@ -241,3 +241,36 @@ class PrecheckOut(Out):
     issues: list[PrecheckIssue]
     products: list[ProductPrecheck]
     engine_version: str
+
+
+# --- 최신 승인 공정으로 갱신(CR be14, 0.14.0) -------------------------------------------------------------
+
+class ScenarioRefreshIn(StrictIn):
+    product_ids: list[uuid.UUID] | None = Field(default=None, description="일부 제품만 갱신(생략하면 전부)")
+    assets: Literal["latest", "keep"] = Field(
+        default="latest", description="latest: 쓰는 자산을 현재 승인 버전으로 다시 고정하고 안 쓰는 고정은 뺀다, "
+                                      "keep: 기존 고정은 두고 새로 쓰는 자산만 채운다")
+
+
+class ProcessChangeOut(Out):
+    product_id: uuid.UUID
+    product_code: str | None = None
+    from_process_version_id: uuid.UUID
+    from_version_no: int | None = None
+    to_process_version_id: uuid.UUID
+    to_version_no: int | None = None
+    status: Literal["changed", "unchanged", "no_approved_version", "not_requested"]
+
+
+class AssetPinChangeOut(Out):
+    asset_id: uuid.UUID
+    asset_code: str | None = None
+    from_revision_id: uuid.UUID | None = None
+    to_revision_id: uuid.UUID | None = None
+    change: Literal["pinned", "updated", "removed"]
+
+
+class ScenarioRefreshOut(Out):
+    version: ScenarioVersionOut
+    process_changes: list[ProcessChangeOut]
+    asset_changes: list[AssetPinChangeOut]

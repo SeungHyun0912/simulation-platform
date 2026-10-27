@@ -362,7 +362,7 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 ## 5. 시나리오·실행 API
 
 > 아래 표에서 시나리오 6행(목록~승인)은 §5.1로, 실행 5행(요청·목록·조회·input·cancel)은 §5.2로, `events`·`lineage`
-> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로, 설비 타임라인은 §5.6, 두 실행 비교는 §5.7로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0·0.13.0)되었다. `rerun`과 저장형 `comparisons` 행은 PROPOSED이며 후속 CR에서 다룬다.
+> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로, 설비 타임라인은 §5.6, 두 실행 비교는 §5.7로, 공정 일괄 조회·자산 사용처·시나리오 갱신은 §5.8로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0·0.13.0·0.14.0)되었다. `rerun`과 저장형 `comparisons` 행은 PROPOSED이며 후속 CR에서 다룬다.
 
 | Method | Path | 의미 |
 |---|---|---|
@@ -526,6 +526,20 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 - **오류:** 같은 run끼리 422, 다른 프로젝트·없는 run 404, 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
 - **해석 원칙:** 엔진은 결정적이라(같은 입력이면 같은 결과) 차이는 입력 차이에서 온다. 공정 내용의 차이는 `GET /process-versions/{v}/diff?against=`로 본다(비교 요약에는 버전 id만). 서로 다른 제품의 생산량은 합산하지 않는다.
 - **재시뮬레이션 흐름(참고):** 공정 정보를 고치려면 승인본에서 새 초안을 만들어(`POST /products/{p}/process-versions`, `base_version_id`) 수정·승인하고, 시나리오의 새 버전에서 그 공정 버전을 고른 뒤 승인·실행한다. 두 run을 이 API로 비교한다.
+
+### 5.8 승인 확장 — BE-13·BE-14 (contract 0.14.0): 공정 일괄 조회·자산 사용처·시나리오 갱신
+근거: `docs/change-requests/CR-backend-20261027-be13-batch-process-graphs.md`, `…-be14-scenario-refresh.md`(사용자 명시 승인 2026-10-27). 필드·타입의 정본은 openapi.json. 앞의 둘은 scope `process-versions`, 갱신은 scope `scenario-versions`의 확장이다.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/process-graphs | viewer | 여러 제품의 공정 그래프. 쿼리 `basis`(approved 기본 \| latest), `product_id`(반복), `version_id`(반복, 최대 50개, 주면 basis·product_id 무시), `mode`(summary 기본 \| full), `limit`(1~50, 기본 20)·`cursor`(제품 코드 순) |
+| GET | /projects/{p}/assets/{asset_id}/uses | viewer | 그 자산을 쓰는 제품·공정 버전·노드. 쿼리 `basis`(approved 기본 \| latest) |
+| POST | /projects/{p}/scenario-versions/{v}/refresh | editor | 초안의 제품별 공정 버전을 현재 승인본으로, 자산 고정을 현재 승인 버전으로 맞춘다. If-Match 필수 |
+
+- **공정 일괄 조회(`ProcessGraphItem`):** `product_id`·`product_code`·`product_name`, `version`(기준에 맞는 공정 버전 요약, 없으면 null), `etag`(그 버전의 ETag — 그래프 PUT·단계 PATCH의 If-Match에 바로 쓴다), `mode=summary`면 `summary`(노드: `id`·`node_key`·`kind`·`label`·`asset_id`·`operation_type`·`candidate_asset_ids`, 간선: `id`·`edge_key`·`from_node_id`·`to_node_id`·`edge_kind`, `completion_node_id`), `mode=full`이면 `graph`(단건 `GET …/graph`와 같은 `GraphOut`). `basis=approved`는 현재 승인본, `latest`는 가장 최근 버전(초안일 수 있음). 이 프로젝트에 없는 `version_id`가 있으면 404, 51개 이상이면 422.
+- **자산 사용처(`AssetUseOut`):** 제품·공정 버전 요약·노드(`node_id`·`node_key`·`node_label`)와 `use`(`space`: 공간 노드의 저장 공간, `equipment_candidate`: 단계의 후보 설비, 이때 `role_key`). 제품마다 기준에 맞는 버전 하나만 본다. 실행 결과 기준의 사용처는 §5.6 타임라인의 `uses[]`다.
+- **시나리오 갱신:** 본문(선택, 닫힌 객체) `product_ids`(일부 제품만), `assets`(`latest` 기본: 쓰는 자산을 현재 승인 버전으로 다시 고정하고 안 쓰는 고정은 뺀다 \| `keep`: 기존 고정은 두고 새로 쓰는 자산만 채운다). 도착·가정·우선순위·순서는 그대로다. 응답 `ScenarioRefreshOut`: `version`(갱신된 시나리오 버전), `process_changes[]`(`product_id`·`product_code`, 이전·새 공정 버전 id와 번호, `status`: changed \| unchanged \| no_approved_version \| not_requested), `asset_changes[]`(`asset_id`·`asset_code`, 이전·새 자산 버전, `change`: pinned \| updated \| removed). ETag는 갱신된 시나리오 버전의 row_version. 승인본은 409 `VERSION_IMMUTABLE`, If-Match 없음 428·어긋남 412, viewer 403.
+- **다시 실행하는 흐름:** 공정 승인본 복제(`POST /products/{p}/process-versions`, `base_version_id`)·수정·승인 → `POST /scenarios/{s}/versions`(최근 승인 시나리오 복사) → `POST /scenario-versions/{v}/refresh` → 사전검증·승인 → `POST /runs` → `GET /runs/{a}/compare/{b}`(공정 버전·자산 용량 차이가 `input_changes`에 나온다).
 
 ## 6. LLM·위키 API
 

@@ -16,10 +16,12 @@ from simulation_platform.auth.principal import Principal, get_principal
 from simulation_platform.db import get_session
 from simulation_platform.schemas.common import ListOut, Single
 from simulation_platform.schemas.process import (
+    AssetUseOut,
     EditorStateIn,
     EditorStateOut,
     GraphIn,
     GraphOut,
+    ProcessGraphItem,
     ProcessVersionCreate,
     ProcessVersionListItem,
     ProcessVersionOut,
@@ -31,6 +33,7 @@ from simulation_platform.schemas.process import (
 )
 from simulation_platform.schemas.revision import RejectBody
 from simulation_platform.services import process as service
+from simulation_platform.services import process_batch
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["process-versions"])
 
@@ -281,3 +284,35 @@ def approve_process_version(
                                       request_id_of(request))
     set_etag(response, version.row_version)
     return {"data": version}
+
+
+@router.get("/process-graphs", response_model=ListOut[ProcessGraphItem], responses=READ_ERRORS)
+def list_process_graphs(
+    project_id: uuid.UUID,
+    basis: Annotated[Literal["approved", "latest"], Query(description="approved: 현재 승인본(기본), latest: 가장 최근 버전")] = "approved",
+    product_id: Annotated[list[uuid.UUID] | None, Query(description="이 제품들만(반복해서 보낸다)")] = None,
+    version_id: Annotated[list[uuid.UUID] | None, Query(description="이 공정 버전들(최대 50개, 주면 basis·product_id는 무시)")] = None,
+    mode: Annotated[Literal["summary", "full"], Query(description="summary: 노드·간선 요약(기본), full: 그래프 전체")] = "summary",
+    limit: Annotated[int, Query(ge=1, le=50, description="한 번에 제품 수(최대 50)")] = 20,
+    cursor: CursorQuery = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """여러 제품의 공정 그래프를 한 번에(제품 코드 순). 기준에 맞는 버전이 없는 제품은 `version: null`로 나온다.
+    항목마다 ETag가 있어 바로 편집 요청(If-Match)에 쓸 수 있다."""
+    items, page = process_batch.batch_graphs(session, principal, project_id, basis=basis, product_ids=product_id,
+                                             version_ids=version_id, mode=mode, limit=limit, cursor=cursor)
+    return {"data": items, "page": page}
+
+
+@router.get("/assets/{asset_id}/uses", response_model=ListOut[AssetUseOut], responses=READ_ERRORS)
+def list_asset_uses(
+    project_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    basis: Annotated[Literal["approved", "latest"], Query(description="제품마다 볼 공정 버전 기준")] = "approved",
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """그 자산을 쓰는 제품·공정 버전·노드: 공간 노드의 저장 공간(`space`)이거나 단계의 후보 설비(`equipment_candidate`)."""
+    items = process_batch.asset_uses(session, principal, project_id, asset_id, basis)
+    return {"data": items, "page": {"limit": len(items), "next_cursor": None}}

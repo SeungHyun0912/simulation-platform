@@ -52,7 +52,7 @@ P04 공정 입력(시드 값)으로 작업 하나에 걸리는 시간을 비교�
 | `python -m pytest -q tests/unit/test_comparison.py` | backend/ | 0 | 6 passed |
 | `$env:REQUIRE_DB="1"; python -m pytest -q tests/integration/test_api_run_timeline.py tests/integration/test_api_run_compare.py` | backend/ (PostgreSQL 16) | 0 | 9 passed |
 | `$env:REQUIRE_DB="1"; python -m pytest -q tests/contract` | backend/ | 0 | 80 passed |
-| `$env:REQUIRE_DB="1"; python -m pytest -q` (전체) | backend/ | FULL_EXIT | FULL_RESULT |
+| `$env:REQUIRE_DB="1"; python -m pytest -q` (전체) | backend/ | 0 | **687 passed**, 경고 3건(테스트 클라이언트·pydantic alias, 기능 영향 없음), 476초(0.13.0 승격 전, PR #56 브랜치에서 실행) |
 | `python -m simulation_platform.api.export_openapi` | backend/ | 0 | sha256 `ea8ee823…c704` |
 | `python tools/check_workspace.py` | 저장소 루트 | 0 | PASS(문서·구조만 검증) |
 
