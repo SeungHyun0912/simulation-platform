@@ -217,6 +217,11 @@ class _Compiler:
             node = by_key[key]
             if node["kind"] == "operation" and any(by_key[f]["kind"] == "operation" for f in succ.get(key, ())):
                 handoffs.append(key)
+            if node["kind"] == "source" and node.get("asset_id"):  # 원자재 입고 위치: 용량이 정해졌을 때만 적용한다
+                kind, value = self._space_capacity(node["asset_id"])
+                if kind == "finite":
+                    spaces[node["asset_id"]] = value
+                continue
             if node["kind"] != "buffer":
                 continue
             asset = node["asset_id"]
