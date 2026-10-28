@@ -175,3 +175,16 @@ def test_a_shared_space_is_followed_into_whichever_product_drains_it_most_slowly
     [finding] = out["findings"]
     assert [(c["process_version_id"], c["key"]) for c in finding["chain"]] == [(PV4, "st-019"), (other, "tape")]
     assert finding["root_cause"]["product_code"] == "P05"
+
+
+def test_root_causes_are_ranked_by_their_best_finding_not_by_how_many_findings_they_gather():
+    """정의 버전 3: 낮음이 많이 묶인 원인이 병목 1위 후보의 원인을 앞지르지 않는다(1위 묶음 = headline의 근본 원인)."""
+    out = run_p04({(PV4, "single-main"): {"step_equipment_wait_item_min": D(900)},
+                   (PV4, "single-pre"): {"step_equipment_wait_item_min": D(50), "step_processing_time_min": D(700)}},
+                  nodes={"st-019": {"buffer_peak_items": D(20), "buffer_item_min": D(3000)}})
+    ranks = {(f["location"].get("step_key") or f["location"]["node_key"]): f["rank"] for f in out["findings"]}
+    assert ranks == {"single-main": 1, "st-019": 2, "single-pre": 3}
+    first, second = out["root_causes"]
+    assert (first["step_key"], first["findings"], first["finding_ranks"]) == ("single-main", 1, [1])
+    assert (second["step_key"], second["findings"], second["finding_ranks"]) == ("single-pre", 2, [2, 3])
+    assert first["rank"] == 1 and "싱글 메인" in out["findings"][0]["root_cause"]["explanation"]

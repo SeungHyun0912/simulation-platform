@@ -275,7 +275,7 @@ class BottleneckOut(Out):
 
 
 class RootCauseGroupOut(Out):
-    rank: int = Field(description="묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양 순")
+    rank: int = Field(description="묶인 후보 중 가장 높은 전체 순위 순(1위 묶음 = 병목 1위 후보의 근본 원인 = headline)")
     process_version_id: str
     product_id: str | None = None
     product_code: str | None = None
