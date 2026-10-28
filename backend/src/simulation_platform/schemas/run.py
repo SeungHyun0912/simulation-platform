@@ -229,6 +229,34 @@ class BottleneckLocationOut(Out):
     node_label: str | None = None
 
 
+class RootCauseAssetOut(Out):
+    asset_id: str
+    code: str | None = None
+    name: str | None = None
+    utilization: str = Field(description="실행 전체 가동률(0~1)")
+
+
+class RootCauseOut(Out):
+    """막힘을 하류로 따라가 닿은, 막히지 않은 단계(흐름을 제한하는 곳). CR be17."""
+
+    process_version_id: str
+    product_code: str | None = None
+    step_key: str
+    step_label: str
+    utilization: str | None = Field(default=None, description="후보 설비 중 가장 높은 가동률. 후보 설비가 없으면 null")
+    assets: list[RootCauseAssetOut] = Field(description="후보 설비(가동률 높은 순, 최대 3개)")
+    input_wait_item_min: str | None = Field(
+        default=None, description="이 단계가 입력을 기다린 양. 가동률이 낮은데 크면 투입 조건이 원인일 수 있다")
+    explanation: str
+
+
+class ChainStepOut(Out):
+    kind: Literal["step", "space"]
+    process_version_id: str
+    key: str = Field(description="단계면 step_key, 공간이면 node_key")
+    label: str
+
+
 class BottleneckOut(Out):
     rank: int = Field(description="전체 순위(level → 종류 순서 → 멈춘 양)")
     rank_in_kind: int = Field(description="같은 종류 안에서의 순위(멈춘 양 큰 순)")
@@ -241,6 +269,27 @@ class BottleneckOut(Out):
     location: BottleneckLocationOut
     explanation: str = Field(description="한국어 한 줄 설명(수치 포함)")
     evidence: dict[str, JsonValue] = Field(description="근거 수치(종류마다 다름). 숫자는 decimal 문자열")
+    root_cause: RootCauseOut | None = Field(
+        default=None, description="근본 원인. 같은 곳을 다시 지나거나 더 갈 곳이 없으면 판정 불가(null)")
+    chain: list[ChainStepOut] = Field(default_factory=list, description="이 후보에서 근본 원인까지 막힘이 번진 경로(시작 포함)")
+
+
+class RootCauseGroupOut(Out):
+    rank: int = Field(description="묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양 순")
+    process_version_id: str
+    product_id: str | None = None
+    product_code: str | None = None
+    product_name: str | None = None
+    step_key: str
+    step_label: str
+    utilization: str | None = None
+    assets: list[RootCauseAssetOut]
+    input_wait_item_min: str | None = None
+    findings: int = Field(description="이 근본 원인으로 이어진 병목 후보 수(전체 후보 기준, limit와 무관)")
+    levels: dict[str, int] = Field(description="묶인 후보의 level별 수(high·medium·low)")
+    stalled_item_min: str = Field(description="묶인 후보의 멈춘 양 합(종류가 달라 겹칠 수 있어 참고값)")
+    finding_ranks: list[int] = Field(description="묶인 후보의 전체 순위")
+    explanation: str
 
 
 class BottleneckSummaryOut(Out):
@@ -252,6 +301,8 @@ class BottleneckSummaryOut(Out):
     findings: list[BottleneckOut]
     limitations: list[str] = Field(description="이 판정의 한계(가정·모델링하지 않은 것). 화면에 함께 보여야 한다")
     thresholds: dict[str, str] = Field(description="판정에 쓴 기준값(임시 휴리스틱)")
+    root_causes: list[RootCauseGroupOut] = Field(
+        default_factory=list, description="근본 원인별로 묶은 후보(CR be17). 화면의 '무엇을 고칠까' 목록")
 
 
 class AssetUseOut(Out):
@@ -349,3 +400,78 @@ class MetricComparisonOut(Out):
     other: str | None = None
     delta: str | None = None
     ratio: str | None = None
+
+
+# --- 결과 리포트 묶음(CR be17) ----------------------------------------------------------------------------
+class ReportRunOut(Out):
+    run_id: uuid.UUID
+    status: RunStatus
+    termination_reason: str | None = None
+    engine_version: str
+    seed: int
+    replicate_index: int
+    input_hash: str
+    observed: MinutesOut = Field(description="관측한 가상 시간(실행 종료 시각)")
+    quality_status: MetricQuality
+    censored: bool = False
+    event_count: int = 0
+    wip_items: int = Field(default=0, description="끝난 시점의 미완료 작업물 수(제품 합, 참고값)")
+
+
+class ReportScenarioOut(Out):
+    scenario_id: str | None = None
+    code: str | None = None
+    scenario_version_id: str | None = None
+    version_no: int | None = None
+    stopping_rule: JsonValue = None
+    assumption_reason: str | None = None
+
+
+class ReportMetricOut(Out):
+    metric_key: str
+    unit: str | None = None
+    value: str | None = Field(default=None, description="실행 전체 구간 값. 해당 없으면 null(0이 아니다)")
+
+
+class ReportProductOut(Out):
+    product_id: str
+    product_code: str | None = None
+    product_name: str | None = None
+    process_version_id: str
+    completed_items: int
+    first_completion: MinutesOut | None = None
+    last_completion: MinutesOut | None = None
+    metrics: list[ReportMetricOut] = Field(description="핵심 지표(완료·처리량·리드타임·재공품·폐기). 제품끼리 합산하지 않는다")
+    shortfalls: list[ShortfallOut] = Field(description="끝난 시점의 입력 부족(어느 단계가 무엇을 기다리는지)")
+
+
+class ReportAssetOut(Out):
+    asset_id: str
+    code: str | None = None
+    name: str | None = None
+    utilization: str | None = None
+    processing_time_min: str | None = None
+
+
+class ReportSpaceOut(Out):
+    node_key: str
+    node_label: str | None = None
+    buffer_peak_items: str | None = None
+    buffer_item_min: str | None = None
+    buffer_wait_avg_min: str | None = None
+    space_wait_item_min: str | None = Field(default=None, description="공간이 차서 들어가지 못하고 기다린 양")
+
+
+class RunReportOut(Out):
+    """한 실행의 결과를 화면·보고서 한 장으로 묶는다. 저장된 결과·지표·스냅샷만 읽어 같은 run이면 같은 내용이다(LLM 없음)."""
+
+    definition_version: str
+    run: ReportRunOut
+    scenario: ReportScenarioOut
+    assumptions: list[AssumptionUseOut]
+    products: list[ReportProductOut] = Field(description="실행 입력 순서")
+    bottlenecks: BottleneckSummaryOut = Field(description="병목 요약 상위 10개와 근본 원인")
+    top_assets: list[ReportAssetOut] = Field(description="가동률 상위 설비(최대 10개)")
+    top_spaces: list[ReportSpaceOut] = Field(description="적체(작업물·분) 상위 대기 공간(최대 10개)")
+    summary: list[str] = Field(description="규칙으로 만든 한국어 요약 문장(순서 고정)")
+    limitations: list[str]

@@ -7,14 +7,19 @@
 
 멈춘 양은 작업물·분(item-min)으로 잰다. 종류가 다르면 겹치는 시간이 있어(대기 공간에 쌓인 시간에 설비 대기가 들어 있음)
 합산하지 않고 종류 안에서 비율(`share`)로 level을 정한다. 기준값은 임시 휴리스틱이며 응답의 `thresholds`로 드러낸다.
+
+원인 추적(CR be17, 2026-10-28): 하류 설비가 느리면 막힘이 상류로 번져 상류가 "멈춘 곳" 1위가 된다. 그래서 후보마다 막힘을 하류로
+따라가 **막히지 않은 단계**(흐름을 제한하는 근본 원인)를 찾아 `root_cause`·`chain`으로 붙이고, 근본 원인별로 묶는다(규칙, LLM 없음).
 """
 
 from collections.abc import Mapping
 from decimal import Decimal
 
-DEFINITION_VERSION = "1"
+DEFINITION_VERSION = "2"  # 2: 원인 추적(root_cause·chain·root_causes) 추가
+MAX_TRACE = 20
 THRESHOLDS = {"pileup_min_peak_items": 3, "level_high_share": Decimal("0.30"), "level_medium_share": Decimal("0.10"),
-              "min_stalled_item_min": Decimal(60)}  # 멈춘 양이 작업물·1시간 미만이면 비율이 커도 low
+              "min_stalled_item_min": Decimal(60),
+              "root_low_utilization": Decimal("0.5")}  # 멈춘 양이 작업물·1시간 미만이면 비율이 커도 low
 KINDS = ("space_full", "equipment_busy", "queue_pileup")
 LEVEL_ORDER = {"high": 0, "medium": 1, "low": 2}
 ZERO = Decimal(0)
@@ -128,9 +133,119 @@ def analyze(*, steps: Mapping[tuple[str, str], Mapping], nodes: Mapping[str, Map
                                  "transport_related": bool(carriers), "carriers": carriers}})
 
     findings = _rank(raw)
+    for finding in findings:
+        chain, root = _trace(_start(finding), steps, graphs, assets, asset_names)
+        finding["chain"], finding["root_cause"] = chain, root
+        if root is not None:
+            root["explanation"] = _root_text(chain, root)
+    roots = _root_causes(findings)
     return {"findings": findings, "thresholds": {k: str(v) for k, v in THRESHOLDS.items()},
             "limitations": _limitations(assumption_codes, findings, nodes),
-            "headline": _headline(findings)}
+            "headline": _headline(findings), "root_causes": roots}
+
+
+# --- 원인 추적 ------------------------------------------------------------------------------------------
+def _start(finding: dict) -> tuple[str, str | None, str]:
+    loc = finding["location"]
+    if "step_key" in loc:  # 설비 대기·출력 막힘: 그 단계에서
+        return "step", loc["process_version_id"], loc["step_key"]
+    return "space", None, loc["node_key"]  # 공간 대기·적체: 그 공간에서
+
+
+def _blocked(steps: Mapping, pv: str, key: str) -> bool:
+    return _num(steps.get((pv, key), {}), "step_blocked_item_min") >= THRESHOLDS["min_stalled_item_min"]
+
+
+def _trace(start, steps, graphs, assets, asset_names) -> tuple[list[dict], dict | None]:
+    """막힌 곳에서 하류로 따라간다. 막힌 단계 → 다음 위치, 공간 → 꺼내 가는 단계 중 더 막힌(없으면 더 오래 일한) 단계.
+    공간은 여러 제품이 함께 쓰므로 그 공간을 가진 모든 공정의 소비 단계에서 고른다(같은 값이면 실행 입력 순서).
+    막히지 않은 단계에 닿으면 근본 원인이다. 같은 곳을 다시 지나거나 너무 길면 판정 불가(None)."""
+    chain: list[dict] = []
+    seen: set[tuple] = set()
+    kind, pv, key = start
+    for _ in range(MAX_TRACE):
+        info = _node(graphs, pv, key)
+        pv = info["process_version_id"]
+        mark = (kind, pv if kind == "step" else None, key)  # 공간은 제품과 무관하게 하나
+        if mark in seen or pv not in graphs:
+            return chain, None
+        seen.add(mark)
+        chain.append({"kind": kind, "process_version_id": pv, "key": key, "label": info["label"]})
+        nodes = graphs[pv]["nodes"]
+        if kind == "step":
+            if not _blocked(steps, pv, key):
+                return chain, _root(pv, key, info, graphs, assets, asset_names, steps)
+            following = [n for n in info["next"] if (nodes.get(n) or {}).get("kind") in ("operation", "buffer")]
+            if not following:
+                return chain, None
+            key = following[0]
+            kind = "step" if nodes[key]["kind"] == "operation" else "space"
+        else:
+            consumers = [(v, n) for v, graph in graphs.items() if key in graph["nodes"]
+                         for n in graph["nodes"][key]["next"] if (graph["nodes"].get(n) or {}).get("kind") == "operation"]
+            if not consumers:
+                return chain, None
+            pv, key = max(consumers, key=lambda vc: (_num(steps.get(vc, {}), "step_blocked_item_min"),
+                                                     _num(steps.get(vc, {}), "step_processing_time_min")))
+            kind = "step"
+    return chain, None
+
+
+def _root(pv: str, key: str, info: dict, graphs, assets, asset_names, steps) -> dict:
+    used = sorted(({"asset_id": a, **asset_names.get(a, {}), "utilization": _num(assets.get(a, {}), "utilization")}
+                   for a in info["assets"] if a in assets), key=lambda a: -a["utilization"])
+    product = (graphs.get(pv) or {}).get("product") or {}
+    return {"process_version_id": pv, "product_code": product.get("code"), "step_key": key, "step_label": info["label"],
+            "utilization": used[0]["utilization"] if used else None, "assets": used[:3],
+            "input_wait_item_min": steps.get((pv, key), {}).get("step_input_wait_item_min")}
+
+
+def _root_note(root: dict) -> str:
+    """가동률이 낮은 근본 원인은 설비 속도보다 투입 조건(묶음 투입·입력 대기)이 흐름을 막았을 수 있다."""
+    if root["utilization"] is None or root["utilization"] >= THRESHOLDS["root_low_utilization"]:
+        return ""
+    wait = root.get("input_wait_item_min")
+    detail = f"(입력 대기 {_fmt(wait)}작업물·분)" if wait else ""
+    return f" 다만 가동률이 낮아 설비 속도보다 투입 조건{detail}을 먼저 확인하세요."
+
+
+def _root_name(root: dict) -> str:
+    who = f"{root['product_code'] or '공정 ' + root['process_version_id'][:8]} · {root['step_label']}"
+    if root["assets"]:
+        best = root["assets"][0]
+        who += f"({best.get('code', best['asset_id'][:8])} 가동률 {_fmt(best['utilization'] * 100)}%)"
+    return who
+
+
+def _root_text(chain: list[dict], root: dict) -> str:
+    if len(chain) == 1:
+        return f"이 단계가 흐름을 제한합니다: {_root_name(root)}.{_root_note(root)}"
+    path = " → ".join(c["label"] for c in chain)
+    return f"막힘이 {path} 순서로 번졌고, 근본 원인은 {_root_name(root)}입니다.{_root_note(root)}"
+
+
+def _root_causes(findings: list[dict]) -> list[dict]:
+    """근본 원인별로 후보를 묶는다. 순위: 묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양(종류가 달라 참고값)."""
+    groups: dict[tuple, dict] = {}
+    for finding in findings:
+        root = finding["root_cause"]
+        if root is None:
+            continue
+        group = groups.setdefault((root["process_version_id"], root["step_key"]), {
+            **{k: root[k] for k in ("process_version_id", "product_code", "step_key", "step_label", "utilization", "assets",
+                                    "input_wait_item_min")},
+            "findings": 0, "levels": {"high": 0, "medium": 0, "low": 0}, "stalled_item_min": ZERO, "finding_ranks": []})
+        group["findings"] += 1
+        group["levels"][finding["level"]] += 1
+        group["stalled_item_min"] += finding["stalled"]
+        group["finding_ranks"].append(finding["rank"])
+    ordered = sorted(groups.values(), key=lambda g: (
+        min(LEVEL_ORDER[lv] for lv, n in g["levels"].items() if n), -g["findings"], -g["stalled_item_min"]))
+    for index, group in enumerate(ordered, start=1):
+        group["rank"] = index
+        group["explanation"] = (f"{_root_name(group)}: 병목 후보 {group['findings']}건(높음 {group['levels']['high']}·"
+                                f"중간 {group['levels']['medium']}·낮음 {group['levels']['low']})의 근본 원인입니다.{_root_note(group)}")
+    return ordered
 
 
 def _rank(raw: list[dict]) -> list[dict]:
@@ -171,4 +286,8 @@ def _headline(findings: list[dict]) -> str:
     if not findings:
         return "병목으로 판단할 정체가 관측되지 않았습니다."
     top = findings[0]
-    return f"가장 큰 정체: {top['explanation']}"
+    text = f"가장 큰 정체: {top['explanation']}"
+    root = top.get("root_cause")
+    if root is not None and len(top.get("chain") or []) > 1:
+        text += f" 근본 원인: {_root_name(root)}."
+    return text

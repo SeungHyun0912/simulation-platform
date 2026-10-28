@@ -86,6 +86,8 @@ EXPECTED = {
     ("get", "/api/v1/projects/{project_id}/process-graphs"),
     ("get", "/api/v1/projects/{project_id}/assets/{asset_id}/uses"),
     ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/refresh"),
+    # scope runs 확장 (contract 0.16.0)
+    ("get", "/api/v1/projects/{project_id}/runs/{run_id}/report"),
 }
 
 
@@ -240,7 +242,7 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials", "process-versions", "scenario-versions", "runs"]
-    assert status["contract_version"] == "0.15.2"
+    assert status["contract_version"] == "0.16.0"
 
 
 def test_process_0_5_0_additions_are_compatible_and_closed():

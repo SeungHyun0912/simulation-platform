@@ -32,7 +32,7 @@ def test_bottlenecks_need_an_official_result(client, ctx):
 def test_an_item_waiting_for_the_only_machine_is_reported_as_an_equipment_busy_bottleneck(client, ctx, run):
     summary = ok(client.get(f"{ctx['base']}/runs/{run['id']}/bottlenecks", headers=ctx["viewer"]))
     assert summary["run_id"] == run["id"] and summary["quality_status"] == "complete"
-    assert summary["observed"]["exact"] == "400/3" and summary["definition_version"] == "1"
+    assert summary["observed"]["exact"] == "400/3" and summary["definition_version"] == "2"
     by_kind = {f["kind"]: f for f in summary["findings"]}
     finding = by_kind["equipment_busy"]
     # 둘째 작업물은 100/3분, 셋째(0분에 확보)는 200/3분, 넷째(100/3분에 공간에 들어와 확보)는 200/3분을 설비를 기다린다
@@ -54,6 +54,13 @@ def test_an_item_waiting_for_the_only_machine_is_reported_as_an_equipment_busy_b
     assert Decimal(space["stalled_item_min"]) == Decimal("33.333333") and space["level"] == "low"
     assert any("대수를 모델링하지 않" in note for note in summary["limitations"])  # 운반 자원 한계는 항상 알린다
     assert summary["thresholds"]["pileup_min_peak_items"] == "3"
+    # CR be17: 설비가 막히지 않았으니 설비 대기는 자기 자신이, 공간 대기는 그 공간을 비우는 가공 단계가 근본 원인이다
+    assert [c["key"] for c in finding["chain"]] == ["work"] and finding["root_cause"]["step_key"] == "work"
+    assert [(c["kind"], c["key"]) for c in space["chain"]] == [("space", "wait"), ("step", "work")]
+    assert space["root_cause"]["assets"][0]["asset_id"] == ctx["equipment"]
+    [root] = summary["root_causes"]
+    assert (root["rank"], root["step_key"], root["findings"], root["product_id"]) == (1, "work", 2, ctx["product"])
+    assert sorted(root["finding_ranks"]) == [1, 2] and Decimal(root["utilization"]) == 1
 
 
 def test_the_bottleneck_limit_and_permissions(client, ctx, run, world):

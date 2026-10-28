@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from simulation_platform.auth.principal import Principal
 from simulation_platform.domain import bottleneck as bottleneck_rules
 from simulation_platform.domain import comparison as compare_rules
+from simulation_platform.domain import report as report_rules
 from simulation_platform.domain import run as rules
 from simulation_platform.domain.errors import (
     DomainError,
@@ -67,12 +68,23 @@ from simulation_platform.schemas.run import (
     MetricWindowOut,
     MinutesOut,
     ProductComparisonOut,
+    ReportAssetOut,
+    ReportMetricOut,
+    ReportProductOut,
+    ReportRunOut,
+    ReportScenarioOut,
+    ReportSpaceOut,
+    RootCauseAssetOut,
+    RootCauseGroupOut,
+    RootCauseOut,
     RunComparisonOut,
     RunCreate,
     RunInputOut,
     RunListItem,
     RunOut,
+    RunReportOut,
     RunResultOut,
+    ShortfallOut,
     WorkItemOut,
 )
 from simulation_platform.services.projects import require_project, require_write
@@ -441,10 +453,8 @@ def _jsonable(value):
     return value
 
 
-def get_bottlenecks(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
-                    limit: int) -> BottleneckSummaryOut:
-    """공식 결과의 전체 구간 지표로 병목(멈춰 있는 곳)을 종류·위치·근거와 함께 순위를 매겨 돌려준다."""
-    require_project(session, principal, project_id)
+def _analysis(session: Session, project_id: uuid.UUID, run_id: uuid.UUID, product_metrics: tuple[str, ...] = ()) -> dict:
+    """공식 결과의 전체 구간 지표를 단계·공간·설비·제품별로 모으고 병목 규칙을 돌린다(병목 요약·리포트 공용)."""
     attempt_id = _official_attempt(session, project_id, run_id)
     run = _reload(session, project_id, run_id)
     attempt = next(a for a in repo.attempts_of(session, project_id, run_id) if a.id == attempt_id)
@@ -455,37 +465,82 @@ def get_bottlenecks(session: Session, principal: Principal, project_id: uuid.UUI
     steps: dict[tuple[str, str], dict] = {}
     nodes: dict[str, dict] = {}
     assets: dict[str, dict] = {}
-    for row in repo.run_window_metrics(session, project_id, attempt_id, _BOTTLENECK_METRICS):
+    per_product: dict[str, dict] = {}  # 공정 버전 → 지표 key → 지표 행(단위 포함)
+    for row in repo.run_window_metrics(session, project_id, attempt_id, _BOTTLENECK_METRICS + product_metrics):
         dims = row.dimensions
-        target = (steps.setdefault((dims["process_version_id"], dims["step_key"]), {}) if "step_key" in dims
-                  else nodes.setdefault(dims["node_key"], {}) if "node_key" in dims
-                  else assets.setdefault(dims["asset_key"], {}) if "asset_key" in dims else None)
-        if target is not None:
-            target[row.metric_key] = row.value
-    asset_ids = {uuid.UUID(a) for info in graphs.values() for n in info["nodes"].values() for a in n["assets"]}
+        if "step_key" in dims:
+            steps.setdefault((dims["process_version_id"], dims["step_key"]), {})[row.metric_key] = row.value
+        elif "node_key" in dims:
+            nodes.setdefault(dims["node_key"], {})[row.metric_key] = row.value
+        elif "asset_key" in dims:
+            assets.setdefault(dims["asset_key"], {})[row.metric_key] = row.value
+        elif set(dims) == {"process_version_id"}:
+            per_product.setdefault(dims["process_version_id"], {})[row.metric_key] = row
+    asset_ids = set()
+    for key in {a for info in graphs.values() for n in info["nodes"].values() for a in n["assets"]} | set(assets):
+        try:
+            asset_ids.add(uuid.UUID(key))
+        except ValueError:
+            continue
     asset_names = {str(a.id): {"code": a.code, "name": a.name} for a in session.scalars(select(Asset).where(
         Asset.project_id == project_id, Asset.id.in_(asset_ids)))} if asset_ids else {}
     observed = Decimal(result["end_time"]["min"]) if result.get("end_time") else Decimal(0)
     codes = {a["code"] for a in result.get("assumptions", [])}
     found = bottleneck_rules.analyze(steps=steps, nodes=nodes, assets=assets, graphs=graphs, asset_names=asset_names,
                                      observed_min=observed, assumption_codes=codes)
+    state = result.get("state", run.status)
+    return {"run": run, "result": result, "snapshot": snapshot, "graphs": graphs, "nodes": nodes, "assets": assets,
+            "asset_names": asset_names, "per_product": per_product, "found": found, "observed": observed,
+            "quality": {"completed": "complete", "horizon_reached": "censored"}.get(state, "incomplete")}
+
+
+def _root_assets(used: list[dict]) -> list[RootCauseAssetOut]:
+    return [RootCauseAssetOut(asset_id=a["asset_id"], code=a.get("code"), name=a.get("name"),
+                              utilization=f"{a['utilization']:.6f}") for a in used]
+
+
+def _product_of(graphs: dict, pv: str) -> dict:
+    meta = (graphs.get(pv) or {}).get("product") or {}
+    return {"product_id": meta.get("id"), "product_code": meta.get("code"), "product_name": meta.get("name")}
+
+
+def _summary_out(data: dict, limit: int) -> BottleneckSummaryOut:
+    graphs, found, result, run = data["graphs"], data["found"], data["result"], data["run"]
     out = []
     for f in found["findings"][:limit]:
         loc = dict(f["location"])
         pv = loc.get("process_version_id")
         if pv in graphs:
-            loc.update(product_id=graphs[pv]["product"]["id"], product_code=graphs[pv]["product"]["code"],
-                       product_name=graphs[pv]["product"]["name"])
+            loc.update(_product_of(graphs, pv))
+        root = f["root_cause"]
         out.append(BottleneckOut(
             rank=f["rank"], rank_in_kind=f["rank_in_kind"], kind=f["kind"], level=f["level"],
             stalled_item_min=f"{f['stalled']:.6f}", share=f"{f['share']:.6f}", location=BottleneckLocationOut(**loc),
-            explanation=f["explanation"], evidence=_jsonable(f["evidence"])))
-    state = result.get("state", run.status)
-    quality = {"completed": "complete", "horizon_reached": "censored"}.get(state, "incomplete")
+            explanation=f["explanation"], evidence=_jsonable(f["evidence"]),
+            root_cause=None if root is None else RootCauseOut(
+                process_version_id=root["process_version_id"], product_code=root["product_code"],
+                step_key=root["step_key"], step_label=root["step_label"], utilization=_num_out(root["utilization"]),
+                assets=_root_assets(root["assets"]), input_wait_item_min=_num_out(root["input_wait_item_min"]),
+                explanation=root["explanation"]),
+            chain=f["chain"]))
+    roots = [RootCauseGroupOut(
+        rank=g["rank"], process_version_id=g["process_version_id"], **_product_of(graphs, g["process_version_id"]),
+        step_key=g["step_key"], step_label=g["step_label"], utilization=_num_out(g["utilization"]),
+        assets=_root_assets(g["assets"]), input_wait_item_min=_num_out(g["input_wait_item_min"]), findings=g["findings"], levels=g["levels"],
+        stalled_item_min=f"{g['stalled_item_min']:.6f}", finding_ranks=g["finding_ranks"], explanation=g["explanation"])
+        for g in found["root_causes"]]
     return BottleneckSummaryOut(
-        run_id=run.id, quality_status=quality, observed=MinutesOut(**result["end_time"]) if result.get("end_time")
+        run_id=run.id, quality_status=data["quality"], observed=MinutesOut(**result["end_time"]) if result.get("end_time")
         else MinutesOut(min="0.000000", exact="0"), definition_version=bottleneck_rules.DEFINITION_VERSION,
-        headline=found["headline"], findings=out, limitations=found["limitations"], thresholds=found["thresholds"])
+        headline=found["headline"], findings=out, limitations=found["limitations"], thresholds=found["thresholds"],
+        root_causes=roots)
+
+
+def get_bottlenecks(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID,
+                    limit: int) -> BottleneckSummaryOut:
+    """공식 결과의 전체 구간 지표로 병목(멈춰 있는 곳)을 종류·위치·근거와 함께 순위를 매기고 근본 원인까지 따라간다."""
+    require_project(session, principal, project_id)
+    return _summary_out(_analysis(session, project_id, run_id), limit)
 
 
 # --- 설비 상태 타임라인(CR be11) ---------------------------------------------------------------------------
@@ -747,3 +802,69 @@ def compare_metrics(session: Session, principal: Principal, project_id: uuid.UUI
     page = out[offset:offset + limit]
     next_cursor = encode_cursor(tag, [offset + limit]) if offset + limit < len(out) else None
     return page, Page(limit=limit, next_cursor=next_cursor)
+
+
+# --- 결과 리포트 묶음(CR be17) ----------------------------------------------------------------------------
+_REPORT_PRODUCT_METRICS = ("arrived_items", "completed_length_m", "throughput_items_per_day", "lead_time_avg_min",
+                           "lead_time_max_min", "wip_items", "discarded_length_m")
+REPORT_TOP = 10
+
+
+def run_report(session: Session, principal: Principal, project_id: uuid.UUID, run_id: uuid.UUID) -> RunReportOut:
+    """한 실행의 결과·병목·근본 원인·요약 문장을 한 번에 돌려준다(저장된 값만 읽음, 같은 run이면 같은 리포트)."""
+    require_project(session, principal, project_id)
+    data = _analysis(session, project_id, run_id, _REPORT_PRODUCT_METRICS)
+    run, result, snapshot, graphs = data["run"], data["result"], data["snapshot"], data["graphs"]
+    bottlenecks = _summary_out(data, REPORT_TOP)
+    done = {p.get("process_version_id"): p for p in result.get("products", [])}
+    products, for_text = [], []
+    for product in snapshot["products"]:
+        pv = product["process_version"]["id"]
+        meta, rows, finished = _product_of(graphs, pv), data["per_product"].get(pv, {}), done.get(pv, {})
+        shortfalls = [ShortfallOut(**s) for s in result.get("shortfalls", []) if s.get("process_version_id") == pv]
+        products.append(ReportProductOut(
+            **meta, process_version_id=pv, completed_items=finished.get("completed_items", 0),
+            first_completion=finished.get("first_completion"), last_completion=finished.get("last_completion"),
+            metrics=[ReportMetricOut(metric_key=k, unit=rows[k].unit if k in rows else None,
+                                     value=_num_out(rows[k].value) if k in rows else None) for k in _REPORT_PRODUCT_METRICS],
+            shortfalls=shortfalls))
+        value = {k: (rows[k].value if k in rows else None) for k in _REPORT_PRODUCT_METRICS}
+        last = finished.get("last_completion")
+        for_text.append({"code": meta["product_code"] or pv[:8], "completed_items": finished.get("completed_items", 0),
+                         "throughput": value["throughput_items_per_day"], "lead_avg_min": value["lead_time_avg_min"],
+                         "wip_items": value["wip_items"], "last_completion_min": Decimal(last["min"]) if last else None,
+                         "shortfalls": [s.model_dump() for s in shortfalls]})
+    names = data["asset_names"]
+    ranked_assets = sorted(((key, m) for key, m in data["assets"].items() if m.get("utilization") is not None),
+                           key=lambda kv: (-kv[1]["utilization"], names.get(kv[0], {}).get("code") or kv[0]))[:REPORT_TOP]
+    top_assets = [ReportAssetOut(asset_id=key, code=names.get(key, {}).get("code"), name=names.get(key, {}).get("name"),
+                                 utilization=_num_out(m.get("utilization")),
+                                 processing_time_min=_num_out(m.get("processing_time_min"))) for key, m in ranked_assets]
+    labels = {k: n["label"] for info in graphs.values() for k, n in info["nodes"].items() if n["kind"] == "buffer"}
+    ranked_spaces = sorted(((key, m) for key, m in data["nodes"].items() if (m.get("buffer_item_min") or 0) > 0),
+                           key=lambda kv: (-kv[1]["buffer_item_min"], kv[0]))[:REPORT_TOP]
+    top_spaces = [ReportSpaceOut(node_key=key, node_label=labels.get(key), buffer_peak_items=_num_out(m.get("buffer_peak_items")),
+                                 buffer_item_min=_num_out(m.get("buffer_item_min")),
+                                 buffer_wait_avg_min=_num_out(m.get("buffer_wait_avg_min")),
+                                 space_wait_item_min=_num_out(m.get("space_wait_item_min"))) for key, m in ranked_spaces]
+    top = ranked_assets[0] if ranked_assets else None
+    summary = report_rules.summary_lines(
+        status=run.status, termination_reason=run.termination_reason, observed_min=data["observed"],
+        engine_version=run.engine_version, products=for_text, headline=bottlenecks.headline,
+        root_causes=[{"rank": g.rank, "explanation": g.explanation} for g in bottlenecks.root_causes],
+        top_asset=None if top is None else {"code": names.get(top[0], {}).get("code") or top[0][:8],
+                                            "utilization": top[1]["utilization"]})
+    scenario = snapshot.get("scenario") or {}
+    return RunReportOut(
+        definition_version=report_rules.DEFINITION_VERSION,
+        run=ReportRunOut(run_id=run.id, status=run.status, termination_reason=run.termination_reason,
+                         engine_version=run.engine_version, seed=run.seed, replicate_index=run.replicate_index,
+                         input_hash=run.input_hash, observed=bottlenecks.observed, quality_status=data["quality"],
+                         censored=bool(result.get("censored")), event_count=result.get("event_count", 0),
+                         wip_items=result.get("wip_items", 0)),
+        scenario=ReportScenarioOut(**{k: scenario.get(k) for k in ("scenario_id", "code", "scenario_version_id",
+                                                                    "version_no", "stopping_rule", "assumption_reason")}),
+        assumptions=result.get("assumptions", []), products=products, bottlenecks=bottlenecks,
+        top_assets=top_assets, top_spaces=top_spaces, summary=summary,
+        limitations=report_rules.limitations(quality_status=data["quality"], status=run.status,
+                                             bottleneck_limitations=bottlenecks.limitations))

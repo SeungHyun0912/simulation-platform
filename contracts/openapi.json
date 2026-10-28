@@ -1116,6 +1116,14 @@
       },
       "BottleneckOut": {
         "properties": {
+          "chain": {
+            "description": "이 후보에서 근본 원인까지 막힘이 번진 경로(시작 포함)",
+            "items": {
+              "$ref": "#/components/schemas/ChainStepOut"
+            },
+            "title": "Chain",
+            "type": "array"
+          },
           "evidence": {
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"
@@ -1161,6 +1169,17 @@
             "description": "같은 종류 안에서의 순위(멈춘 양 큰 순)",
             "title": "Rank In Kind",
             "type": "integer"
+          },
+          "root_cause": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RootCauseOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "근본 원인. 같은 곳을 다시 지나거나 더 갈 곳이 없으면 판정 불가(null)"
           },
           "share": {
             "description": "같은 종류의 멈춘 양 합계 대비 비율(0~1)",
@@ -1224,6 +1243,14 @@
             ],
             "title": "Quality Status",
             "type": "string"
+          },
+          "root_causes": {
+            "description": "근본 원인별로 묶은 후보(CR be17). 화면의 '무엇을 고칠까' 목록",
+            "items": {
+              "$ref": "#/components/schemas/RootCauseGroupOut"
+            },
+            "title": "Root Causes",
+            "type": "array"
           },
           "run_id": {
             "format": "uuid",
@@ -1339,6 +1366,39 @@
           "mode"
         ],
         "title": "Capacity",
+        "type": "object"
+      },
+      "ChainStepOut": {
+        "properties": {
+          "key": {
+            "description": "단계면 step_key, 공간이면 node_key",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "step",
+              "space"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "process_version_id",
+          "key",
+          "label"
+        ],
+        "title": "ChainStepOut",
         "type": "object"
       },
       "ComparisonBottlenecksOut": {
@@ -5890,6 +5950,406 @@
         "title": "ReleaseWhenAccepts",
         "type": "object"
       },
+      "ReportAssetOut": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "processing_time_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Time Min"
+          },
+          "utilization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utilization"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "ReportAssetOut",
+        "type": "object"
+      },
+      "ReportMetricOut": {
+        "properties": {
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "실행 전체 구간 값. 해당 없으면 null(0이 아니다)",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric_key"
+        ],
+        "title": "ReportMetricOut",
+        "type": "object"
+      },
+      "ReportProductOut": {
+        "properties": {
+          "completed_items": {
+            "title": "Completed Items",
+            "type": "integer"
+          },
+          "first_completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinutesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "description": "핵심 지표(완료·처리량·리드타임·재공품·폐기). 제품끼리 합산하지 않는다",
+            "items": {
+              "$ref": "#/components/schemas/ReportMetricOut"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "shortfalls": {
+            "description": "끝난 시점의 입력 부족(어느 단계가 무엇을 기다리는지)",
+            "items": {
+              "$ref": "#/components/schemas/ShortfallOut"
+            },
+            "title": "Shortfalls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_id",
+          "process_version_id",
+          "completed_items",
+          "metrics",
+          "shortfalls"
+        ],
+        "title": "ReportProductOut",
+        "type": "object"
+      },
+      "ReportRunOut": {
+        "properties": {
+          "censored": {
+            "default": false,
+            "title": "Censored",
+            "type": "boolean"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "event_count": {
+            "default": 0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "observed": {
+            "$ref": "#/components/schemas/MinutesOut",
+            "description": "관측한 가상 시간(실행 종료 시각)"
+          },
+          "quality_status": {
+            "enum": [
+              "complete",
+              "censored",
+              "incomplete"
+            ],
+            "title": "Quality Status",
+            "type": "string"
+          },
+          "replicate_index": {
+            "title": "Replicate Index",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "stalled",
+              "horizon_reached",
+              "failed",
+              "limit_reached",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "termination_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Termination Reason"
+          },
+          "wip_items": {
+            "default": 0,
+            "description": "끝난 시점의 미완료 작업물 수(제품 합, 참고값)",
+            "title": "Wip Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "engine_version",
+          "seed",
+          "replicate_index",
+          "input_hash",
+          "observed",
+          "quality_status"
+        ],
+        "title": "ReportRunOut",
+        "type": "object"
+      },
+      "ReportScenarioOut": {
+        "properties": {
+          "assumption_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumption Reason"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Version Id"
+          },
+          "stopping_rule": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "version_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version No"
+          }
+        },
+        "title": "ReportScenarioOut",
+        "type": "object"
+      },
+      "ReportSpaceOut": {
+        "properties": {
+          "buffer_item_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buffer Item Min"
+          },
+          "buffer_peak_items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buffer Peak Items"
+          },
+          "buffer_wait_avg_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buffer Wait Avg Min"
+          },
+          "node_key": {
+            "title": "Node Key",
+            "type": "string"
+          },
+          "node_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Label"
+          },
+          "space_wait_item_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "공간이 차서 들어가지 못하고 기다린 양",
+            "title": "Space Wait Item Min"
+          }
+        },
+        "required": [
+          "node_key"
+        ],
+        "title": "ReportSpaceOut",
+        "type": "object"
+      },
       "RequirementDto": {
         "additionalProperties": false,
         "properties": {
@@ -6126,6 +6586,247 @@
           "approved_at"
         ],
         "title": "RevisionSummary",
+        "type": "object"
+      },
+      "RootCauseAssetOut": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "utilization": {
+            "description": "실행 전체 가동률(0~1)",
+            "title": "Utilization",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "utilization"
+        ],
+        "title": "RootCauseAssetOut",
+        "type": "object"
+      },
+      "RootCauseGroupOut": {
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/RootCauseAssetOut"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "finding_ranks": {
+            "description": "묶인 후보의 전체 순위",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Finding Ranks",
+            "type": "array"
+          },
+          "findings": {
+            "description": "이 근본 원인으로 이어진 병목 후보 수(전체 후보 기준, limit와 무관)",
+            "title": "Findings",
+            "type": "integer"
+          },
+          "input_wait_item_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Wait Item Min"
+          },
+          "levels": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "묶인 후보의 level별 수(high·medium·low)",
+            "title": "Levels",
+            "type": "object"
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "rank": {
+            "description": "묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양 순",
+            "title": "Rank",
+            "type": "integer"
+          },
+          "stalled_item_min": {
+            "description": "묶인 후보의 멈춘 양 합(종류가 달라 겹칠 수 있어 참고값)",
+            "title": "Stalled Item Min",
+            "type": "string"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          },
+          "step_label": {
+            "title": "Step Label",
+            "type": "string"
+          },
+          "utilization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utilization"
+          }
+        },
+        "required": [
+          "rank",
+          "process_version_id",
+          "step_key",
+          "step_label",
+          "assets",
+          "findings",
+          "levels",
+          "stalled_item_min",
+          "finding_ranks",
+          "explanation"
+        ],
+        "title": "RootCauseGroupOut",
+        "type": "object"
+      },
+      "RootCauseOut": {
+        "description": "막힘을 하류로 따라가 닿은, 막히지 않은 단계(흐름을 제한하는 곳). CR be17.",
+        "properties": {
+          "assets": {
+            "description": "후보 설비(가동률 높은 순, 최대 3개)",
+            "items": {
+              "$ref": "#/components/schemas/RootCauseAssetOut"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "input_wait_item_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 단계가 입력을 기다린 양. 가동률이 낮은데 크면 투입 조건이 원인일 수 있다",
+            "title": "Input Wait Item Min"
+          },
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          },
+          "step_label": {
+            "title": "Step Label",
+            "type": "string"
+          },
+          "utilization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "후보 설비 중 가장 높은 가동률. 후보 설비가 없으면 null",
+            "title": "Utilization"
+          }
+        },
+        "required": [
+          "process_version_id",
+          "step_key",
+          "step_label",
+          "assets",
+          "explanation"
+        ],
+        "title": "RootCauseOut",
         "type": "object"
       },
       "RunComparisonOut": {
@@ -6506,6 +7207,85 @@
           "result"
         ],
         "title": "RunOut",
+        "type": "object"
+      },
+      "RunReportOut": {
+        "description": "한 실행의 결과를 화면·보고서 한 장으로 묶는다. 저장된 결과·지표·스냅샷만 읽어 같은 run이면 같은 내용이다(LLM 없음).",
+        "properties": {
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionUseOut"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "bottlenecks": {
+            "$ref": "#/components/schemas/BottleneckSummaryOut",
+            "description": "병목 요약 상위 10개와 근본 원인"
+          },
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "products": {
+            "description": "실행 입력 순서",
+            "items": {
+              "$ref": "#/components/schemas/ReportProductOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "run": {
+            "$ref": "#/components/schemas/ReportRunOut"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/ReportScenarioOut"
+          },
+          "summary": {
+            "description": "규칙으로 만든 한국어 요약 문장(순서 고정)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Summary",
+            "type": "array"
+          },
+          "top_assets": {
+            "description": "가동률 상위 설비(최대 10개)",
+            "items": {
+              "$ref": "#/components/schemas/ReportAssetOut"
+            },
+            "title": "Top Assets",
+            "type": "array"
+          },
+          "top_spaces": {
+            "description": "적체(작업물·분) 상위 대기 공간(최대 10개)",
+            "items": {
+              "$ref": "#/components/schemas/ReportSpaceOut"
+            },
+            "title": "Top Spaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "definition_version",
+          "run",
+          "scenario",
+          "assumptions",
+          "products",
+          "bottlenecks",
+          "top_assets",
+          "top_spaces",
+          "summary",
+          "limitations"
+        ],
+        "title": "RunReportOut",
         "type": "object"
       },
       "RunResultOut": {
@@ -7538,6 +8318,18 @@
           "data"
         ],
         "title": "Single[RunOut]",
+        "type": "object"
+      },
+      "Single_RunReportOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunReportOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[RunReportOut]",
         "type": "object"
       },
       "Single_ScenarioOut_": {
@@ -13624,7 +14416,7 @@
     },
     "/api/v1/projects/{project_id}/runs/{run_id}/bottlenecks": {
       "get": {
-        "description": "병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로\n돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.",
+        "description": "병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로\n돌려준다. 후보마다 막힘을 하류로 따라가 닿은 근본 원인(`root_cause`·`chain`)과 근본 원인별 묶음(`root_causes`)을 준다.\n공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.",
         "operationId": "get_run_bottlenecks_api_v1_projects__project_id__runs__run_id__bottlenecks_get",
         "parameters": [
           {
@@ -14714,6 +15506,90 @@
           }
         },
         "summary": "List Run Metrics",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runs/{run_id}/report": {
+      "get": {
+        "description": "결과 리포트 묶음: 실행·시나리오·가정, 제품별 핵심 지표와 입력 부족, 병목 상위 10개와 근본 원인, 가동률 상위 설비,\n적체 상위 대기 공간, 규칙으로 만든 한국어 요약 문장, 한계. 저장된 값만 읽어 같은 run이면 같은 리포트다(LLM 없음).\n공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.",
+        "operationId": "get_run_report_api_v1_projects__project_id__runs__run_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_RunReportOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Run Report",
         "tags": [
           "runs"
         ]
