@@ -402,7 +402,13 @@ class _Run:
         at = to_fraction(arrival.at)
         if at > 0:
             yield self.env.timeout(at)
+        source = lane.model.nodes[lane.model.source_key]
+        limited = source.asset_id if source.asset_id is not None and self.spaces.limited(source.asset_id) else None
         for _ in range(arrival.count):
+            if limited is not None and not self.spaces.try_take(limited):
+                # 원자재 입고 위치가 가득 찼다: 자리가 날 때까지 들어오지 못한다(사용자 확정 용량, 2026-10-28)
+                self.emit_for(lane, ev.ENTRY_WAITING, source=None, destination=lane.model.source_key, asset_key=limited)
+                yield self.spaces.wait(limited)
             item = self.factory.new(
                 length_m=None if arrival.length_m is None else to_fraction(arrival.length_m),
                 weight_kg=None if arrival.weight_kg is None else to_fraction(arrival.weight_kg),
@@ -412,6 +418,8 @@ class _Run:
             lane.pending -= 1
             self.emit_for(lane, ev.MATERIAL_ARRIVED, item_key=item.key, destination=lane.model.source_key,
                           quantities=_measures(item))
+            if limited is not None:  # 다음 공간으로 옮겨 갈 때(또는 단계가 가져갈 때) 입고 위치 자리를 비운다
+                self.in_space[item.key] = (lane.model.source_key, limited)
             self._enter(lane, item, lane.model.source_key)
 
     def _enter(self, lane: _Lane, item: WorkItem, key: str, origin: str | None = None) -> None:

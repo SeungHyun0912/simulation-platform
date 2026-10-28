@@ -77,23 +77,28 @@ def test_assets_match_document_tables_exactly(client, wire):
     for code, name in spaces:
         assert assets[code]["name"] == name
         assert assets[code]["kind"] == ("dock" if code in ("ST-021", "ST-022") else "storage")
-    assert len(assets) == 118 and not (set(assets) - {f"EQ-{n:03d}" for n in range(1, 97)}
-                                       - {c for c, _ in spaces})
+    carriers = {c for c, *_ in seed_wire_factory.CARRIERS}  # 지게차 3대·AMR 2대(사용자 확정 2026-10-28)
+    assert len(assets) == 123 and not (set(assets) - {f"EQ-{n:03d}" for n in range(1, 97)}
+                                       - {c for c, _ in spaces} - carriers)
+    assert all(assets[c]["kind"] == "equipment" for c in carriers)
 
 
 def test_ports_and_nothing_unknown_is_invented(client, wire, db):
     ports = db.scalar("select count(*) from asset_port where project_id = :p", p=wire["project"])
-    assert ports == 214  # 설비 96×2(IN/OUT) + 공간 22×1(ACCESS), 문서 §9-5
+    assert ports == 224  # 설비 96×2(IN/OUT) + 운반 자원 5×2 + 공간 22×1(ACCESS), 문서 §9-5
     assets = all_assets(client, wire)
-    assert all(a["latest_revision"] is None for a in assets)  # 용량·좌표·운반 등 미정을 값으로 만들지 않았다
+    # 공간은 사용자가 확정한 용량(2026-10-28)만 자산 버전으로 승인했고, 설비의 좌표·처리 능력 등 미정은 만들지 않았다
+    assert all(a["latest_revision"] is None for a in assets if a["kind"] == "equipment")
+    spaces = [a for a in assets if a["kind"] in ("storage", "dock")]
+    assert len(spaces) == 22 and all(a["current_revision"] and a["current_revision"]["status"] == "approved" for a in spaces)
     assert db.scalar("select count(*) from asset where project_id = :p and archived_at is not null",
                      p=wire["project"]) == 0
 
 
-def test_pagination_works_for_the_118_assets(client, wire):
+def test_pagination_works_for_the_123_assets(client, wire):
     first = get(client, wire, "/assets", limit=50)
     assert len(first["data"]) == 50 and first["page"]["next_cursor"]
-    assert len(all_assets(client, wire)) == 118
+    assert len(all_assets(client, wire)) == 123
     kinds = get(client, wire, "/assets", kind="dock", limit=50)["data"]
     assert sorted(a["code"] for a in kinds) == ["ST-021", "ST-022"]
 
@@ -269,7 +274,10 @@ def test_user_decisions_of_the_six_groups_are_applied_to_every_step(client, wire
             if step["operation_type"] == "transport_manual":
                 assert proc(node) == {"kind": "per_output_unit", "duration_min": {"mode": "known", "value": "4"},
                                       "output_schedule": "sequential_units"}  # 이동 3분 + 상하차 1분, 보빈 1개씩
-                assert [(r["role_key"], r["capacity_mode"]) for r in step["resources"]] == [("carrier", "unlimited")]
+                # 운반 자원은 설비(지게차 3대·AMR 2대)를 같은 종류의 경로들이 함께 쓴다(사용자 확정 2026-10-28)
+                [req] = step["resources"]
+                assert (req["role_key"], req["resource_kind"], req["capacity_mode"]) == ("carrier", "equipment", "finite")
+                assert len(req["candidates"]) == (3 if "지게차" in node["label"] else 2)
 
 
 def test_every_graph_passes_structure_checks_and_has_no_run_template_errors(client, wire):
@@ -304,7 +312,7 @@ def test_seed_is_idempotent_and_does_not_change_row_counts(engine, wire, db):
 
     before = counts()
     again = seed_wire_factory.seed(engine)
-    assert again["assets"] == {"created": 0}
+    assert again["assets"] == {"created": 0, "capacities_approved": 0}
     assert again["processes"] == {"created": [], "upgraded": [], "reapplied": []}
     assert counts() == before
 

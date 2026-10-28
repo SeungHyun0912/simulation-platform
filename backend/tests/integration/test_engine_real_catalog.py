@@ -50,7 +50,9 @@ def rules(result):
 
 
 # 공간 용량은 자산 버전 승인 전이라 모른다(무제한으로 가정하지 않고 시나리오가 명시). 점유 정책은 사용자 확정 기본값.
-ASSUMED = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True)
+# 운반 자원(지게차 3·AMR 2)이 설비로 정해져(2026-10-28) 빈 차 이동 시간이 필요하다: 이동과 같은 3분(시연 시나리오와 같은 가정)
+ASSUMED = ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True,
+                              carrier_empty_move_minutes=Fraction(3))
 
 
 def compiled(client, wire, code):
@@ -66,7 +68,8 @@ def test_all_six_real_processes_compile_with_the_stated_scenario_assumptions(cli
     codes = {a.code for a in result.assumptions}
     # 공간 용량 미정(UNBOUNDED_BUFFERS)과 단계 사이 직접 인계(UNBOUNDED_HANDOFFS, P06 외 5종에 있음)는 따로 보고한다
     assert {"UNBOUNDED_BUFFERS", "EQUIPMENT_HOLD_FOR_OPERATION"} <= codes
-    assert codes <= {"UNBOUNDED_BUFFERS", "UNBOUNDED_HANDOFFS", "EQUIPMENT_HOLD_FOR_OPERATION"}
+    # 운반 단계가 있는 P04·P05·P06은 운반 자원 빈 차 이동 가정(CARRIER_EMPTY_MOVE)도 쓴다
+    assert codes <= {"UNBOUNDED_BUFFERS", "UNBOUNDED_HANDOFFS", "EQUIPMENT_HOLD_FOR_OPERATION", "CARRIER_EMPTY_MOVE"}
     model = result.require_model()
     assert model.completion_key == "complete"
     for step in model.steps.values():  # 사용자 확정값이 모든 단계에 들어갔다
