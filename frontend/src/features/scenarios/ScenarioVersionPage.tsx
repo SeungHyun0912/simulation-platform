@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
 import { ApiError, classifyError, toIssues } from "../../shared/api/errors";
 import type { Schemas } from "../../shared/api/types";
@@ -7,6 +7,7 @@ import { ApiOnlyNotice } from "../../shared/components/ApiOnlyNotice";
 import { Button } from "../../shared/components/Button";
 import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
 import { ConflictNotice } from "../../shared/components/ConflictNotice";
+import { DataTable, type Column } from "../../shared/components/DataTable";
 import { SelectField, TextAreaField, TextField } from "../../shared/components/Fields";
 import { Block, DirtyIndicator, FieldGrid, Note, Section } from "../../shared/components/Layout";
 import { PageHeader } from "../../shared/components/PageHeader";
@@ -42,6 +43,13 @@ export function ScenarioVersionPage() {
   const scenarioId = version.status === "success" ? version.data.scenarioId : "";
   const scenario = useScenario(projectId, scenarioId);
   const [notice, setNotice] = useState<string | null>(null);
+  // 갱신 결과: 같은 화면에서 갱신했거나(state) 승인본에서 새 초안을 만들며 갱신하고 넘어온 경우(location.state)
+  const location = useLocation();
+  const [refreshedHere, setRefreshed] = useState<Schemas["ScenarioRefreshOut"] | null>(null);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const fromRoute = (location.state as { refresh?: Schemas["ScenarioRefreshOut"] } | null)?.refresh ?? null;
+  const refreshedAll = refreshedHere ?? fromRoute;
+  const refreshed = refreshedAll && refreshedAll.version.id !== dismissed ? refreshedAll : null;
 
   const scenarioLabel = scenario.status === "success" ? scenario.data.code : "시나리오";
   const crumbs = [
@@ -66,13 +74,25 @@ export function ScenarioVersionPage() {
         <VersionStatusBadge status={v.status} />
       </p>
       {notice && <p role="status">{notice}</p>}
+      {refreshed && refreshed.version.id === v.id && <RefreshResult result={refreshed} onClose={() => { setRefreshed(null); setDismissed(refreshed.version.id); }} />}
       {/* 서버 값이 바뀌면(저장·승인·다시 불러오기) 편집 상태를 서버 값으로 다시 시작한다 */}
-      <VersionEditor key={`${v.id}:${v.rowVersion}`} projectId={projectId} version={v} onNotice={setNotice} />
+      <VersionEditor key={`${v.id}:${v.rowVersion}`} projectId={projectId} version={v} onNotice={setNotice} onRefreshed={setRefreshed} />
     </>
   );
 }
 
-function VersionEditor({ projectId, version, onNotice }: { projectId: string; version: ScenarioVersionView; onNotice: (t: string | null) => void }) {
+function VersionEditor({
+  projectId,
+  version,
+  onNotice,
+  onRefreshed,
+}: {
+  projectId: string;
+  version: ScenarioVersionView;
+  onNotice: (t: string | null) => void;
+  onRefreshed: (r: Schemas["ScenarioRefreshOut"]) => void;
+}) {
+  const navigate = useNavigate();
   const { project } = useCurrentProject();
   const writer = useScenarioWriter(projectId);
   const productOptions = useProductOptions(projectId);
@@ -80,7 +100,8 @@ function VersionEditor({ projectId, version, onNotice }: { projectId: string; ve
   const [serverIssues, setServerIssues] = useState<ValidationIssue[]>([]);
   const [serverPaths, setServerPaths] = useState<Record<string, string>>({});
   const [precheck, setPrecheck] = useState<Schemas["PrecheckOut"] | null>(null);
-  const [busy, setBusy] = useState<null | "saving" | "validating" | "approving">(null);
+  const [busy, setBusy] = useState<null | "saving" | "validating" | "approving" | "refreshing">(null);
+  const [assetMode, setAssetMode] = useState<"latest" | "keep">("latest");
   const [conflict, setConflict] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [approveOpen, setApproveOpen] = useState(false);
@@ -153,6 +174,39 @@ function VersionEditor({ projectId, version, onNotice }: { projectId: string; ve
     setError(null);
     try {
       setPrecheck(await writer.validate(version.id));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 초안: 바로 갱신. 저장하지 않은 입력이 있으면 먼저 저장해야 한다(갱신은 서버 값을 바꾼다). */
+  async function refreshDraft() {
+    if (busy || dirty) return;
+    setBusy("refreshing");
+    setError(null);
+    try {
+      const r = await writer.refresh(version.id, { assets: assetMode }, version.rowVersion);
+      onRefreshed(r.result);
+      onNotice("최신 승인 공정·자산 버전으로 갱신했습니다. 바뀐 내용을 확인한 뒤 사전검증·승인하세요.");
+    } catch (e) {
+      if (classifyError(e) === "conflict") setConflict(true);
+      else setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 승인본: 이 버전을 복사한 새 초안을 만들고 곧바로 갱신해 그 초안으로 이동한다(재시뮬레이션 흐름). */
+  async function draftAndRefresh() {
+    if (busy) return;
+    setBusy("refreshing");
+    setError(null);
+    try {
+      const d = await writer.createDraft(version.scenarioId, version.id);
+      const r = await writer.refresh(d.id, { assets: assetMode }, d.rowVersion);
+      navigate(`/projects/${projectId}/scenarios/versions/${d.id}`, { state: { refresh: r.result } });
     } catch (e) {
       setError(e);
     } finally {
@@ -284,6 +338,32 @@ function VersionEditor({ projectId, version, onNotice }: { projectId: string; ve
         승인하면 제품·도착·가정·종료 규칙과 고정 자산이 영구히 고정되며 수정할 수 없습니다. 사전검증 오류가 있으면 승인되지 않습니다.
       </ConfirmDialog>
 
+      {canEdit(project?.role) && (
+        <Section id="sec-refresh" title="최신 공정으로 갱신">
+          <Note>
+            공정이나 자산 용량을 고쳐 승인했다면 시나리오를 최신 승인본으로 맞춥니다. 도착·가정·우선순위·순서는 그대로이고 공정 버전·자산 고정만 바뀝니다. 그다음 사전검증 → 승인 →
+            실행 → 이전 실행과 비교로 이어집니다.
+          </Note>
+          <FieldGrid>
+            <SelectField label="자산 고정" value={assetMode} onChange={(e) => setAssetMode(e.target.value === "keep" ? "keep" : "latest")}>
+              <option value="latest">쓰는 자산을 현재 승인 버전으로 다시 고정(안 쓰는 고정은 뺌)</option>
+              <option value="keep">기존 고정은 두고 새로 쓰는 자산만 채움</option>
+            </SelectField>
+          </FieldGrid>
+          <div>
+            {version.status === "draft" ? (
+              <Button disabled={busy !== null || dirty} onClick={() => void refreshDraft()} title={dirty ? "먼저 저장하세요(갱신은 서버의 초안을 바꿉니다)" : undefined}>
+                {busy === "refreshing" ? "갱신 중…" : "최신 승인 공정으로 갱신"}
+              </Button>
+            ) : (
+              <Button disabled={busy !== null} onClick={() => void draftAndRefresh()}>
+                {busy === "refreshing" ? "만드는 중…" : "새 초안을 만들어 최신 공정으로 갱신"}
+              </Button>
+            )}
+          </div>
+        </Section>
+      )}
+
       {version.status === "approved" && <RunRequestSection projectId={projectId} scenarioVersionId={version.id} mayRun={mayRun} />}
     </>
   );
@@ -352,5 +432,47 @@ function PrecheckResult({ precheck, products }: { precheck: Schemas["PrecheckOut
         </section>
       ))}
     </div>
+  );
+}
+
+const PROCESS_STATUS_TEXT: Record<string, string> = {
+  changed: "새 승인본으로 바뀜",
+  unchanged: "그대로(이미 최신)",
+  no_approved_version: "승인본 없음(그대로)",
+  not_requested: "갱신 대상 아님",
+};
+const ASSET_CHANGE_TEXT: Record<string, string> = { pinned: "새로 고정", updated: "새 버전으로 바뀜", removed: "고정 해제(안 씀)" };
+
+/** 갱신 결과: 바뀐 공정 버전·자산 고정을 보여 준다(사용자가 확인한 뒤 사전검증·승인). */
+function RefreshResult({ result, onClose }: { result: Schemas["ScenarioRefreshOut"]; onClose: () => void }) {
+  const procCols: Column<Schemas["ProcessChangeOut"]>[] = [
+    { key: "product", header: "제품", render: (c) => c.product_code ?? c.product_id.slice(0, 8) },
+    { key: "status", header: "결과", render: (c) => PROCESS_STATUS_TEXT[c.status] ?? c.status },
+    { key: "from", header: "이전 공정 버전", render: (c) => (c.from_version_no !== null ? `v${c.from_version_no}` : c.from_process_version_id.slice(0, 8)) },
+    { key: "to", header: "새 공정 버전", render: (c) => (c.to_version_no !== null ? `v${c.to_version_no}` : c.to_process_version_id.slice(0, 8)) },
+  ];
+  const assetCols: Column<Schemas["AssetPinChangeOut"]>[] = [
+    { key: "asset", header: "자산", render: (c) => c.asset_code ?? c.asset_id.slice(0, 8) },
+    { key: "change", header: "변경", render: (c) => ASSET_CHANGE_TEXT[c.change] ?? c.change },
+    { key: "from", header: "이전 자산 버전", render: (c) => c.from_revision_id?.slice(0, 8) ?? "없음" },
+    { key: "to", header: "새 자산 버전", render: (c) => c.to_revision_id?.slice(0, 8) ?? "없음" },
+  ];
+  const changed = result.process_changes.filter((c) => c.status === "changed").length;
+  return (
+    <Section id="sec-refresh-result" title="갱신 결과">
+      <p>
+        공정 {changed}개가 새 승인본으로 바뀌었고 자산 고정 {result.asset_changes.length}건이 달라졌습니다.
+      </p>
+      <DataTable caption="공정 버전 변경" columns={procCols} rows={result.process_changes} getRowKey={(c) => c.product_id} />
+      {result.asset_changes.length > 0 ? (
+        <DataTable caption="자산 고정 변경" columns={assetCols} rows={result.asset_changes} getRowKey={(c) => c.asset_id} wrapCells />
+      ) : (
+        <Note>자산 고정은 바뀌지 않았습니다.</Note>
+      )}
+      <Note>다음: 아래에서 실행 사전검증 → 승인 → 실행 요청. 실행이 끝나면 실행 상세의 "다른 실행과 비교"로 이전 결과와 비교합니다.</Note>
+      <div>
+        <Button onClick={onClose}>갱신 결과 닫기</Button>
+      </div>
+    </Section>
   );
 }

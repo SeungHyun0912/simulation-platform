@@ -139,14 +139,22 @@ export function RunResultSection({ result, projectId }: { result: RunResult; pro
       {(result.assumptions ?? []).length > 0 && (
         <>
           <h3>이 실행에 쓰인 가정</h3>
-          <ul>
-            {(result.assumptions ?? []).map((a, i) => (
-              <li key={`${a.code}-${i}`}>
-                <code>{a.code}</code> {a.node_key ? `(${a.node_key}) ` : ""}
-                {a.message}
-              </li>
-            ))}
-          </ul>
+          {/* 공정·단계마다 같은 가정이 되풀이되어 길어지므로 가정 코드별로 묶어 건수를 보이고 펼쳐 본다 */}
+          {groupAssumptions(result.assumptions ?? []).map(([code, list]) => (
+            <details key={code}>
+              <summary>
+                <code>{code}</code> {ASSUMPTION_LABELS[code] ?? ""} · {list.length}건
+              </summary>
+              <ul>
+                {list.map((a, i) => (
+                  <li key={`${a.code}-${i}`}>
+                    {a.node_key ? `(${a.node_key}) ` : ""}
+                    {a.message}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
         </>
       )}
       {(result.compile_issues ?? []).length > 0 && (
@@ -164,6 +172,20 @@ export function RunResultSection({ result, projectId }: { result: RunResult; pro
       )}
     </Section>
   );
+}
+
+/** 아는 가정 코드만 한국어로 덧붙인다(열린 목록) */
+const ASSUMPTION_LABELS: Record<string, string> = {
+  UNBOUNDED_BUFFERS: "용량을 모르는 대기 공간은 제한 없음",
+  EQUIPMENT_HOLD_FOR_OPERATION: "작업이 끝날 때까지 설비 점유",
+  OUT_RELEASE_HOLD: "다음 공간이 차면 설비가 산출을 쥐고 기다림",
+  CARRIER_EMPTY_MOVE: "운반 자원 빈 차 이동 시간",
+  UNBOUNDED_HANDOFFS: "단계 사이 직접 인계 제한 없음(0.15.2부터 나오지 않음)",
+};
+function groupAssumptions(list: NonNullable<RunResult["assumptions"]>): [string, NonNullable<RunResult["assumptions"]>][] {
+  const m = new Map<string, NonNullable<RunResult["assumptions"]>>();
+  for (const a of list) m.set(a.code, [...(m.get(a.code) ?? []), a]);
+  return [...m];
 }
 
 /* ---------------- 입력 스냅샷 ---------------- */
@@ -202,7 +224,7 @@ export function RunInputSection({ projectId, runId }: { projectId: string; runId
 /* ---------------- 지표 ---------------- */
 
 const WINDOW_LABELS: Record<string, string> = { run: "실행 전체", day: "하루(1,440분)", week: "주(7일)", month: "월(30일)" };
-const DIMENSION_LABELS: Record<string, string> = { process_version_id: "공정 버전", asset_key: "설비·공간", node_key: "노드" };
+const DIMENSION_LABELS: Record<string, string> = { process_version_id: "공정 버전", asset_key: "설비·공간", node_key: "노드", step_key: "단계" };
 const QUALITY_NOTICE: Record<string, string> = {
   censored: "고정 지평선에서 끊긴 관측입니다. 지평선 이후는 포함되지 않습니다.",
   incomplete: "입력 부족·이벤트 한도 등으로 끝까지 실행되지 못한 불완전한 결과입니다. 지표를 완료된 결과처럼 해석하지 마세요.",
@@ -211,8 +233,9 @@ const QUALITY_NOTICE: Record<string, string> = {
 export function RunMetricsSection({ projectId, runId, enabled }: { projectId: string; runId: string; enabled: boolean }) {
   const [window, setWindow] = useState("run");
   const [metricKey, setMetricKey] = useState("");
+  const [stepKey, setStepKey] = useState("");
   const defs = useMetricDefinitions(enabled);
-  const metrics = useRunMetrics(projectId, runId, { window, metricKey }, enabled);
+  const metrics = useRunMetrics(projectId, runId, { window, metricKey, stepKey: stepKey.trim() }, enabled);
   const defMap = new Map(defs.status === "success" ? defs.data.map((d) => [d.metric_key, d]) : []);
 
   const cols: Column<Schemas["MetricOut"]>[] = [
@@ -258,6 +281,7 @@ export function RunMetricsSection({ projectId, runId, enabled }: { projectId: st
             </option>
           ))}
         </SelectField>
+        <TextField label="단계 키" hint="단계별 지표만 보려면 단계 키를 정확히 입력합니다(예: insulate)." value={stepKey} onChange={(e) => setStepKey(e.target.value)} />
         <SelectField label="지표" value={metricKey} onChange={(e) => setMetricKey(e.target.value)}>
           <option value="">전체</option>
           {defs.status === "success" &&
@@ -295,6 +319,18 @@ export function RunMetricsSection({ projectId, runId, enabled }: { projectId: st
 
 /* ---------------- 이벤트 ---------------- */
 
+/** 아는 이벤트 종류만 한국어로 덧붙인다(열린 목록: 모르는 종류는 원문만) */
+const EVENT_LABELS: Record<string, string> = {
+  CARRIER_MOVED: "운반 자원 빈 차 이동",
+  ENTRY_WAITING: "입고 위치가 가득 차 원자재 입고 대기",
+  OUT_BLOCKED: "다음 자리가 없어 설비 출력 막힘",
+  SINK_REACHED: "끝 도달",
+  MILESTONE_REACHED: "완료 기준 도달",
+  STATE_SNAPSHOT: "상태 요약(하루)",
+  RUN_TERMINATED: "실행 종료",
+  BUFFER_LEFT: "대기 공간에서 나감",
+};
+
 export function RunEventsSection({ projectId, runId, enabled }: { projectId: string; runId: string; enabled: boolean }) {
   const [open, setOpen] = useState(false);
   const [eventType, setEventType] = useState("");
@@ -303,10 +339,21 @@ export function RunEventsSection({ projectId, runId, enabled }: { projectId: str
   const cols: Column<Schemas["EventOut"]>[] = [
     { key: "seq", header: "순번", align: "end", render: (e) => e.event_seq },
     { key: "time", header: "시각(가상 분)", render: (e) => e.sim_time.min },
-    { key: "type", header: "종류", render: (e) => <code>{e.event_type}</code> },
+    {
+      key: "type",
+      header: "종류",
+      render: (e) => (
+        <>
+          <code>{e.event_type}</code>
+          {EVENT_LABELS[e.event_type] && <div>{EVENT_LABELS[e.event_type]}</div>}
+        </>
+      ),
+    },
     { key: "step", header: "단계", render: (e) => e.step_key ?? "" },
     { key: "asset", header: "설비·공간", render: (e) => e.asset_key ?? "" },
-    { key: "item", header: "작업물", render: (e) => e.item_key ?? "" },
+    // ENTRY_WAITING은 아직 들어오지 못한 원자재라 작업물 키가 없다(null)
+    { key: "item", header: "작업물", render: (e) => e.item_key ?? (e.event_type === "ENTRY_WAITING" ? "(입고 대기)" : "") },
+    { key: "route", header: "이동", render: (e) => (e.source || e.destination ? `${e.source ?? "?"} → ${e.destination ?? "?"}` : "") },
     { key: "reason", header: "사유", render: (e) => e.reason ?? "" },
   ];
   return (

@@ -1,5 +1,4 @@
-import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
-import { createLimiter } from "../../shared/api/concurrency";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { useApiClient, useDataSource } from "../../shared/api/ApiContext";
 import { ApiError } from "../../shared/api/errors";
@@ -75,25 +74,36 @@ export function useEditorState(projectId: string, versionId: string): Loadable<E
   return fromQuery(q, (d) => d);
 }
 
-/** 여러 제품의 공정 그래프를 읽을 때 동시에 보내는 요청 수(Backend 권장 6~8). 모든 화면이 함께 쓴다. */
-const graphLimiter = createLimiter(6);
+export type ProcessGraphBatch = { items: Schemas["ProcessGraphItem"][]; complete: boolean };
 
 /**
- * 여러 공정 버전의 그래프(프로젝트 전체 공정 보기). 일괄 조회 API가 없어 버전마다 GET graph를 동시 6개까지 보낸다.
- * 캐시 키는 제품별 플로우차트·편집 화면과 같아 한 번 읽은 그래프를 다시 받지 않는다.
+ * 프로젝트의 모든 제품 공정을 한 번에(0.14.0 `GET /process-graphs`, 기본 요약). 한 번에 최대 50개라 cursor를 따라 끝까지 받는다.
+ * `basis`: approved(현재 승인본) | latest(가장 최근 버전, 초안일 수 있음). 공정이 없는 제품도 `version` null로 온다.
  */
-export function useProcessGraphs(projectId: string, versionIds: string[]): Loadable<ProcessGraphView>[] {
+export function useProcessGraphBatch(projectId: string, basis: "approved" | "latest"): Loadable<ProcessGraphBatch> {
   const source = useDataSource();
   const client = useApiClient();
-  const results = useQueries({
-    queries: versionIds.map((id) => ({
-      queryKey: graphKey(projectId, source, id),
-      enabled: source === "api" && projectId !== "" && id !== "",
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        graphLimiter(async () => toGraphView((await client.get<Schemas["Single_GraphOut_"]>(`/projects/${projectId}/process-versions/${id}/graph`, { signal })).body.data)),
-    })),
+  const q = useInfiniteQuery({
+    queryKey: projectKey(projectId, source, "process-graph-batch", basis),
+    enabled: source === "api" && projectId !== "",
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: { items: Schemas["ProcessGraphItem"][]; nextCursor: string | null }) => last.nextCursor ?? undefined,
+    queryFn: async ({ pageParam, signal }) => {
+      const r = await client.get<Schemas["ListOut_ProcessGraphItem_"]>(`/projects/${projectId}/process-graphs`, {
+        query: { basis, mode: "summary", limit: 50, cursor: pageParam },
+        signal,
+      });
+      return { items: r.body.data, nextCursor: r.body.page.next_cursor };
+    },
   });
-  return results.map((q) => fromQuery(q, (d) => d));
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = q;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  if (source === "static") return success({ items: [], complete: true });
+  if (q.status === "pending") return pending;
+  if (q.status === "error") return { status: "error", error: q.error, retry: () => void q.refetch() };
+  return success({ items: q.data.pages.flatMap((p) => p.items), complete: !hasNextPage });
 }
 
 export type ProcessDetailResult = { version: ProcessVersionView; graph: ProcessGraphView };

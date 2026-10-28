@@ -52,7 +52,7 @@ describe.skipIf(!LIVE)("실제 서버 공정으로 그린 플로우차트 (읽�
     if (products.length === 0) return ctx.skip();
     renderApp(`/projects/${projectId}/flow/all`, { source: "api", fetchImpl: realFetch() });
     for (const p of products) await screen.findByRole("group", { name: `${p.code} 공정 도식` }, slow);
-    expect(screen.getByRole("table", { name: "여러 제품이 함께 쓰는 설비" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "여러 제품이 함께 쓰는 설비·공간" })).toBeInTheDocument();
   });
 
   it("분기가 있는 공정(P04)에서도 노드를 눌러 단계 편집 패널이 열린다(읽기만, 저장하지 않음)", async (ctx) => {

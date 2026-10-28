@@ -1,0 +1,153 @@
+.headline {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.kindGroup {
+  margin-block: var(--space-4);
+}
+
+.kindTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-md);
+}
+
+.findings {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.finding {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.findingHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.amount {
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.evidence {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  list-style: none;
+}
+
+.limits {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+/* 설비 가동률 표: 칸의 진하기는 가동률(--u, 0~1)이며 숫자도 함께 쓴다(색만으로 구분하지 않음) */
+.heat {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.cell {
+  display: block;
+  min-width: 3rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  text-align: end;
+  /* 진하기는 가동률. 글자 대비를 지키려고 밝은 범위에서만 섞는다 */
+  background: color-mix(in srgb, var(--status-info-fg) calc(var(--u, 0) * 35%), var(--color-surface));
+}
+
+.cellSelected {
+  outline: var(--border-width-strong) solid var(--color-text);
+  outline-offset: calc(-1 * var(--border-width-strong));
+}
+
+.unused {
+  color: var(--color-text-muted);
+}
+
+.gantt {
+  width: 100%;
+  overflow-x: auto;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.gantt svg {
+  display: block;
+  font-family: var(--font-sans);
+}
+
+.seg {
+  stroke: var(--color-surface);
+  stroke-width: 1;
+}
+
+.PROCESSING {
+  fill: var(--status-info-fg);
+}
+
+.SETUP {
+  fill: var(--status-warning-fg);
+}
+
+.RESERVED {
+  fill: var(--color-text-muted);
+}
+
+.BLOCKED {
+  fill: var(--status-danger-fg);
+}
+
+.IDLE {
+  fill: var(--status-neutral-bg);
+}
+
+.axis {
+  fill: var(--color-text-muted);
+  font-size: var(--text-2xs);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  list-style: none;
+}
+
+.swatch {
+  display: inline-block;
+  width: var(--space-3);
+  height: var(--space-3);
+  margin-inline-end: var(--space-1);
+  vertical-align: middle;
+  border: var(--border-width) solid var(--color-border);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-4);
+}

@@ -155,6 +155,26 @@ export function ScenarioProductEditor({ projectId, index, product: p, products, 
           )}
         </SelectField>
       </FieldGrid>
+      <FieldGrid>
+        <SelectField
+          label={`${name} 다음 공간이 가득 찰 때 설비 산출`}
+          hint="보내지 않으면 서버 기본값(산출을 쥐고 기다림)을 씁니다. 승인된 자산 버전에 배출 정책이 있는 설비는 그 정책을 따릅니다."
+          value={p.assumptions.outRelease}
+          onChange={(e) => setAssume({ outRelease: e.target.value })}
+        >
+          <option value="">정하지 않음(서버 기본: 쥐고 기다림)</option>
+          <option value="hold">산출을 쥐고 기다림(명시)</option>
+          {p.assumptions.outRelease && p.assumptions.outRelease !== "hold" && <option value={p.assumptions.outRelease}>{`알 수 없는 값 (${p.assumptions.outRelease})`}</option>}
+        </SelectField>
+        <TextField
+          label={`${name} 운반 자원 빈 차 이동(분)`}
+          hint="지게차·AMR이 다른 곳에서 일을 받을 때 그곳까지 빈 차로 가는 시간. 운반 단계에 운반 자원이 있으면 필요합니다. 비우면 입력 없음"
+          inputMode="decimal"
+          value={p.assumptions.carrierEmptyMove}
+          error={errors[`${k}.carrierEmptyMove`]}
+          onChange={(e) => setAssume({ carrierEmptyMove: e.target.value })}
+        />
+      </FieldGrid>
       <CheckboxField
         label={`${name} 용량을 모르는 대기 공간은 제한 없이 대기한다고 가정`}
         checked={p.assumptions.unboundedBuffers}

@@ -88,6 +88,34 @@ describe.skipIf(!LIVE)("실제 서버 데이터로 그린 시나리오·실행 �
     await waitFor(() => expect(screen.queryByRole("table", { name: "실행 이벤트" }) ?? screen.queryByText("이벤트이(가) 없습니다")).not.toBeNull(), slow);
   });
 
+  it("결과가 있는 실행: 병목 요약(한계 포함)과 설비 타임라인(주 단위 가동률)을 실서버 값으로 그린다", async (ctx) => {
+    const ended = runs.find((r) => r.status === "stalled" || r.status === "completed");
+    if (!ended) return ctx.skip();
+    renderApp(`/projects/${projectId}/runs/${ended.id}`, { source: "api", fetchImpl: realFetch() });
+    expect(await screen.findByText("이 판정의 한계", {}, slow)).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "설비별 구간 가동률" }, slow)).toBeInTheDocument();
+  });
+
+  it("두 실행 비교: 서버가 비교를 지원하면 입력 차이·제품별 결과를 그린다", async (ctx) => {
+    const ended = runs.filter((r) => r.status === "stalled" || r.status === "completed");
+    if (ended.length < 2) return ctx.skip();
+    const probe = await realFetch()(`/api/v1/projects/${projectId}/runs/${ended[0]!.id}/compare/${ended[1]!.id}`);
+    // 개발 서버가 0.13.0 비교 코드로 다시 시작되지 않았으면 404(경로 없음)다 — 그때는 건너뛴다(화면 결함이 아님).
+    if (probe.status === 404) return ctx.skip();
+    renderApp(`/projects/${projectId}/runs/${ended[0]!.id}/compare/${ended[1]!.id}`, { source: "api", fetchImpl: realFetch() });
+    await waitFor(() => expect(screen.queryByRole("table", { name: "입력 차이" }) ?? screen.queryByText("입력 차이가 없습니다")).not.toBeNull(), slow);
+  });
+
+  it("엔진 버전이 다른 실행끼리(c0.1↔c0.2) 비교하면 '비교할 수 없음'을 맨 위에 보인다", async (ctx) => {
+    // Backend 안내(2026-10-28): c3640d5d = 엔진 c0.2, f18c3dcb = c0.1(같은 조건). 개발 DB가 바뀌면 건너뛴다.
+    const all = await json<{ id: string }[]>(`/projects/${projectId}/runs?limit=50`);
+    const c02 = all.find((r) => r.id.startsWith("c3640d5d"));
+    const c01 = all.find((r) => r.id.startsWith("f18c3dcb"));
+    if (!c02 || !c01) return ctx.skip();
+    renderApp(`/projects/${projectId}/runs/${c02.id}/compare/${c01.id}`, { source: "api", fetchImpl: realFetch() });
+    expect(await screen.findByText(/엔진 버전이 달라 결과를 그대로 비교할 수 없습니다/, {}, slow)).toBeInTheDocument();
+  });
+
   it("취소된 실행은 취소됨과 종료 사유를 보이고 지표·이벤트는 요청 결과 없음으로 안내한다", async (ctx) => {
     const cancelled = runs.find((r) => r.status === "cancelled");
     if (!cancelled) return ctx.skip();
