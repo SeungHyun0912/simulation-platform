@@ -136,6 +136,7 @@ describe("고칠 곳(0.16.0 root_causes)", () => {
     const list = await screen.findByRole("region", { name: "고칠 곳" }, slow);
     const items = within(list).getAllByRole("listitem", { name: /^고칠 곳 \d+위/ });
     expect(items).toHaveLength(2);
+    expect(list).toHaveTextContent("순위는 묶인 병목 후보 중 가장 높은 순위를 기준으로 매깁니다(1위는 가장 큰 정체의 근본 원인).");
     expect(items[0]).toHaveTextContent("1위");
     expect(items[0]).toHaveTextContent("P-001 서버 제품 1 · 단계 피복");
     expect(items[0]).toHaveTextContent("가동률 97%");

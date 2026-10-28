@@ -207,7 +207,7 @@ export function RootCauseList({ groups }: { groups: Schemas["RootCauseGroupOut"]
   return (
     <section className={styles.kindGroup} aria-label="고칠 곳">
       <h3 className={styles.kindTitle}>고칠 곳(근본 원인별)</h3>
-      <p className={styles.muted}>멈춘 곳에서 막힘을 하류로 따라가 처음 막히지 않은 단계를 근본 원인으로 봅니다. 순위는 묶인 병목의 수준 → 수 → 멈춘 양 순서입니다.</p>
+      <p className={styles.muted}>멈춘 곳에서 막힘을 하류로 따라가 처음 막히지 않은 단계를 근본 원인으로 봅니다. 순위는 묶인 병목 후보 중 가장 높은 순위를 기준으로 매깁니다(1위는 가장 큰 정체의 근본 원인).</p>
       <ol className={styles.findings}>
         {shown.map((g) => (
           <li key={`${g.process_version_id}-${g.step_key}`} className={styles.finding} aria-label={`고칠 곳 ${g.rank}위 ${g.product_code ?? ""} ${g.step_label}`}>
