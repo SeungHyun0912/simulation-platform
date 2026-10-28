@@ -3389,7 +3389,7 @@
                 "type": "null"
               }
             ],
-            "description": "확장 속성(배경 이미지·축척 등). 통째로 교체",
+            "description": "확장 속성. 통째로 교체. 약속 키 `background` = {url, width_px, height_px, m_per_px}(선택, 서버는 검사하지 않음)",
             "title": "Attributes"
           },
           "canvas_height_m": {
@@ -5046,7 +5046,7 @@
                 "type": "null"
               }
             ],
-            "description": "세로(y 방향). 모르면 null",
+            "description": "회전 전 세로(y 방향). 모르면 null",
             "title": "Height M"
           },
           "rotation_deg": {
@@ -5058,7 +5058,7 @@
                 "type": "null"
               }
             ],
-            "description": "회전(도, 0 이상 360 미만). 모르면 null",
+            "description": "중심 기준 회전(도, 0 이상 360 미만). y가 아래쪽인 화면에서 시계 방향이 +. 모르면 null(0으로 그림)",
             "title": "Rotation Deg"
           },
           "width_m": {
@@ -5070,7 +5070,7 @@
                 "type": "null"
               }
             ],
-            "description": "가로(x 방향). 모르면 null",
+            "description": "회전 전 가로(x 방향). 모르면 null",
             "title": "Width M"
           },
           "x_m": {

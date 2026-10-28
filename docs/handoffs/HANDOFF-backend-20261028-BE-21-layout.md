@@ -4,7 +4,7 @@
 - 역할 / workspace 버전: Backend(API 담당) / 1.1.0
 - branch / 기준 commit: worktree-backend-core-be34 / main `8742d06`(0.16.2, PR #66 머지) / 구현 `79c017c`
 - 승인 근거: 사용자 결정·지시(2026-10-28) — 단위 m 소수 첫째 자리(반올림), 원점 도면 왼쪽 위(11시 방향), x·y 기준점 중심, 통로 대신 점(P1…)을 x·y로 관리하고 설비 In/Out을 점에 매핑, 이동 경로는 점 순서 배열(직선 구간), 배치판 관리 유지, "ERD 변경점이나 API 변경 사항을 검토해서 반영해줘". CR `docs/change-requests/CR-backend-20261028-be18-layout-points-routes.md`.
-- 계약 버전: **0.16.2 → 0.17.0**(새 scope `layouts`, 추가만, OpenAPI sha `fe64d8bb…bf9c`), migration head **0010 → 0011**, 엔진 c0.3 그대로(결과 불변).
+- 계약 버전: **0.16.2 → 0.17.0**(새 scope `layouts`, 추가만, OpenAPI sha `71906840…a9fc7`(FE 검토 반영 후)), migration head **0010 → 0011**, 엔진 c0.3 그대로(결과 불변).
 
 ## ERD 변경(docs/architecture/02_erd_database.md §7 갱신)
 | 테이블 | 내용 |
@@ -21,6 +21,11 @@
 
 ## API(04 §7.1)
 `GET/POST /layout-versions`, `GET/PATCH /layout-versions/{v}`, `PUT /layout-versions/{v}/content`(통째로 교체, If-Match), `POST …/validate`, `POST …/approve`(admin). 응답에 고정 좌표계(`coordinate_system`), 배치의 자산 코드·이름, 포트 매핑의 포트 key·역할·자산, 경로의 출발·도착 자산과 계산한 `length_m`. 저장 오류 `LAY-SAVE-001~010`(422), 검증 `LAY-001~007`(오류는 승인 차단, 경고는 표시만).
+
+## FE 검토 반영(머지 전, 같은 PR)
+- 검증 오류 `field_path`를 key 기준으로 바꿈(`/points/{point_key}`, `/placements/{asset_id}`, `/port_points/{port_id}`, `/routes/{route_key}`). 저장 오류는 요청 본문 순번 그대로. 응답 목록 순서가 저장 순서와 달라 순번으로는 화면이 대상을 찾을 수 없었다(커밋 `c145a97`).
+- 회전: 회전 전 가로·세로, 중심 기준, y 아래 화면에서 시계 방향 +. 배경 도면 약속 키 `attributes.background = {url, width_px, height_px, m_per_px}`(서버는 저장만). 초안 폐기 endpoint 없음.
+- 재확인: `REQUIRE_DB=1 pytest -q tests/contract tests/unit/test_layout_rules.py tests/integration/test_api_layouts.py` → 88 passed(종료 코드 0).
 
 ## 자체 테스트 명령과 실제 결과
 | 명령 | 위치 | 종료 코드 | 실제 결과 |

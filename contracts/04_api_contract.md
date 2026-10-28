@@ -614,6 +614,10 @@ artifact upload init/complete → import job → candidates → mapping approval
 - **경로(`routes[]`):** `route_key`(유일)·`from_port_id`·`to_port_id`·`mode`(열린 문자열, 예: forklift·amr·manual, 정하지 않으면 null)·`points`(점 key 순서, 2개 이상, 연달아 같은 점 금지 — 연속한 점 사이는 직선)·`attributes`. 응답에 `from_asset_id`·`to_asset_id`와 **`length_m`(연속한 점 사이 직선 거리의 합, 소수 첫째 자리, 계산값이며 저장하지 않음)**.
 - **저장 오류(PUT, 422 `LAY-SAVE-*`):** 001 점 key 중복, 002 경로 key 중복, 003 없는 점, 004 이 프로젝트에 없는 자산, 005 이 프로젝트에 없는 포트, 006 같은 자산 두 번 배치, 007 포트를 두 점에 매핑, 008 경로 점 2개 미만, 009 연달아 같은 점, 010 반올림하면 0이 되는 크기.
 - **검증(validate·approve, `LAY-*`):** 오류 — 001 경로의 첫 점 ≠ 출발 포트의 점, 002 끝 점 ≠ 도착 포트의 점, 003 출발·도착 포트가 점에 매핑되지 않음, 007 출발 포트 = 도착 포트. 경고 — 004 매핑한 포트의 자산이 배치되지 않음, 005 도면 크기를 벗어난 점·배치, 006 가로·세로 크기를 모름. 경고는 승인을 막지 않는다.
+- **회전:** `width_m`·`height_m`은 회전 전 가로·세로이고, `rotation_deg`만큼 **중심을 기준으로** 돌린다. y가 아래쪽인 화면에서 **시계 방향이 +**(SVG `rotate()`와 같다). 모르면 null이며 0으로 그린다.
+- **배경 도면(약속 키, 선택):** `layout_version.attributes.background` = `{url, width_px, height_px, m_per_px}`. 서버는 저장만 하고 검사·호스팅하지 않는다(업로드 API는 후속). 없으면 화면은 격자만 그린다.
+- **오류 위치(`field_path`):** 저장 오류(PUT 422)는 **요청 본문의 순번**(JSON Pointer, 예: `/routes/3/points/1`). 검증(`validate`·`approve`)은 **key 기준**: `/points/{point_key}`, `/placements/{asset_id}`, `/port_points/{port_id}`, `/routes/{route_key}`. 응답의 목록 순서는 저장 순서와 다르다(점·경로는 key 순, 배치는 자산 코드 순, 포트 매핑은 자산 코드·역할 순).
+- **초안 폐기:** endpoint 없음(시나리오 버전과 같다). 초안은 고치거나 승인한다.
 - **범위 밖(후속):** 시나리오가 배치판을 고르는 것(`scenario_version.layout_version_id`)과 경로 길이로 이동 시간을 계산하는 엔진 반영(지금 엔진 결과는 바뀌지 않는다), CAD 가져오기, zone, 층(z).
 
 ## 8. API 테스트 계약

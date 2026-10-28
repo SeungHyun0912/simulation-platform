@@ -5,7 +5,7 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
-## 0.17.0 — 2026-10-28 · scope `layouts`(신규, BE-21) · sha256 `fe64d8bb…bf9c` · 기준 commit `79c017c`
+## 0.17.0 — 2026-10-28 · scope `layouts`(신규, BE-21) · sha256 `71906840…9fc7` · 기준 commit `c145a97`
 - **호환성: 0.16.2와 호환(추가만).** 새 operation 7개(`/layout-versions` 목록·생성, 단건 조회·수정, `/content` 교체, `/validate`, `/approve`), 새 오류 `LAYOUT_DRAFT_EXISTS`(409)·`LAYOUT_VALIDATION_FAILED`(422). migration 0011(배치판 테이블 6개).
 - 근거: CR be18(사용자 결정 2026-10-28: m 소수 첫째 자리 반올림, 원점 도면 왼쪽 위, x·y 중심, 점 + 포트 매핑 + 점 순서 경로, 배치판 버전 관리 유지). 상세는 04 §7.1.
 - **프런트가 해야 할 일:** 타입 재생성. 배치판 편집 화면(도면 위 점·설비 배치·포트 매핑·경로 그리기)을 만들 수 있다. 좌표는 도면 이미지 좌표(왼쪽 위 원점, y 아래쪽) 그대로 m 단위로 보내고, 응답은 소수 첫째 자리로 반올림된 값이다. 저장은 PUT `/content`(통째로 교체, If-Match), 승인 전 `/validate`로 오류·경고를 보여 준다. 포트 id는 `GET /assets/{id}`의 `ports[]`.
