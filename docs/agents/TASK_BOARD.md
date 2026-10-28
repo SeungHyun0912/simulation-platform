@@ -36,6 +36,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-18 | 병목 원인 추적(root_cause·chain·root_causes)과 결과 리포트 묶음 API, 계약 0.16.0 | Backend | **구현완료·검증대기** | BE-17 | d53dd56 이후 / contract 0.16.0 | HANDOFF-backend-20261028-BE-18-root-cause-report |
 | BE-19 | 직접 인계는 앞 설비가 산출을 쥐고 기다림(설비 앞 자리 제거), 엔진 c0.3, 계약 0.16.1 | Backend | **구현완료·검증대기** | BE-18 | beb4c3f 이후 / contract 0.16.1 | HANDOFF-backend-20261028-BE-19-hold-handoff |
 | BE-20 | root_causes 순위 규칙 결함 수정(묶인 후보 중 최고 순위), 병목 정의 버전 3, 계약 0.16.2 | Backend | **구현완료·검증대기** | BE-19 | cb5f52f 이후 / contract 0.16.2 | HANDOFF-backend-20261028-BE-20-root-cause-rank |
+| BE-21 | 배치판(점·배치·포트 매핑·점 순서 경로), migration 0011, 계약 0.17.0 | Backend | **구현완료·검증대기** | BE-20 | 8742d06 이후 / contract 0.17.0 | HANDOFF-backend-20261028-BE-21-layout |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |

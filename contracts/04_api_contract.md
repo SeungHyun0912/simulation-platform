@@ -84,6 +84,8 @@ NETWORK_ROUTE_NOT_FOUND, INVALID_UNIT, IDEMPOTENCY_CONFLICT, JOB_CANCEL_TOO_LATE
 | INVALID_STATE_TRANSITION | 409 | 허용되지 않는 상태 변경(예: draft를 바로 approve)(0.2.0) |
 | SCENARIO_CODE_CONFLICT | 409 | 같은 프로젝트에 같은 시나리오 코드(0.7.0) |
 | SCENARIO_DRAFT_EXISTS | 409 | 시나리오에 이미 초안 버전이 있음(0.7.0) |
+| LAYOUT_DRAFT_EXISTS | 409 | 프로젝트에 이미 배치판 초안이 있음(0.17.0) |
+| LAYOUT_VALIDATION_FAILED | 422 | 배치판 검증 오류가 있어 승인할 수 없음, details에 오류(0.17.0) |
 | SCENARIO_NOT_RUNNABLE | 422 | 실행 사전검증 오류가 있어 시나리오 버전을 승인할 수 없음(0.7.0, `details`에 오류) |
 
 `PROJECT_SCOPE_MISMATCH`는 이 scope에서 사용하지 않는다(타 프로젝트 자원은 404).
@@ -591,6 +593,28 @@ artifact upload init/complete → import job → candidates → mapping approval
 `/layouts`, `/layout-versions/{id}`, `/ports`, `/network`, `/validate`, `/approve`.
 직접 DWG 지원은 초기 약속 아님. DXF 또는 추출 ZIP 기준, 미지원 형상 보고.
 물리 network를 route editor의 임의 노드 좌표로 덮어쓰지 않음.
+
+### 7.1 승인 scope `layouts` — BE-21 (contract 0.17.0): 배치판·점·포트 매핑·점 순서 경로
+근거: `docs/change-requests/CR-backend-20261028-be18-layout-points-routes.md`(사용자 결정 2026-10-28). 위의 CAD 가져오기·`/network`는 여전히 후속이고, 통로 network 대신 **점과 점 순서 경로**를 쓴다. 필드·타입의 정본은 openapi.json.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/layout-versions | viewer | 배치판 목록(최신 version_no부터), `limit`·`cursor` |
+| POST | /projects/{p}/layout-versions | editor | 새 초안. 본문(선택) `from_version_id`(모든 상태), 없으면 최근 승인본 복사, 그것도 없으면 빈 초안. 프로젝트당 초안 하나(409 `LAYOUT_DRAFT_EXISTS`) |
+| GET | /projects/{p}/layout-versions/{v} | viewer | 배치판 전체(`LayoutVersionOut`), ETag = row_version |
+| PATCH | /projects/{p}/layout-versions/{v} | editor | 머리 수정: `name`·`notes`·`canvas_width_m`·`canvas_height_m`·`attributes`(보낸 필드만). If-Match, 초안만(승인본 409 `VERSION_IMMUTABLE`) |
+| PUT | /projects/{p}/layout-versions/{v}/content | editor | 점·배치·포트 매핑·경로를 통째로 교체(`LayoutContentIn`). If-Match, 초안만. 구조 오류 422 `VALIDATION_ERROR`(rule_id `LAY-SAVE-*`) |
+| POST | /projects/{p}/layout-versions/{v}/validate | viewer | 승인 전 검증(저장 안 함): `approvable`·오류·경고(rule_id `LAY-*`) |
+| POST | /projects/{p}/layout-versions/{v}/approve | admin | draft → approved. If-Match. 검증 오류가 있으면 422 `LAYOUT_VALIDATION_FAILED`. 승인 후 내용은 DB가 동결 |
+
+- **좌표계(고정, 응답 `coordinate_system`):** 단위 m, **원점은 도면 왼쪽 위(11시 방향)**, x는 오른쪽·y는 아래쪽으로 커진다(웹 도면 이미지 좌표). 설비·공간의 x·y는 **중심**. 값은 decimal 문자열로 받고 **소수 첫째 자리로 반올림(ROUND_HALF_UP)** 해 저장·응답한다(예: "9.05" → "9.1"). x·y는 0 이상, 가로·세로는 반올림 후 0.1 이상, 회전은 0 이상 360 미만(도). 모르는 크기·회전은 null(0이 아니다).
+- **점(`points[]`):** `point_key`(배치판 안에서 유일, 예: P1)·`x_m`·`y_m`·`attributes`(확장 JSON). 포트 위치와 경로의 꺾이는 곳이 모두 점이다.
+- **배치(`placements[]`):** 설비·저장공간 `asset_id`(같은 프로젝트, 배치판 안에서 한 번)·`x_m`·`y_m`(중심)·`width_m`(가로, x 방향)·`height_m`(세로, y 방향)·`rotation_deg`·`attributes`. 응답에 `asset_code`·`asset_name`·`asset_kind`.
+- **포트 매핑(`port_points[]`):** `port_id`(설비 IN/OUT, 공간 ACCESS) → `point_key`. 배치판 안에서 포트당 하나, 한 점에 여러 포트를 매핑할 수 있다. 응답에 `port_key`·`role`·`asset_id`·`asset_code`.
+- **경로(`routes[]`):** `route_key`(유일)·`from_port_id`·`to_port_id`·`mode`(열린 문자열, 예: forklift·amr·manual, 정하지 않으면 null)·`points`(점 key 순서, 2개 이상, 연달아 같은 점 금지 — 연속한 점 사이는 직선)·`attributes`. 응답에 `from_asset_id`·`to_asset_id`와 **`length_m`(연속한 점 사이 직선 거리의 합, 소수 첫째 자리, 계산값이며 저장하지 않음)**.
+- **저장 오류(PUT, 422 `LAY-SAVE-*`):** 001 점 key 중복, 002 경로 key 중복, 003 없는 점, 004 이 프로젝트에 없는 자산, 005 이 프로젝트에 없는 포트, 006 같은 자산 두 번 배치, 007 포트를 두 점에 매핑, 008 경로 점 2개 미만, 009 연달아 같은 점, 010 반올림하면 0이 되는 크기.
+- **검증(validate·approve, `LAY-*`):** 오류 — 001 경로의 첫 점 ≠ 출발 포트의 점, 002 끝 점 ≠ 도착 포트의 점, 003 출발·도착 포트가 점에 매핑되지 않음, 007 출발 포트 = 도착 포트. 경고 — 004 매핑한 포트의 자산이 배치되지 않음, 005 도면 크기를 벗어난 점·배치, 006 가로·세로 크기를 모름. 경고는 승인을 막지 않는다.
+- **범위 밖(후속):** 시나리오가 배치판을 고르는 것(`scenario_version.layout_version_id`)과 경로 길이로 이동 시간을 계산하는 엔진 반영(지금 엔진 결과는 바뀌지 않는다), CAD 가져오기, zone, 층(z).
 
 ## 8. API 테스트 계약
 

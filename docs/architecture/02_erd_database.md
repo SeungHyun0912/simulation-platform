@@ -48,10 +48,14 @@ erDiagram
     PROCESS_VERSION ||--o{ FLOW_EDGE : connects
     FLOW_NODE ||--o{ FLOW_EDGE : endpoints
     PROJECT ||--o{ LAYOUT_VERSION : versions
-    LAYOUT_VERSION ||--o{ PORT_PLACEMENT : places
-    ASSET_PORT ||--o{ PORT_PLACEMENT : located
-    LAYOUT_VERSION ||--o{ NETWORK_NODE : routes
-    NETWORK_NODE ||--o{ NETWORK_EDGE : endpoints
+    LAYOUT_VERSION ||--o{ LAYOUT_POINT : points
+    LAYOUT_VERSION ||--o{ ASSET_PLACEMENT : places
+    ASSET ||--o{ ASSET_PLACEMENT : placed
+    ASSET_PORT ||--o{ LAYOUT_PORT_POINT : located
+    LAYOUT_POINT ||--o{ LAYOUT_PORT_POINT : at
+    LAYOUT_VERSION ||--o{ LAYOUT_ROUTE : routes
+    LAYOUT_ROUTE ||--o{ LAYOUT_ROUTE_POINT : passes
+    LAYOUT_POINT ||--o{ LAYOUT_ROUTE_POINT : via
     PROJECT ||--o{ SCENARIO : owns
     SCENARIO ||--o{ SCENARIO_VERSION : versions
     SCENARIO_VERSION ||--o{ SCENARIO_PRODUCT : plans
@@ -200,19 +204,20 @@ work_item의 material_definition_id도 선택적이며 과거 품목명/상태�
 
 | 테이블 | 업무 컬럼 |
 |---|---|
-| layout_version | project_id, version_no, status, coordinate_unit, origin_transform, floor_system, source_artifact_id NULL |
-| zone | project_id, layout_version_id, code, name, floor_key, boundary_geometry, verification_status |
-| asset_placement | project_id, layout_version_id, asset_id, footprint, orientation, zone_id NULL, verification_status |
-| port_placement | project_id, layout_version_id, port_id, x_m, y_m, z_m, floor_key, evidence_id NULL, verification_status |
-| network_node | project_id, layout_version_id, code, x_m, y_m, z_m, node_type |
-| network_edge | project_id, layout_version_id, from_node_id, to_node_id, length_m, width_m NULL, allowed_modes, capacity_rule, geometry, verification_status |
-| port_network_attachment | project_id, layout_version_id, port_id, network_node_id, access_length_m, verification_status |
+| layout_version | project_id, version_no, status(draft·approved), base_version_id NULL, name, notes, canvas_width_m NULL, canvas_height_m NULL, attributes, approved_at·approved_by **(구현 0011)** |
+| layout_point | project_id, layout_version_id, point_key, x_m, y_m, attributes **(구현 0011)** |
+| asset_placement | project_id, layout_version_id, asset_id, x_m, y_m(중심), width_m NULL, height_m NULL, rotation_deg NULL, attributes **(구현 0011)** |
+| layout_port_point | project_id, layout_version_id, port_id, point_id **(구현 0011, 포트 → 점)** |
+| layout_route | project_id, layout_version_id, route_key, from_port_id, to_port_id, mode NULL, attributes **(구현 0011)** |
+| layout_route_point | project_id, layout_version_id, route_id, seq, point_id **(구현 0011, 점 순서)** |
+| zone | project_id, layout_version_id, code, name, floor_key, boundary_geometry, verification_status (후속) |
 | transport_resource | project_id, code, mode, status |
 | transport_resource_revision | project_id, resource_id, revision_no, speed_rule, load_rule, loading_rule, calendar_rule, status |
 | scenario_transport | project_id, scenario_version_id, resource_id, resource_revision_id |
 | cad_import | project_id, artifact_id, status, extractor_version, units, report, transform_rule |
 | cad_mapping | project_id, cad_import_id, source_entity_path, target_asset_id NULL, target_port_id NULL, confidence, review_status, evidence |
 
+- **사용자 결정(2026-10-28, CR be18, migration 0011):** 좌표계는 m·소수 첫째 자리(반올림)·도면 왼쪽 위 원점·y 아래쪽, 설비·공간의 x·y는 중심. 통로 network(network_node·network_edge·port_network_attachment·port_placement)는 두지 않고 점(layout_point)·포트 → 점 매핑(layout_port_point)·점 순서 경로(layout_route·layout_route_point, 직선 구간의 이음)로 표현한다. 경로 길이는 점 좌표로 계산한다(저장하지 않음). 승인 후 배치판·하위 행은 트리거로 동결. 아래의 network_edge 관련 규칙은 후속 통로 모델을 다시 도입할 때만 적용한다.
 - 초기 물리 좌표는 nullable. route manual duration으로 검증 실행 가능.
 - geometry는 초기 JSON 좌표 배열/GeoJSON 유사 구조, 외부 GIS 좌표계라고 주장하지 않는다.
 - 공간 검색 필요가 확인되면 PostGIS 도입 ADR. 초기 필수 확장으로 만들지 않는다.

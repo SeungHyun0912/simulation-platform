@@ -5,6 +5,11 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.17.0 — 2026-10-28 · scope `layouts`(신규, BE-21) · sha256 `fe64d8bb…bf9c` · 기준 commit `79c017c`
+- **호환성: 0.16.2와 호환(추가만).** 새 operation 7개(`/layout-versions` 목록·생성, 단건 조회·수정, `/content` 교체, `/validate`, `/approve`), 새 오류 `LAYOUT_DRAFT_EXISTS`(409)·`LAYOUT_VALIDATION_FAILED`(422). migration 0011(배치판 테이블 6개).
+- 근거: CR be18(사용자 결정 2026-10-28: m 소수 첫째 자리 반올림, 원점 도면 왼쪽 위, x·y 중심, 점 + 포트 매핑 + 점 순서 경로, 배치판 버전 관리 유지). 상세는 04 §7.1.
+- **프런트가 해야 할 일:** 타입 재생성. 배치판 편집 화면(도면 위 점·설비 배치·포트 매핑·경로 그리기)을 만들 수 있다. 좌표는 도면 이미지 좌표(왼쪽 위 원점, y 아래쪽) 그대로 m 단위로 보내고, 응답은 소수 첫째 자리로 반올림된 값이다. 저장은 PUT `/content`(통째로 교체, If-Match), 승인 전 `/validate`로 오류·경고를 보여 준다. 포트 id는 `GET /assets/{id}`의 `ports[]`.
+
 ## 0.16.2 — 2026-10-28 · scope `runs`(결함 수정, BE-20) · sha256 `4b35e3db…367f` · 기준 commit `4a4e9ea`
 - **호환성: 0.16.1과 같은 operation·필드.** `RootCauseGroupOut.rank`의 설명(순위 규칙)만 바뀌어 OpenAPI 해시가 바뀐다. 병목 `definition_version` "2" → "3".
 - **동작 변경:** `root_causes` 순위 = 묶인 후보 중 가장 높은 전체 순위 순. 1위 묶음은 늘 병목 1위 후보의 근본 원인이며 `headline`의 근본 원인과 같다. 0.16.0의 "level → 묶인 후보 수"는 낮음이 많은 묶음(실제 run `aa1a48b2`: P01 쉬스 압출, 14건 중 낮음 13)이 높음 3건인 P04 싱글 메인을 앞지르는 결함이었다(FE 보고).

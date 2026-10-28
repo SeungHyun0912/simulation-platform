@@ -1500,6 +1500,52 @@
         "title": "CompileProblemOut",
         "type": "object"
       },
+      "CoordinateSystemOut": {
+        "properties": {
+          "anchor": {
+            "const": "center",
+            "default": "center",
+            "description": "설비·공간의 x·y는 중심",
+            "title": "Anchor",
+            "type": "string"
+          },
+          "origin": {
+            "const": "top_left",
+            "default": "top_left",
+            "description": "도면 왼쪽 위(11시 방향)",
+            "title": "Origin",
+            "type": "string"
+          },
+          "precision": {
+            "const": "0.1",
+            "default": "0.1",
+            "description": "소수 첫째 자리까지, 그 아래는 반올림",
+            "title": "Precision",
+            "type": "string"
+          },
+          "unit": {
+            "const": "m",
+            "default": "m",
+            "title": "Unit",
+            "type": "string"
+          },
+          "x_axis": {
+            "const": "right",
+            "default": "right",
+            "title": "X Axis",
+            "type": "string"
+          },
+          "y_axis": {
+            "const": "down",
+            "default": "down",
+            "description": "y는 아래쪽으로 커진다(이미지 좌표)",
+            "title": "Y Axis",
+            "type": "string"
+          }
+        },
+        "title": "CoordinateSystemOut",
+        "type": "object"
+      },
       "CountMeasure": {
         "additionalProperties": false,
         "description": "단위 수·가닥 수. known만 값(1 이상 정수, JSON integer)을 가진다.",
@@ -2871,6 +2917,535 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LayoutContentIn": {
+        "additionalProperties": false,
+        "description": "배치판 내용 전체(보낸 내용으로 통째로 교체).",
+        "properties": {
+          "placements": {
+            "items": {
+              "$ref": "#/components/schemas/PlacementIn"
+            },
+            "title": "Placements",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutPointIn"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "port_points": {
+            "items": {
+              "$ref": "#/components/schemas/PortPointIn"
+            },
+            "title": "Port Points",
+            "type": "array"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/RouteIn"
+            },
+            "title": "Routes",
+            "type": "array"
+          }
+        },
+        "title": "LayoutContentIn",
+        "type": "object"
+      },
+      "LayoutIssueOut": {
+        "properties": {
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "rule_id",
+          "field_path",
+          "message"
+        ],
+        "title": "LayoutIssueOut",
+        "type": "object"
+      },
+      "LayoutPointIn": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "point_key": {
+            "description": "배치판 안에서 유일한 점 이름(예: P1)",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Point Key",
+            "type": "string"
+          },
+          "x_m": {
+            "title": "X M",
+            "type": "string"
+          },
+          "y_m": {
+            "title": "Y M",
+            "type": "string"
+          }
+        },
+        "required": [
+          "point_key",
+          "x_m",
+          "y_m"
+        ],
+        "title": "LayoutPointIn",
+        "type": "object"
+      },
+      "LayoutPointOut": {
+        "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "point_key": {
+            "title": "Point Key",
+            "type": "string"
+          },
+          "x_m": {
+            "title": "X M",
+            "type": "string"
+          },
+          "y_m": {
+            "title": "Y M",
+            "type": "string"
+          }
+        },
+        "required": [
+          "point_key",
+          "x_m",
+          "y_m",
+          "attributes"
+        ],
+        "title": "LayoutPointOut",
+        "type": "object"
+      },
+      "LayoutValidationOut": {
+        "properties": {
+          "approvable": {
+            "description": "오류가 0이면 승인할 수 있다(경고는 막지 않는다)",
+            "title": "Approvable",
+            "type": "boolean"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutIssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "layout_version_id": {
+            "format": "uuid",
+            "title": "Layout Version Id",
+            "type": "string"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "layout_version_id",
+          "approvable",
+          "error_count",
+          "warning_count",
+          "issues"
+        ],
+        "title": "LayoutValidationOut",
+        "type": "object"
+      },
+      "LayoutVersionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "from_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "복사할 배치판(모든 상태). 없으면 가장 최근 승인본, 그것도 없으면 빈 초안",
+            "title": "From Version Id"
+          }
+        },
+        "title": "LayoutVersionCreate",
+        "type": "object"
+      },
+      "LayoutVersionListItem": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "version_no",
+          "status",
+          "created_at",
+          "row_version"
+        ],
+        "title": "LayoutVersionListItem",
+        "type": "object"
+      },
+      "LayoutVersionOut": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "base_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "canvas_height_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Height M"
+          },
+          "canvas_width_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Width M"
+          },
+          "coordinate_system": {
+            "$ref": "#/components/schemas/CoordinateSystemOut"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "placements": {
+            "items": {
+              "$ref": "#/components/schemas/PlacementOut"
+            },
+            "title": "Placements",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "port_points": {
+            "items": {
+              "$ref": "#/components/schemas/PortPointOut"
+            },
+            "title": "Port Points",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/RouteOut"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "version_no",
+          "status",
+          "created_at",
+          "row_version",
+          "attributes",
+          "points",
+          "placements",
+          "port_points",
+          "routes"
+        ],
+        "title": "LayoutVersionOut",
+        "type": "object"
+      },
+      "LayoutVersionPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "확장 속성(배경 이미지·축척 등). 통째로 교체",
+            "title": "Attributes"
+          },
+          "canvas_height_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "도면 세로(m). 모르면 null",
+            "title": "Canvas Height M"
+          },
+          "canvas_width_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "도면 가로(m). 모르면 null",
+            "title": "Canvas Width M"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "title": "LayoutVersionPatch",
+        "type": "object"
+      },
       "LineageLinkOut": {
         "properties": {
           "child_key": {
@@ -3167,6 +3742,26 @@
           "page"
         ],
         "title": "ListOut[EventOut]",
+        "type": "object"
+      },
+      "ListOut_LayoutVersionListItem_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutVersionListItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[LayoutVersionListItem]",
         "type": "object"
       },
       "ListOut_MaterialOut_": {
@@ -4427,6 +5022,156 @@
         "title": "PerReferenceLength",
         "type": "object"
       },
+      "PlacementIn": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "height_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "세로(y 방향). 모르면 null",
+            "title": "Height M"
+          },
+          "rotation_deg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "회전(도, 0 이상 360 미만). 모르면 null",
+            "title": "Rotation Deg"
+          },
+          "width_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "가로(x 방향). 모르면 null",
+            "title": "Width M"
+          },
+          "x_m": {
+            "description": "중심 x",
+            "title": "X M",
+            "type": "string"
+          },
+          "y_m": {
+            "description": "중심 y",
+            "title": "Y M",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "x_m",
+          "y_m"
+        ],
+        "title": "PlacementIn",
+        "type": "object"
+      },
+      "PlacementOut": {
+        "properties": {
+          "asset_code": {
+            "title": "Asset Code",
+            "type": "string"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "asset_kind": {
+            "title": "Asset Kind",
+            "type": "string"
+          },
+          "asset_name": {
+            "title": "Asset Name",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "height_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height M"
+          },
+          "rotation_deg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotation Deg"
+          },
+          "width_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width M"
+          },
+          "x_m": {
+            "title": "X M",
+            "type": "string"
+          },
+          "y_m": {
+            "title": "Y M",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "asset_code",
+          "asset_name",
+          "asset_kind",
+          "x_m",
+          "y_m",
+          "attributes"
+        ],
+        "title": "PlacementOut",
+        "type": "object"
+      },
       "PortOut": {
         "properties": {
           "id": {
@@ -4459,6 +5204,70 @@
           "label"
         ],
         "title": "PortOut",
+        "type": "object"
+      },
+      "PortPointIn": {
+        "additionalProperties": false,
+        "properties": {
+          "point_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Point Key",
+            "type": "string"
+          },
+          "port_id": {
+            "description": "설비 IN/OUT 또는 공간 ACCESS 포트",
+            "format": "uuid",
+            "title": "Port Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "port_id",
+          "point_key"
+        ],
+        "title": "PortPointIn",
+        "type": "object"
+      },
+      "PortPointOut": {
+        "properties": {
+          "asset_code": {
+            "title": "Asset Code",
+            "type": "string"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "point_key": {
+            "title": "Point Key",
+            "type": "string"
+          },
+          "port_id": {
+            "format": "uuid",
+            "title": "Port Id",
+            "type": "string"
+          },
+          "port_key": {
+            "title": "Port Key",
+            "type": "string"
+          },
+          "role": {
+            "description": "IN·OUT(설비) 또는 ACCESS(공간)",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "port_id",
+          "port_key",
+          "role",
+          "asset_id",
+          "asset_code",
+          "point_key"
+        ],
+        "title": "PortPointOut",
         "type": "object"
       },
       "PortPolicyOut": {
@@ -6829,6 +7638,136 @@
         "title": "RootCauseOut",
         "type": "object"
       },
+      "RouteIn": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "from_port_id": {
+            "format": "uuid",
+            "title": "From Port Id",
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이동 수단(열린 목록, 예: forklift·amr·manual). 정하지 않으면 null",
+            "title": "Mode"
+          },
+          "points": {
+            "description": "지나는 점 key 순서(직선 구간의 이음). 첫 점 = 출발 포트의 점, 끝 점 = 도착 포트의 점",
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "route_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Route Key",
+            "type": "string"
+          },
+          "to_port_id": {
+            "format": "uuid",
+            "title": "To Port Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "route_key",
+          "from_port_id",
+          "to_port_id",
+          "points"
+        ],
+        "title": "RouteIn",
+        "type": "object"
+      },
+      "RouteOut": {
+        "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "from_asset_id": {
+            "format": "uuid",
+            "title": "From Asset Id",
+            "type": "string"
+          },
+          "from_port_id": {
+            "format": "uuid",
+            "title": "From Port Id",
+            "type": "string"
+          },
+          "length_m": {
+            "description": "연속한 점 사이 직선 거리의 합(소수 첫째 자리, 계산값)",
+            "title": "Length M",
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "route_key": {
+            "title": "Route Key",
+            "type": "string"
+          },
+          "to_asset_id": {
+            "format": "uuid",
+            "title": "To Asset Id",
+            "type": "string"
+          },
+          "to_port_id": {
+            "format": "uuid",
+            "title": "To Port Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "route_key",
+          "from_port_id",
+          "to_port_id",
+          "from_asset_id",
+          "to_asset_id",
+          "points",
+          "length_m",
+          "attributes"
+        ],
+        "title": "RouteOut",
+        "type": "object"
+      },
       "RunComparisonOut": {
         "properties": {
           "base_end_time": {
@@ -8198,6 +9137,30 @@
           "data"
         ],
         "title": "Single[GraphOut]",
+        "type": "object"
+      },
+      "Single_LayoutValidationOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LayoutValidationOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[LayoutValidationOut]",
+        "type": "object"
+      },
+      "Single_LayoutVersionOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LayoutVersionOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[LayoutVersionOut]",
         "type": "object"
       },
       "Single_LineageOut_": {
@@ -11063,6 +12026,769 @@
         "summary": "List Asset Uses",
         "tags": [
           "process-versions"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions": {
+      "get": {
+        "description": "배치판 목록(최신 version_no부터).",
+        "operationId": "list_layout_versions_api_v1_projects__project_id__layout_versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "기본 50, 최대 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 50, 최대 200",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_LayoutVersionListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Layout Versions",
+        "tags": [
+          "layouts"
+        ]
+      },
+      "post": {
+        "description": "새 초안. `from_version_id`(모든 상태) 또는 가장 최근 승인본의 내용(점·배치·포트 매핑·경로)을 복사하고, 둘 다 없으면\n빈 초안이다. 프로젝트당 초안은 하나뿐이다(409 LAYOUT_DRAFT_EXISTS).",
+        "operationId": "create_layout_version_api_v1_projects__project_id__layout_versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LayoutVersionCreate"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LayoutVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Layout Version",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}": {
+      "get": {
+        "description": "배치판 전체: 좌표계, 점, 설비·공간 배치, 포트 → 점 매핑, 경로(점 key 순서와 계산한 길이).",
+        "operationId": "get_layout_version_api_v1_projects__project_id__layout_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LayoutVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Layout Version",
+        "tags": [
+          "layouts"
+        ]
+      },
+      "patch": {
+        "description": "초안의 이름·메모·도면 크기·확장 속성 수정(보낸 필드만). 승인본은 409 VERSION_IMMUTABLE.",
+        "operationId": "patch_layout_version_api_v1_projects__project_id__layout_versions__version_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutVersionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LayoutVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Patch Layout Version",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/approve": {
+      "post": {
+        "description": "draft → approved(project admin). 검증 오류가 있으면 422 LAYOUT_VALIDATION_FAILED. 승인 후 내용은 바꿀 수 없다.",
+        "operationId": "approve_layout_version_api_v1_projects__project_id__layout_versions__version_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LayoutVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Approve Layout Version",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/content": {
+      "put": {
+        "description": "초안의 점·배치·포트 매핑·경로를 통째로 교체한다. 좌표·크기는 소수 첫째 자리로 반올림해 저장한다. 구조 오류(중복 key,\n없는 점·자산·포트, 점 2개 미만 경로 등)는 422이고, 승인 가능 여부는 `validate`가 따로 판정한다.",
+        "operationId": "put_layout_content_api_v1_projects__project_id__layout_versions__version_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutContentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LayoutVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Put Layout Content",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/validate": {
+      "post": {
+        "description": "승인 전 검증(저장하지 않음). 경로의 첫·끝 점이 출발·도착 포트의 점인지(오류), 배치되지 않은 자산의 포트·도면 밖·\n크기 모름(경고). 오류가 있어도 검증이 정상 수행되면 200이다.",
+        "operationId": "validate_layout_version_api_v1_projects__project_id__layout_versions__version_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_LayoutValidationOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Validate Layout Version",
+        "tags": [
+          "layouts"
         ]
       }
     },
