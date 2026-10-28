@@ -28,6 +28,7 @@ from simulation_platform.schemas.run import (
     RunInputOut,
     RunListItem,
     RunOut,
+    RunReportOut,
     RunStatus,
 )
 from simulation_platform.services import runs as service
@@ -178,8 +179,22 @@ def get_run_bottlenecks(
     session: Session = Depends(get_session),
 ):
     """병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로
-    돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다."""
+    돌려준다. 후보마다 막힘을 하류로 따라가 닿은 근본 원인(`root_cause`·`chain`)과 근본 원인별 묶음(`root_causes`)을 준다.
+    공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다."""
     return {"data": service.get_bottlenecks(session, principal, project_id, run_id, limit)}
+
+
+@router.get("/runs/{run_id}/report", response_model=Single[RunReportOut], responses={**READ_ERRORS, 409: ERR})
+def get_run_report(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """결과 리포트 묶음: 실행·시나리오·가정, 제품별 핵심 지표와 입력 부족, 병목 상위 10개와 근본 원인, 가동률 상위 설비,
+    적체 상위 대기 공간, 규칙으로 만든 한국어 요약 문장, 한계. 저장된 값만 읽어 같은 run이면 같은 리포트다(LLM 없음).
+    공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`."""
+    return {"data": service.run_report(session, principal, project_id, run_id)}
 
 
 @router.get("/runs/{run_id}/asset-timeline", response_model=ListOut[AssetTimelineOut], responses={**READ_ERRORS, 409: ERR})

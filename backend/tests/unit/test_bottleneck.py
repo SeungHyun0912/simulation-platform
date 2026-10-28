@@ -89,3 +89,89 @@ def test_limitations_say_carriers_were_modelled_when_the_run_used_carriers():
     notes = run(codes={"CARRIER_EMPTY_MOVE"})["limitations"]
     assert any("지정된 대수와 위치" in note for note in notes)
     assert not any("대수를 모델링하지 않" in note for note in notes)
+
+
+# --- CR be17: 원인 추적 ------------------------------------------------------------------------------
+PV4 = "44444444-4444-4444-8444-444444444444"
+E94, E95, E96 = ("bbbbbbbb-0000-4000-8000-000000000094", "bbbbbbbb-0000-4000-8000-000000000095",
+                 "bbbbbbbb-0000-4000-8000-000000000096")
+P04 = {PV4: {
+    "product": {"id": "p4", "code": "P04", "name": "제품4"},
+    "nodes": {
+        "double": {"label": "AL 더블 집합", "kind": "operation", "operation_type": "assemble", "assets": [E95], "next": ["st-019"]},
+        "st-019": {"label": "ST-019", "kind": "buffer", "operation_type": None, "assets": [], "next": ["single-pre", "single-feed"]},
+        "single-pre": {"label": "싱글-1", "kind": "operation", "operation_type": "assemble", "assets": [E94], "next": ["single-main"]},
+        "single-feed": {"label": "싱글-12", "kind": "operation", "operation_type": "assemble", "assets": [E95], "next": ["single-main"]},
+        "single-main": {"label": "싱글 메인", "kind": "operation", "operation_type": "assemble", "assets": [E96], "next": []},
+    }}}
+P04_NAMES = {E94: {"code": "EQ-094", "name": "싱글-1"}, E95: {"code": "EQ-095", "name": "더블"},
+             E96: {"code": "EQ-096", "name": "싱글 메인"}}
+
+
+def run_p04(steps, nodes=None):
+    return rules.analyze(steps=steps, nodes=nodes or {}, assets={E96: {"utilization": D("0.989")}, E94: {"utilization": D("0.30")}},
+                         graphs=P04, asset_names=P04_NAMES, observed_min=D(1000), assumption_codes=set())
+
+
+def test_a_blocked_upstream_step_is_traced_through_the_space_to_the_unblocked_machine_downstream():
+    out = run_p04({(PV4, "double"): {"step_blocked_item_min": D(408305)},
+                   (PV4, "single-feed"): {"step_blocked_item_min": D(90000)},
+                   (PV4, "single-pre"): {"step_blocked_item_min": D(20000)},
+                   (PV4, "single-main"): {"step_equipment_wait_item_min": D(500), "step_processing_time_min": D(9000)}},
+                  nodes={"st-019": {"buffer_peak_items": D(120), "buffer_item_min": D(500000)}})
+    top = out["findings"][0]
+    assert top["location"]["step_key"] == "double"
+    assert [c["key"] for c in top["chain"]] == ["double", "st-019", "single-feed", "single-main"]  # 더 막힌 싱글-12로
+    root = top["root_cause"]
+    assert (root["product_code"], root["step_key"], root["assets"][0]["code"]) == ("P04", "single-main", "EQ-096")
+    assert "AL 더블 집합 → ST-019 → 싱글-12 → 싱글 메인" in root["explanation"] and "98.9%" in root["explanation"]
+    assert "근본 원인: P04 · 싱글 메인(EQ-096 가동률 98.9%)" in out["headline"]
+    [group] = out["root_causes"]  # 모든 후보가 같은 근본 원인으로 묶임
+    assert group["step_key"] == "single-main" and group["rank"] == 1 and group["findings"] == len(out["findings"])
+    assert sorted(group["finding_ranks"]) == [f["rank"] for f in out["findings"]]
+
+
+def test_an_unblocked_busy_machine_is_its_own_root_and_the_headline_does_not_repeat_it():
+    out = run_p04({(PV4, "single-main"): {"step_equipment_wait_item_min": D(500)}})
+    [finding] = out["findings"]
+    assert [c["key"] for c in finding["chain"]] == ["single-main"]
+    assert finding["root_cause"]["step_key"] == "single-main" and "흐름을 제한" in finding["root_cause"]["explanation"]
+    assert "근본 원인" not in out["headline"]
+
+
+def test_a_space_with_no_blocked_consumer_goes_to_the_consumer_that_works_longest():
+    out = run_p04({(PV4, "single-pre"): {"step_processing_time_min": D(100)},
+                   (PV4, "single-feed"): {"step_processing_time_min": D(700)}},
+                  nodes={"st-019": {"buffer_peak_items": D(50), "buffer_item_min": D(3000)}})
+    [finding] = out["findings"]
+    assert [c["key"] for c in finding["chain"]] == ["st-019", "single-feed"]
+    assert finding["root_cause"]["step_key"] == "single-feed"
+
+
+def test_a_blocked_step_with_nowhere_to_go_has_no_root():
+    out = run_p04({(PV4, "single-main"): {"step_blocked_item_min": D(500)}})
+    [finding] = out["findings"]
+    assert finding["root_cause"] is None and out["root_causes"] == []
+
+
+def test_a_root_with_low_utilization_points_to_the_input_conditions_instead_of_the_machine_speed():
+    out = run_p04({(PV4, "single-pre"): {"step_equipment_wait_item_min": D(500), "step_input_wait_item_min": D(7200)}})
+    root = out["findings"][0]["root_cause"]
+    assert root["utilization"] == D("0.30") and root["input_wait_item_min"] == D(7200)
+    assert "투입 조건(입력 대기 7,200.0작업물·분)을 먼저 확인" in root["explanation"]
+    assert "투입 조건" in out["root_causes"][0]["explanation"]
+    busy = run_p04({(PV4, "single-main"): {"step_equipment_wait_item_min": D(500)}})["findings"][0]["root_cause"]
+    assert "투입 조건" not in busy["explanation"]  # 가동률 98.9%는 설비 자체가 원인
+
+
+def test_a_shared_space_is_followed_into_whichever_product_drains_it_most_slowly():
+    other = "55555555-5555-4555-8555-555555555555"
+    graphs = {**P04, other: {"product": {"id": "p5", "code": "P05", "name": "제품5"}, "nodes": {
+        "st-019": {"label": "ST-019", "kind": "buffer", "operation_type": None, "assets": [], "next": ["tape"]},
+        "tape": {"label": "테이핑", "kind": "operation", "operation_type": "transform", "assets": [], "next": []}}}}
+    out = rules.analyze(steps={(other, "tape"): {"step_processing_time_min": D(99999)}},
+                        nodes={"st-019": {"buffer_peak_items": D(50), "buffer_item_min": D(3000)}}, assets={},
+                        graphs=graphs, asset_names={}, observed_min=D(1000), assumption_codes=set())
+    [finding] = out["findings"]
+    assert [(c["process_version_id"], c["key"]) for c in finding["chain"]] == [(PV4, "st-019"), (other, "tape")]
+    assert finding["root_cause"]["product_code"] == "P05"

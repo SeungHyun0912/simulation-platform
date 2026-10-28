@@ -86,6 +86,8 @@ EXPECTED = {
     ("get", "/api/v1/projects/{project_id}/process-graphs"),
     ("get", "/api/v1/projects/{project_id}/assets/{asset_id}/uses"),
     ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/refresh"),
+    # scope runs 확장 (contract 0.16.0)
+    ("get", "/api/v1/projects/{project_id}/runs/{run_id}/report"),
 }
 
 
