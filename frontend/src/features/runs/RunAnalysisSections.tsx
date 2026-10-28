@@ -49,53 +49,34 @@ export function LevelBadge({ level }: { level: string }) {
 }
 
 /**
- * 근본 원인 자리. 병목은 "멈춘 곳"이라 하류가 느리면 상류가 1위가 될 수 있다. Backend가 0.16.0에서 `root_cause`(원인 설비)·`chain`(번진 경로)을
- * 더하면 여기서 보인다. 아직 계약에 없는 필드라 타입 밖에서 읽고, 없으면 아무것도 그리지 않는다.
+ * 후보 하나의 근본 원인(0.16.0 `root_cause`)과 막힘이 번진 경로(`chain`, 첫 항목이 시작 위치).
+ * 병목은 "멈춘 곳"이라 하류가 느리면 상류가 1위가 될 수 있다. `root_cause` null은 판정 불가, 빈 경로는 그리지 않는다.
  */
 function RootCause({ f }: { f: Bottleneck }) {
-  const extra = f as Bottleneck & { root_cause?: unknown; chain?: unknown };
-  const rc = asRecord(extra.root_cause); // null = 판정 불가
-  const chain = Array.isArray(extra.chain) ? extra.chain.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : [];
-  // 필드가 없거나(0.16.0 이전 서버), 원인 null + 빈 경로면 그리지 않는다
+  const rc = f.root_cause ?? null;
+  const chain = f.chain ?? [];
   if (!rc && chain.length === 0) return null;
-  // 아는 모양(개발 서버 응답 기준): 설명·제품·단계·설비·가동률. 모르는 모양이면 원문 줄로 보인다.
-  const known = rc && (typeof rc.explanation === "string" || typeof rc.step_label === "string");
-  const assets = rc && Array.isArray(rc.assets) ? rc.assets.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : [];
   return (
     <div aria-label="병목 원인">
       <strong>원인</strong>
       {!rc && <p className={styles.muted}>근본 원인을 판정할 수 없습니다(막힘이 번진 경로만 보입니다).</p>}
-      {known ? (
+      {rc && (
         <>
-          {typeof rc.explanation === "string" && <p>{rc.explanation}</p>}
+          <p>{rc.explanation}</p>
           <p className={styles.muted}>
-            근본 원인: {[rc.product_code, rc.step_label ?? rc.step_key].filter(Boolean).join(" · ")}
-            {assets.length > 0 &&
-              ` · 설비 ${assets.map((x) => `${String(x.code ?? "")}${x.utilization != null ? ` 가동률 ${percentText(String(x.utilization))}` : ""}`).join(", ")}`}
+            근본 원인: {[rc.product_code, rc.step_label].filter(Boolean).join(" · ")}
+            {rc.assets.length > 0 && ` · 설비 ${rc.assets.map((x) => `${x.code ?? x.asset_id.slice(0, 8)} 가동률 ${percentText(x.utilization)}`).join(", ")}`}
           </p>
         </>
-      ) : (
-        rc && (
-          <ul className={styles.evidence}>
-            {evidenceLines(rc).map((l) => (
-              <li key={l.key}>
-                {l.label}: {l.text}
-              </li>
-            ))}
-          </ul>
-        )
       )}
       {chain.length > 0 && (
         <p className={styles.muted} aria-label="막힘이 번진 경로">
-          막힘이 번진 경로(멈춘 곳 → 근본 원인):{" "}
-          {chain.map((c) => `${c.kind === "space" ? "공간 " : c.kind === "step" ? "단계 " : ""}${String(c.label ?? c.key ?? "?")}`).join(" → ")}
+          막힘이 번진 경로(멈춘 곳 → 근본 원인): {chain.map((c) => `${c.kind === "space" ? "공간 " : c.kind === "step" ? "단계 " : ""}${c.label || c.key}`).join(" → ")}
         </p>
       )}
     </div>
   );
 }
-
-const asRecord = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
 /** 병목 한 건: 순위·수준·위치·멈춘 양·종류 안 비율·설명, 근거는 펼쳐 본다. */
 export function FindingItem({ f }: { f: Bottleneck }) {
@@ -136,77 +117,141 @@ const KIND_PREVIEW = 3;
 
 export function RunBottlenecksSection({ projectId, runId, enabled }: { projectId: string; runId: string; enabled: boolean }) {
   const q = useRunBottlenecks(projectId, runId, enabled);
-  const [openKinds, setOpenKinds] = useState<ReadonlySet<string>>(new Set());
   return (
     <Section id="sec-bottlenecks" title="병목">
       {!enabled && <StateNotice kind="empty" title="실행이 끝나면 병목을 볼 수 있습니다" />}
       {enabled && q.status === "pending" && <StateNotice kind="loading" />}
       {enabled && q.status === "error" && <ResultError error={q.error} subject="병목 요약" onRetry={q.retry} />}
-      {enabled && q.status === "success" && (
-        <>
-          {QUALITY[q.data.quality_status] && (
-            <StateNotice kind="conflict" title="불완전한 관측">
-              {QUALITY[q.data.quality_status]}
-            </StateNotice>
-          )}
-          <p className={styles.headline}>{q.data.headline}</p>
-          <Note>관측 시간 {numberText(q.data.observed.min, 0)}분 · 멈춘 양은 작업물 수 × 멈춘 분(작업물·분)이며 종류가 다르면 합산하지 않습니다.</Note>
-          <StateNotice kind="contract-pending" title="이 판정의 한계">
-            <ul className={styles.limits}>
-              {q.data.limitations.map((l, i) => (
-                <li key={i}>{l}</li>
-              ))}
-            </ul>
-          </StateNotice>
-          {q.data.findings.length === 0 && <StateNotice kind="empty" title="기준을 넘는 병목이 없습니다" />}
-          {[...BOTTLENECK_KINDS, ...unknownKinds(q.data.findings)].map((k) => {
-            const list = q.data.findings.filter((f) => f.kind === k.kind).sort((a, b) => a.rank_in_kind - b.rank_in_kind);
-            if (list.length === 0) return null;
-            const open = openKinds.has(k.kind);
-            const shown = open ? list : list.slice(0, KIND_PREVIEW);
-            return (
-              <section key={k.kind} className={styles.kindGroup} aria-label={`병목 종류: ${k.title}`}>
-                <h3 className={styles.kindTitle}>
-                  {k.title} <span className={styles.muted}>({list.length}건)</span>
-                </h3>
-                <p className={styles.muted}>{k.desc}</p>
-                <ul className={styles.findings}>
-                  {shown.map((f) => (
-                    <FindingItem key={`${f.kind}-${f.rank}`} f={f} />
-                  ))}
-                </ul>
-                {list.length > KIND_PREVIEW && (
-                  <p>
-                    <Button
-                      aria-expanded={open}
-                      onClick={() =>
-                        setOpenKinds((cur) => {
-                          const n = new Set(cur);
-                          if (open) n.delete(k.kind);
-                          else n.add(k.kind);
-                          return n;
-                        })
-                      }
-                    >
-                      {open ? "접기" : `${k.title} 모두 보기(${list.length}건)`}
-                    </Button>
-                  </p>
-                )}
-              </section>
-            );
-          })}
-          <p className={styles.muted}>
-            판정 기준값:{" "}
-            {Object.entries(q.data.thresholds)
-              .map(([k, v]) => `${THRESHOLD_TEXT[k] ?? k} ${String(v)}`)
-              .join(" · ")}{" "}
-            (정의 버전 {q.data.definition_version})
-          </p>
-        </>
-      )}
+      {enabled && q.status === "success" && <BottleneckSummaryView data={q.data} />}
     </Section>
   );
 }
+
+/** 병목 요약 본문(실행 상세의 병목 섹션과 결과 리포트가 같이 쓴다): 고칠 곳 → 멈춘 곳(종류별) → 한계·기준값 */
+export function BottleneckSummaryView({ data, showQuality = true }: { data: Schemas["BottleneckSummaryOut"]; showQuality?: boolean }) {
+  const [openKinds, setOpenKinds] = useState<ReadonlySet<string>>(new Set());
+  return (
+    <>
+      {showQuality && QUALITY[data.quality_status] && (
+        <StateNotice kind="conflict" title="불완전한 관측">
+          {QUALITY[data.quality_status]}
+        </StateNotice>
+      )}
+      <p className={styles.headline}>{data.headline}</p>
+      <Note>관측 시간 {numberText(data.observed.min, 0)}분 · 멈춘 양은 작업물 수 × 멈춘 분(작업물·분)이며 종류가 다르면 합산하지 않습니다.</Note>
+      <StateNotice kind="contract-pending" title="이 판정의 한계">
+        <ul className={styles.limits}>
+          {data.limitations.map((l, i) => (
+            <li key={i}>{l}</li>
+          ))}
+        </ul>
+      </StateNotice>
+      <RootCauseList groups={data.root_causes ?? []} />
+      {data.findings.length === 0 && <StateNotice kind="empty" title="기준을 넘는 병목이 없습니다" />}
+      {data.findings.length > 0 && <h3 className={styles.kindTitle}>멈춘 곳(종류별)</h3>}
+      {[...BOTTLENECK_KINDS, ...unknownKinds(data.findings)].map((k) => {
+        const list = data.findings.filter((f) => f.kind === k.kind).sort((a, b) => a.rank_in_kind - b.rank_in_kind);
+        if (list.length === 0) return null;
+        const open = openKinds.has(k.kind);
+        const shown = open ? list : list.slice(0, KIND_PREVIEW);
+        return (
+          <section key={k.kind} className={styles.kindGroup} aria-label={`병목 종류: ${k.title}`}>
+            <h4 className={styles.kindTitle}>
+              {k.title} <span className={styles.muted}>({list.length}건)</span>
+            </h4>
+            <p className={styles.muted}>{k.desc}</p>
+            <ul className={styles.findings}>
+              {shown.map((f) => (
+                <FindingItem key={`${f.kind}-${f.rank}`} f={f} />
+              ))}
+            </ul>
+            {list.length > KIND_PREVIEW && (
+              <p>
+                <Button
+                  aria-expanded={open}
+                  onClick={() =>
+                    setOpenKinds((cur) => {
+                      const n = new Set(cur);
+                      if (open) n.delete(k.kind);
+                      else n.add(k.kind);
+                      return n;
+                    })
+                  }
+                >
+                  {open ? "접기" : `${k.title} 모두 보기(${list.length}건)`}
+                </Button>
+              </p>
+            )}
+          </section>
+        );
+      })}
+      <p className={styles.muted}>
+        판정 기준값:{" "}
+        {Object.entries(data.thresholds)
+          .map(([k, v]) => `${THRESHOLD_TEXT[k] ?? k} ${String(v)}`)
+          .join(" · ")}{" "}
+        (정의 버전 {data.definition_version})
+      </p>
+    </>
+  );
+}
+
+/**
+ * "고칠 곳"(0.16.0 `root_causes`): 막힘을 하류로 따라가 닿은 근본 원인별로 묶은 목록이다. 멈춘 곳 1위가 원인이 아닐 수 있어(하류가 느리면 상류가 막힘)
+ * 이 목록이 "무엇을 고칠까"의 답이다. 묶인 멈춘 양 합은 종류가 달라 겹칠 수 있는 참고값이다.
+ */
+export function RootCauseList({ groups }: { groups: Schemas["RootCauseGroupOut"][] }) {
+  const [all, setAll] = useState(false);
+  if (groups.length === 0) return null;
+  const shown = all ? groups : groups.slice(0, CAUSE_PREVIEW);
+  return (
+    <section className={styles.kindGroup} aria-label="고칠 곳">
+      <h3 className={styles.kindTitle}>고칠 곳(근본 원인별)</h3>
+      <p className={styles.muted}>멈춘 곳에서 막힘을 하류로 따라가 처음 막히지 않은 단계를 근본 원인으로 봅니다. 순위는 묶인 병목의 수준 → 수 → 멈춘 양 순서입니다.</p>
+      <ol className={styles.findings}>
+        {shown.map((g) => (
+          <li key={`${g.process_version_id}-${g.step_key}`} className={styles.finding} aria-label={`고칠 곳 ${g.rank}위 ${g.product_code ?? ""} ${g.step_label}`}>
+            <div className={styles.findingHead}>
+              <strong>{g.rank}위</strong>
+              <span>
+                {[g.product_code, g.product_name].filter(Boolean).join(" ")} · 단계 {g.step_label}
+              </span>
+              {g.utilization !== null && g.utilization !== undefined && <span className={styles.amount}>가동률 {percentText(g.utilization)}</span>}
+              <span className={styles.muted}>
+                묶인 병목 {g.findings}건(
+                {(["high", "medium", "low"] as const)
+                  .filter((lv) => Number((g.levels as Record<string, number>)[lv] ?? 0) > 0)
+                  .map((lv) => `${LEVEL_LABELS[lv]!.text} ${(g.levels as Record<string, number>)[lv]}`)
+                  .join(" · ")}
+                ) · 관련 순위 {g.finding_ranks.join("·")}위
+              </span>
+            </div>
+            <p>{g.explanation}</p>
+            {g.assets.length > 0 && (
+              <p className={styles.muted}>
+                설비: {g.assets.map((x) => `${x.code ?? x.asset_id.slice(0, 8)}${x.name ? ` ${x.name}` : ""} ${percentText(x.utilization)}`).join(", ")}
+                {g.input_wait_item_min ? ` · 입력 대기 ${numberText(g.input_wait_item_min, 0)} 작업물·분` : ""}
+              </p>
+            )}
+            <p className={styles.muted} title="종류가 다른 멈춘 양은 시간이 겹칠 수 있어 참고값입니다">
+              묶인 멈춘 양 합(참고) {numberText(g.stalled_item_min, 0)} 작업물·분
+            </p>
+          </li>
+        ))}
+      </ol>
+      {groups.length > CAUSE_PREVIEW && (
+        <p>
+          <Button aria-expanded={all} onClick={() => setAll((v) => !v)}>
+            {all ? "접기" : `고칠 곳 모두 보기(${groups.length}곳)`}
+          </Button>
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** 실데이터(c3640d5d)에서 근본 원인이 20곳까지 나와 상위만 먼저 보인다 */
+const CAUSE_PREVIEW = 5;
 
 const THRESHOLD_TEXT: Record<string, string> = {
   pileup_min_peak_items: "적체 최소 개수",

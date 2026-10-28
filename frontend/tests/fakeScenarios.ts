@@ -113,13 +113,75 @@ const finding = (rank: number, kind: "space_full" | "equipment_busy" | "queue_pi
 });
 
 export function analysisBottlenecks(runId: string): Schemas["BottleneckSummaryOut"] {
-  const busy = Array.from({ length: 5 }, (_, i) => finding(i === 0 ? 1 : i + 2, "equipment_busy", i === 0 ? "high" : "low", String(1000 - i * 100), { rank_in_kind: i + 1, explanation: `설비 대기 ${i + 1}` }));
+  // 0.16.0: 1위(압출 설비 대기)는 하류 피복이 느려 막힌 것 — 근본 원인은 피복(op-2)이다. 나머지 후보는 원인 필드가 없다(이전 서버 모양).
+  const rootCause: Schemas["RootCauseOut"] = {
+    process_version_id: processVersionId(1),
+    product_code: "P-001",
+    step_key: "op-2",
+    step_label: "피복",
+    utilization: "0.97",
+    assets: [{ asset_id: "00000000-0000-4000-8000-0000000000e2", code: "EQ-002", name: "서버 설비 2", utilization: "0.97" }],
+    input_wait_item_min: "0",
+    explanation: "압출 설비 대기는 하류 피복(EQ-002 가동률 97%)이 느려 생긴 것입니다.",
+  };
+  const busy = Array.from({ length: 5 }, (_, i) =>
+    finding(i === 0 ? 1 : i + 2, "equipment_busy", i === 0 ? "high" : "low", String(1000 - i * 100), {
+      rank_in_kind: i + 1,
+      explanation: `설비 대기 ${i + 1}`,
+      ...(i === 0
+        ? {
+            root_cause: rootCause,
+            chain: [
+              { kind: "step" as const, process_version_id: processVersionId(1), key: "op-1", label: "압출" },
+              { kind: "space" as const, process_version_id: processVersionId(1), key: "buf", label: "ST-041 서버 공간 41" },
+              { kind: "step" as const, process_version_id: processVersionId(1), key: "op-2", label: "피복" },
+            ],
+          }
+        : {}),
+    }),
+  );
   return {
     run_id: runId,
     quality_status: "complete",
     observed: minutes("90"),
-    definition_version: "1",
-    headline: "가장 큰 정체: P-001 압출 설비 대기",
+    definition_version: "2",
+    headline: "가장 큰 정체: P-001 압출 설비 대기. 근본 원인: P-001 피복",
+    root_causes: [
+      {
+        rank: 1,
+        process_version_id: processVersionId(1),
+        product_id: processProductId(1),
+        product_code: "P-001",
+        product_name: "서버 제품 1",
+        step_key: "op-2",
+        step_label: "피복",
+        utilization: "0.97",
+        assets: rootCause.assets,
+        input_wait_item_min: "0",
+        findings: 2,
+        finding_ranks: [1, 2],
+        levels: { high: 1, medium: 1, low: 0 },
+        stalled_item_min: "1800",
+        explanation: rootCause.explanation,
+      },
+      {
+        rank: 2,
+        process_version_id: processVersionId(1),
+        product_id: processProductId(1),
+        product_code: "P-001",
+        product_name: "서버 제품 1",
+        step_key: "op-3",
+        step_label: "포장",
+        utilization: "0.31",
+        assets: [],
+        input_wait_item_min: "420",
+        findings: 1,
+        finding_ranks: [3],
+        levels: { high: 0, medium: 0, low: 1 },
+        stalled_item_min: "900",
+        explanation: "포장 가동률이 31%로 낮습니다. 설비 속도보다 투입 조건을 먼저 확인하세요.",
+      },
+    ],
     findings: [
       ...busy,
       finding(2, "queue_pileup", "medium", "800", {
@@ -130,6 +192,67 @@ export function analysisBottlenecks(runId: string): Schemas["BottleneckSummaryOu
     ],
     limitations: ["공간 용량을 무제한으로 가정한 실행이라 공간 부족은 평가되지 않습니다.", "운반 자원 대수는 모델링하지 않습니다."],
     thresholds: { pileup_min_peak_items: "3", level_high_share: "0.30" },
+  };
+}
+
+/** 결과 리포트(0.16.0) 시드: 제품 2개(합산하지 않음), 값 없는 지표 1개(null → 해당 없음) */
+export function analysisReport(r: Schemas["RunOut"]): Schemas["RunReportOut"] {
+  return {
+    definition_version: "1",
+    run: {
+      run_id: r.id,
+      status: "completed",
+      termination_reason: "demand_met",
+      engine_version: r.engine_version,
+      seed: r.seed,
+      replicate_index: r.replicate_index,
+      input_hash: r.input_hash,
+      observed: minutes("90"),
+      quality_status: "complete",
+      censored: false,
+      event_count: 120,
+      wip_items: 0,
+    },
+    scenario: { scenario_id: null, code: "SCN-001", scenario_version_id: r.scenario_version_id, version_no: 2, stopping_rule: { kind: "demand", horizon_min: 600 }, assumption_reason: "용량 미확인 공간" },
+    assumptions: [
+      { code: "UNBOUNDED_BUFFERS", message: "공간 buf 용량 미확인", node_key: "buf" },
+      { code: "UNBOUNDED_BUFFERS", message: "공간 buf2 용량 미확인", node_key: "buf2" },
+    ],
+    products: [
+      {
+        product_id: processProductId(1),
+        product_code: "P-001",
+        product_name: "서버 제품 1",
+        process_version_id: processVersionId(1),
+        completed_items: 12,
+        first_completion: minutes("30"),
+        last_completion: minutes("88"),
+        metrics: [
+          { metric_key: "throughput_items", unit: "items", value: "12" },
+          { metric_key: "lead_time_avg_min", unit: "min", value: null },
+        ],
+        shortfalls: [{ process_version_id: processVersionId(1), step: "op-1", pool: "Cu", needed: 4, held: 1, waiting: 3 }],
+      },
+      {
+        product_id: processProductId(2),
+        product_code: "P-002",
+        product_name: "서버 제품 2",
+        process_version_id: processVersionId(2),
+        completed_items: 5,
+        first_completion: minutes("40"),
+        last_completion: minutes("80"),
+        metrics: [{ metric_key: "throughput_items", unit: "items", value: "5" }],
+        shortfalls: [],
+      },
+    ],
+    bottlenecks: analysisBottlenecks(r.id),
+    top_assets: [
+      { asset_id: "00000000-0000-4000-8000-0000000000e2", code: "EQ-002", name: "서버 설비 2", processing_time_min: "87.3", utilization: "0.97" },
+      { asset_id: "00000000-0000-4000-8000-0000000000e1", code: null, name: null, processing_time_min: null, utilization: null },
+    ],
+    top_spaces: [{ node_key: "buf", node_label: "ST-041 서버 공간 41", space_wait_item_min: "640", buffer_item_min: "800", buffer_peak_items: "5", buffer_wait_avg_min: "6.4" }],
+    summary: ["P-001 서버 제품 1은 완제품 12개를 만들었습니다.", "근본 원인 1위는 P-001 피복입니다."],
+    limitations: ["공간 용량을 무제한으로 가정한 실행이라 공간 부족은 평가되지 않습니다.", "제품끼리 생산량을 합산하지 않습니다."],
   };
 }
 
@@ -459,7 +582,7 @@ export function scenarioRoute(req: FakeRequest, state: FakeState, h: Helpers): F
     }
   }
   // ---- 실행 분석(0.12.0 병목, 0.13.0 설비 타임라인·두 실행 비교) ----
-  const an = new RegExp(`^/projects/${P}/runs/([^/]+)/(bottlenecks|asset-timeline|assets/([^/]+)/states|compare/([^/]+)(/metrics)?)$`).exec(path);
+  const an = new RegExp(`^/projects/${P}/runs/([^/]+)/(bottlenecks|report|asset-timeline|assets/([^/]+)/states|compare/([^/]+)(/metrics)?)$`).exec(path);
   if (an && method === "GET") {
     const r = S.runs.find((x) => x.id === an[1]);
     if (!r) return h.notFound();
@@ -467,6 +590,10 @@ export function scenarioRoute(req: FakeRequest, state: FakeState, h: Helpers): F
     if (an[2] === "bottlenecks") {
       if (r.status !== "completed") return noResult();
       return { status: 200, body: { data: analysisBottlenecks(r.id) } };
+    }
+    if (an[2] === "report") {
+      if (r.status !== "completed") return noResult();
+      return { status: 200, body: { data: analysisReport(r) } };
     }
     if (an[2] === "asset-timeline") {
       if (r.status !== "completed") return noResult();

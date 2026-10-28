@@ -112,6 +112,11 @@ export function RunDetailPage() {
             <code>{r.input_hash}</code>
           </dd>
         </dl>
+        {!active && r.result !== null && (
+          <p>
+            <LinkButton to={`/projects/${projectId}/runs/${runId}/report`}>결과 리포트 보기</LinkButton>
+          </p>
+        )}
         {active && (
           <div>
             <Button

@@ -14,6 +14,7 @@ import { ProductCreatePage } from "../features/products/ProductCreatePage";
 import { ProductDetailPage } from "../features/products/ProductDetailPage";
 import { ProductListPage } from "../features/products/ProductListPage";
 import { RunComparePage } from "../features/runs/RunComparePage";
+import { RunReportPage } from "../features/runs/RunReportPage";
 import { RunDetailPage } from "../features/runs/RunDetailPage";
 import { RunListPage } from "../features/runs/RunListPage";
 import { ScenarioCreatePage } from "../features/scenarios/ScenarioCreatePage";
@@ -49,6 +50,7 @@ export const routes = [
       { path: "/projects/:projectId/runs", element: <RunListPage /> },
       { path: "/projects/:projectId/runs/:runId", element: <RunDetailPage /> },
       { path: "/projects/:projectId/runs/:runId/compare/:otherId", element: <RunComparePage /> },
+      { path: "/projects/:projectId/runs/:runId/report", element: <RunReportPage /> },
       {
         path: "/projects/:projectId/products/:productId/processes/:versionId",
         element: <ProcessEditorPage />,

@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.15.2, openapi_sha256 f4df60cddfdb9edbd282ddb9e194f9ecefd6bc69bd015d471e88238de75d859a
+// 기준 계약: version 0.16.0, openapi_sha256 13fa2fb9afce00b5bc9808d57fdfaa4d9b1dff463745beeeecd4504c478842ad
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
@@ -717,7 +717,8 @@ export interface paths {
         /**
          * Get Run Bottlenecks
          * @description 병목 요약: 다음 저장 공간 부족·다음 설비의 가동·대기 자재 적체로 **멈춰 있는 곳**을 종류·위치·근거와 함께 순위로
-         *     돌려준다. 공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.
+         *     돌려준다. 후보마다 막힘을 하류로 따라가 닿은 근본 원인(`root_cause`·`chain`)과 근본 원인별 묶음(`root_causes`)을 준다.
+         *     공식 결과(전체 구간 지표)만 쓰며 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 한계(`limitations`)를 함께 보여야 한다.
          */
         get: operations["get_run_bottlenecks_api_v1_projects__project_id__runs__run_id__bottlenecks_get"];
         put?: never;
@@ -865,6 +866,28 @@ export interface paths {
          *     공식 결과가 아직 없으면 409 `RUN_RESULT_NOT_AVAILABLE`. 차원 필터는 함께 쓸 수 있다(모두 만족하는 행만).
          */
         get: operations["list_run_metrics_api_v1_projects__project_id__runs__run_id__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/runs/{run_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run Report
+         * @description 결과 리포트 묶음: 실행·시나리오·가정, 제품별 핵심 지표와 입력 부족, 병목 상위 10개와 근본 원인, 가동률 상위 설비,
+         *     적체 상위 대기 공간, 규칙으로 만든 한국어 요약 문장, 한계. 저장된 값만 읽어 같은 run이면 같은 리포트다(LLM 없음).
+         *     공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
+         */
+        get: operations["get_run_report_api_v1_projects__project_id__runs__run_id__report_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1378,6 +1401,11 @@ export interface components {
         /** BottleneckOut */
         BottleneckOut: {
             /**
+             * Chain
+             * @description 이 후보에서 근본 원인까지 막힘이 번진 경로(시작 포함)
+             */
+            chain?: components["schemas"]["ChainStepOut"][];
+            /**
              * Evidence
              * @description 근거 수치(종류마다 다름). 숫자는 decimal 문자열
              */
@@ -1412,6 +1440,8 @@ export interface components {
              * @description 같은 종류 안에서의 순위(멈춘 양 큰 순)
              */
             rank_in_kind: number;
+            /** @description 근본 원인. 같은 곳을 다시 지나거나 더 갈 곳이 없으면 판정 불가(null) */
+            root_cause?: components["schemas"]["RootCauseOut"] | null;
             /**
              * Share
              * @description 같은 종류의 멈춘 양 합계 대비 비율(0~1)
@@ -1443,6 +1473,11 @@ export interface components {
              * @enum {string}
              */
             quality_status: "complete" | "censored" | "incomplete";
+            /**
+             * Root Causes
+             * @description 근본 원인별로 묶은 후보(CR be17). 화면의 '무엇을 고칠까' 목록
+             */
+            root_causes?: components["schemas"]["RootCauseGroupOut"][];
             /**
              * Run Id
              * Format: uuid
@@ -1489,6 +1524,23 @@ export interface components {
             unit?: ("item" | "bobbin_slot" | "pallet_slot" | "kg" | "m2") | null;
             /** Value */
             value?: string | null;
+        };
+        /** ChainStepOut */
+        ChainStepOut: {
+            /**
+             * Key
+             * @description 단계면 step_key, 공간이면 node_key
+             */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "step" | "space";
+            /** Label */
+            label: string;
+            /** Process Version Id */
+            process_version_id: string;
         };
         /** ComparisonBottlenecksOut */
         ComparisonBottlenecksOut: {
@@ -3127,6 +3179,134 @@ export interface components {
              */
             mode: "when_destination_accepts";
         };
+        /** ReportAssetOut */
+        ReportAssetOut: {
+            /** Asset Id */
+            asset_id: string;
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Processing Time Min */
+            processing_time_min?: string | null;
+            /** Utilization */
+            utilization?: string | null;
+        };
+        /** ReportMetricOut */
+        ReportMetricOut: {
+            /** Metric Key */
+            metric_key: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value
+             * @description 실행 전체 구간 값. 해당 없으면 null(0이 아니다)
+             */
+            value?: string | null;
+        };
+        /** ReportProductOut */
+        ReportProductOut: {
+            /** Completed Items */
+            completed_items: number;
+            first_completion?: components["schemas"]["MinutesOut"] | null;
+            last_completion?: components["schemas"]["MinutesOut"] | null;
+            /**
+             * Metrics
+             * @description 핵심 지표(완료·처리량·리드타임·재공품·폐기). 제품끼리 합산하지 않는다
+             */
+            metrics: components["schemas"]["ReportMetricOut"][];
+            /** Process Version Id */
+            process_version_id: string;
+            /** Product Code */
+            product_code?: string | null;
+            /** Product Id */
+            product_id: string;
+            /** Product Name */
+            product_name?: string | null;
+            /**
+             * Shortfalls
+             * @description 끝난 시점의 입력 부족(어느 단계가 무엇을 기다리는지)
+             */
+            shortfalls: components["schemas"]["ShortfallOut"][];
+        };
+        /** ReportRunOut */
+        ReportRunOut: {
+            /**
+             * Censored
+             * @default false
+             */
+            censored: boolean;
+            /** Engine Version */
+            engine_version: string;
+            /**
+             * Event Count
+             * @default 0
+             */
+            event_count: number;
+            /** Input Hash */
+            input_hash: string;
+            /** @description 관측한 가상 시간(실행 종료 시각) */
+            observed: components["schemas"]["MinutesOut"];
+            /**
+             * Quality Status
+             * @enum {string}
+             */
+            quality_status: "complete" | "censored" | "incomplete";
+            /** Replicate Index */
+            replicate_index: number;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Seed */
+            seed: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "stalled" | "horizon_reached" | "failed" | "limit_reached" | "cancelled";
+            /** Termination Reason */
+            termination_reason?: string | null;
+            /**
+             * Wip Items
+             * @description 끝난 시점의 미완료 작업물 수(제품 합, 참고값)
+             * @default 0
+             */
+            wip_items: number;
+        };
+        /** ReportScenarioOut */
+        ReportScenarioOut: {
+            /** Assumption Reason */
+            assumption_reason?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /** Scenario Version Id */
+            scenario_version_id?: string | null;
+            stopping_rule?: components["schemas"]["JsonValue"];
+            /** Version No */
+            version_no?: number | null;
+        };
+        /** ReportSpaceOut */
+        ReportSpaceOut: {
+            /** Buffer Item Min */
+            buffer_item_min?: string | null;
+            /** Buffer Peak Items */
+            buffer_peak_items?: string | null;
+            /** Buffer Wait Avg Min */
+            buffer_wait_avg_min?: string | null;
+            /** Node Key */
+            node_key: string;
+            /** Node Label */
+            node_label?: string | null;
+            /**
+             * Space Wait Item Min
+             * @description 공간이 차서 들어가지 못하고 기다린 양
+             */
+            space_wait_item_min?: string | null;
+        };
         /** RequirementDto */
         RequirementDto: {
             allocation_rule?: components["schemas"]["AllocationRule"];
@@ -3232,6 +3412,101 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "in_review" | "approved" | "superseded";
+        };
+        /** RootCauseAssetOut */
+        RootCauseAssetOut: {
+            /** Asset Id */
+            asset_id: string;
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Utilization
+             * @description 실행 전체 가동률(0~1)
+             */
+            utilization: string;
+        };
+        /** RootCauseGroupOut */
+        RootCauseGroupOut: {
+            /** Assets */
+            assets: components["schemas"]["RootCauseAssetOut"][];
+            /** Explanation */
+            explanation: string;
+            /**
+             * Finding Ranks
+             * @description 묶인 후보의 전체 순위
+             */
+            finding_ranks: number[];
+            /**
+             * Findings
+             * @description 이 근본 원인으로 이어진 병목 후보 수(전체 후보 기준, limit와 무관)
+             */
+            findings: number;
+            /** Input Wait Item Min */
+            input_wait_item_min?: string | null;
+            /**
+             * Levels
+             * @description 묶인 후보의 level별 수(high·medium·low)
+             */
+            levels: {
+                [key: string]: number;
+            };
+            /** Process Version Id */
+            process_version_id: string;
+            /** Product Code */
+            product_code?: string | null;
+            /** Product Id */
+            product_id?: string | null;
+            /** Product Name */
+            product_name?: string | null;
+            /**
+             * Rank
+             * @description 묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양 순
+             */
+            rank: number;
+            /**
+             * Stalled Item Min
+             * @description 묶인 후보의 멈춘 양 합(종류가 달라 겹칠 수 있어 참고값)
+             */
+            stalled_item_min: string;
+            /** Step Key */
+            step_key: string;
+            /** Step Label */
+            step_label: string;
+            /** Utilization */
+            utilization?: string | null;
+        };
+        /**
+         * RootCauseOut
+         * @description 막힘을 하류로 따라가 닿은, 막히지 않은 단계(흐름을 제한하는 곳). CR be17.
+         */
+        RootCauseOut: {
+            /**
+             * Assets
+             * @description 후보 설비(가동률 높은 순, 최대 3개)
+             */
+            assets: components["schemas"]["RootCauseAssetOut"][];
+            /** Explanation */
+            explanation: string;
+            /**
+             * Input Wait Item Min
+             * @description 이 단계가 입력을 기다린 양. 가동률이 낮은데 크면 투입 조건이 원인일 수 있다
+             */
+            input_wait_item_min?: string | null;
+            /** Process Version Id */
+            process_version_id: string;
+            /** Product Code */
+            product_code?: string | null;
+            /** Step Key */
+            step_key: string;
+            /** Step Label */
+            step_label: string;
+            /**
+             * Utilization
+             * @description 후보 설비 중 가장 높은 가동률. 후보 설비가 없으면 null
+             */
+            utilization?: string | null;
         };
         /** RunComparisonOut */
         RunComparisonOut: {
@@ -3395,6 +3670,42 @@ export interface components {
             status: "queued" | "running" | "completed" | "stalled" | "horizon_reached" | "failed" | "limit_reached" | "cancelled";
             /** Termination Reason */
             termination_reason: string | null;
+        };
+        /**
+         * RunReportOut
+         * @description 한 실행의 결과를 화면·보고서 한 장으로 묶는다. 저장된 결과·지표·스냅샷만 읽어 같은 run이면 같은 내용이다(LLM 없음).
+         */
+        RunReportOut: {
+            /** Assumptions */
+            assumptions: components["schemas"]["AssumptionUseOut"][];
+            /** @description 병목 요약 상위 10개와 근본 원인 */
+            bottlenecks: components["schemas"]["BottleneckSummaryOut"];
+            /** Definition Version */
+            definition_version: string;
+            /** Limitations */
+            limitations: string[];
+            /**
+             * Products
+             * @description 실행 입력 순서
+             */
+            products: components["schemas"]["ReportProductOut"][];
+            run: components["schemas"]["ReportRunOut"];
+            scenario: components["schemas"]["ReportScenarioOut"];
+            /**
+             * Summary
+             * @description 규칙으로 만든 한국어 요약 문장(순서 고정)
+             */
+            summary: string[];
+            /**
+             * Top Assets
+             * @description 가동률 상위 설비(최대 10개)
+             */
+            top_assets: components["schemas"]["ReportAssetOut"][];
+            /**
+             * Top Spaces
+             * @description 적체(작업물·분) 상위 대기 공간(최대 10개)
+             */
+            top_spaces: components["schemas"]["ReportSpaceOut"][];
         };
         /** RunResultOut */
         RunResultOut: {
@@ -3752,6 +4063,10 @@ export interface components {
         /** Single[RunOut] */
         Single_RunOut_: {
             data: components["schemas"]["RunOut"];
+        };
+        /** Single[RunReportOut] */
+        Single_RunReportOut_: {
+            data: components["schemas"]["RunReportOut"];
         };
         /** Single[ScenarioOut] */
         Single_ScenarioOut_: {
@@ -7707,6 +8022,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListOut_MetricOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_run_report_api_v1_projects__project_id__runs__run_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_RunReportOut_"];
                 };
             };
             /** @description Unauthorized */

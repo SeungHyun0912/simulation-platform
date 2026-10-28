@@ -116,6 +116,20 @@ describe.skipIf(!LIVE)("실제 서버 데이터로 그린 시나리오·실행 �
     expect(await screen.findByText(/엔진 버전이 달라 결과를 그대로 비교할 수 없습니다/, {}, slow)).toBeInTheDocument();
   });
 
+  it("0.16.0 결과 리포트: 한계·요약 문장·제품별 결과를 실서버 값으로 그리고, 근본 원인이 있으면 '고칠 곳'을 보인다", async (ctx) => {
+    const all = await json<{ id: string }[]>(`/projects/${projectId}/runs?limit=50`);
+    const c02 = all.find((r) => r.id.startsWith("c3640d5d"));
+    if (!c02) return ctx.skip();
+    const probe = await realFetch()(`/api/v1/projects/${projectId}/runs/${c02.id}/report`);
+    if (probe.status === 404) return ctx.skip(); // 0.16.0 코드로 다시 시작되지 않은 서버
+    const body = (await probe.json()) as { data: { limitations: string[]; bottlenecks: { root_causes?: unknown[] } } };
+    renderApp(`/projects/${projectId}/runs/${c02.id}/report`, { source: "api", fetchImpl: realFetch() });
+    expect(await screen.findByText("이 리포트의 한계", {}, slow)).toBeInTheDocument();
+    for (const l of body.data.limitations) expect(screen.getAllByText(l).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("region", { name: /^제품 결과: / }).length).toBeGreaterThan(0);
+    if ((body.data.bottlenecks.root_causes ?? []).length > 0) expect(screen.getByRole("region", { name: "고칠 곳" })).toBeInTheDocument();
+  });
+
   it("취소된 실행은 취소됨과 종료 사유를 보이고 지표·이벤트는 요청 결과 없음으로 안내한다", async (ctx) => {
     const cancelled = runs.find((r) => r.status === "cancelled");
     if (!cancelled) return ctx.skip();
