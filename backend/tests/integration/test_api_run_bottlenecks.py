@@ -32,7 +32,7 @@ def test_bottlenecks_need_an_official_result(client, ctx):
 def test_an_item_waiting_for_the_only_machine_is_reported_as_an_equipment_busy_bottleneck(client, ctx, run):
     summary = ok(client.get(f"{ctx['base']}/runs/{run['id']}/bottlenecks", headers=ctx["viewer"]))
     assert summary["run_id"] == run["id"] and summary["quality_status"] == "complete"
-    assert summary["observed"]["exact"] == "400/3" and summary["definition_version"] == "2"
+    assert summary["observed"]["exact"] == "400/3" and summary["definition_version"] == "3"
     by_kind = {f["kind"]: f for f in summary["findings"]}
     finding = by_kind["equipment_busy"]
     # 둘째 작업물은 100/3분, 셋째(0분에 확보)는 200/3분, 넷째(100/3분에 공간에 들어와 확보)는 200/3분을 설비를 기다린다

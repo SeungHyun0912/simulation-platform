@@ -15,7 +15,7 @@
 from collections.abc import Mapping
 from decimal import Decimal
 
-DEFINITION_VERSION = "2"  # 2: 원인 추적(root_cause·chain·root_causes) 추가
+DEFINITION_VERSION = "3"  # 2: 원인 추적(root_cause·chain·root_causes) 추가, 3: root_causes 순위 = 묶인 후보의 최고 순위
 MAX_TRACE = 20
 THRESHOLDS = {"pileup_min_peak_items": 3, "level_high_share": Decimal("0.30"), "level_medium_share": Decimal("0.10"),
               "min_stalled_item_min": Decimal(60),
@@ -225,7 +225,8 @@ def _root_text(chain: list[dict], root: dict) -> str:
 
 
 def _root_causes(findings: list[dict]) -> list[dict]:
-    """근본 원인별로 후보를 묶는다. 순위: 묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양(종류가 달라 참고값)."""
+    """근본 원인별로 후보를 묶는다. 순위: 묶인 후보 중 가장 높은 전체 순위(정의 버전 3). 그래서 1위 묶음은 늘 병목 1위
+    후보의 근본 원인이고 headline과 같다. 묶인 후보 수로 매기면 낮음이 많은 묶음이 높음이 있는 묶음을 앞지른다(정의 버전 2의 결함)."""
     groups: dict[tuple, dict] = {}
     for finding in findings:
         root = finding["root_cause"]
@@ -239,8 +240,7 @@ def _root_causes(findings: list[dict]) -> list[dict]:
         group["levels"][finding["level"]] += 1
         group["stalled_item_min"] += finding["stalled"]
         group["finding_ranks"].append(finding["rank"])
-    ordered = sorted(groups.values(), key=lambda g: (
-        min(LEVEL_ORDER[lv] for lv, n in g["levels"].items() if n), -g["findings"], -g["stalled_item_min"]))
+    ordered = sorted(groups.values(), key=lambda g: min(g["finding_ranks"]))
     for index, group in enumerate(ordered, start=1):
         group["rank"] = index
         group["explanation"] = (f"{_root_name(group)}: 병목 후보 {group['findings']}건(높음 {group['levels']['high']}·"
