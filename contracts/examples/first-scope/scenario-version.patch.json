@@ -66,7 +66,9 @@
               "equipment_hold": null,
               "unbounded_buffers": true,
               "manual_transport_minutes": {},
-              "residual_scope": {}
+              "residual_scope": {},
+              "out_release": null,
+              "carrier_empty_move_minutes": null
             }
           }
         ],

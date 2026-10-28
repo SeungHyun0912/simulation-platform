@@ -109,7 +109,7 @@ def test_machines_without_an_out_policy_hold_their_output_when_the_scenario_says
     assert [e.sim_time for e in result.of_type("OUT_BLOCKED")] == [100, F(500, 3)]
 
 
-def test_direct_handoffs_are_reported_apart_from_spaces_of_unknown_capacity():
+def test_direct_handoffs_need_no_unbounded_assumption_once_spaces_are_known():
     g = Graph()
     g.node("src", "source")
     g.node("wait_in", "buffer", asset_id=STORAGE_A)
@@ -127,5 +127,5 @@ def test_direct_handoffs_are_reported_apart_from_spaces_of_unknown_capacity():
                                                   EQUIPMENT_1: machine(), EQUIPMENT_2: machine()})
     result = compile_snapshot(snapshot, ScenarioAssumptions(equipment_hold="hold_for_operation", unbounded_buffers=True))
     codes = {a.code for a in result.assumptions}
-    # 저장공간 용량은 모두 알려졌으므로 공간 무제한 가정은 쓰지 않았고, 단계 사이 직접 인계만 무제한으로 가정했다
-    assert "UNBOUNDED_HANDOFFS" in codes and "UNBOUNDED_BUFFERS" not in codes
+    # 저장공간 용량이 모두 알려졌고, 단계 사이 직접 인계는 다음 설비 앞 자리 규칙(2026-10-28)으로 정해져 가정이 필요 없다
+    assert "UNBOUNDED_HANDOFFS" not in codes and "UNBOUNDED_BUFFERS" not in codes

@@ -72,7 +72,7 @@
               {
                 "code": "UNBOUNDED_BUFFERS",
                 "node_key": null,
-                "message": "용량을 모르는 대기 장소 1곳을 용량 제한 없이 대기하는 것으로 가정"
+                "message": "용량을 모르는 저장공간 1곳을 용량 제한 없이 대기하는 것으로 가정"
               },
               {
                 "code": "EQUIPMENT_HOLD_FOR_OPERATION",
@@ -88,7 +88,7 @@
             "waived": []
           }
         ],
-        "engine_version": "c0.1"
+        "engine_version": "c0.2"
       }
     }
   }

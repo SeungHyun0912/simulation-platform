@@ -166,6 +166,7 @@ class _Lane:
         # 단계 입력 pool(앞 노드 key). 저장공간이 여러 단계로 갈라지면 그 단계들이 같은 pool을 쓴다.
         self.pools = {i.pool: BatchPool(env) for step in lane.model.steps.values() for i in step.inputs}
         self.op_count = {key: 0 for key in lane.model.steps}
+        self.front: dict[str, str] = {}  # 직접 인계하는 단계 → 다음 설비 앞 자리 key
         self.pending = sum(a.count for a in lane.arrivals)
         self.partial: dict[str, list[WorkItem]] = {}  # 단계 → 입력 일부만 확보해 나머지를 기다리는 묶음
 
@@ -207,10 +208,13 @@ class _Run:
                 if asset in capacities and capacities[asset] != capacity:
                     raise ValueError(f"저장공간 {asset}의 용량이 공정마다 다릅니다(같은 자산 버전이어야 함).")
                 capacities[asset] = capacity
+        fronts = self._front_slots(lanes, capacities)
         self.spaces = SpaceAllocator(self.env, capacities)
         self.out_spaces = SpaceAllocator(self.env)  # 설비 OUT 자리(release_after_out)
         self.in_space: dict[str, tuple[str, str | None]] = {}  # 작업물 → (머무는 buffer key, 공간 asset)
         self.lanes = [_Lane(self.env, lane) for lane in lanes]
+        for lane in self.lanes:
+            lane.front = fronts.get(lane.version, {})
         self.lane_of = {lane.version: lane for lane in self.lanes}
         self.came_from: dict[str, str] = {}  # 작업물 key → 대기하던 buffer key
         self.last_version: dict[str, str] = {}  # 설비 → 직전에 처리한 공정 버전(제품 전환 판단 기록용)
@@ -218,6 +222,35 @@ class _Run:
         self.pools: dict[str, list[_PoolEntry]] = {}  # 잔량 풀(범위 key → 덩어리, 들어온 순서)
         self._residual_report: list[dict] = []
         self._shortfalls: list[dict] = []
+
+    @staticmethod
+    def _front_slots(lanes: list[Lane], capacities: dict[str, int | None]) -> dict[str, dict[str, str]]:
+        """단계 사이 직접 인계(대기 공간 없음)의 자리(사용자 규칙 2026-10-28).
+
+        다음 설비 앞에는 산출이 1개까지 기다릴 수 있고, 다음 설비가 한 번에 여러 입력을 처리하면 그 수만큼 하나씩 미리 넣어 둘
+        수 있다. 그래서 자리 수 = 다음 단계의 그 입력 확보 수 × 다음 단계 후보 설비 대수다. 같은 설비들을 쓰는 단계는 제품이
+        달라도 자리를 함께 쓴다. 다음 단계에 설비가 없으면(작업자 무제한) 제한하지 않는다. 반환: 공정 버전 → {앞 단계: 자리 key}."""
+        fronts: dict[str, dict[str, str]] = {}
+        for lane in lanes:
+            model = lane.model
+            for step in model.steps.values():
+                if not step.candidates:
+                    continue
+                machines = "|".join(sorted(step.candidates))
+                for need in step.inputs:
+                    producer = model.nodes.get(need.pool)
+                    if producer is None or producer.kind != "operation":
+                        continue
+                    if set(model.steps[need.pool].candidates) & set(step.candidates):
+                        # 같은 설비를 다시 쓰는 직접 인계(재방문)는 설비가 자기 산출을 자기 앞에 둔 채 막혀 교착이 되므로
+                        # 자리를 제한하지 않는다(실제 6공정에는 없음).
+                        continue
+                    # 입력마다 넣는 자리가 따로다(예: 싱글 메인의 선행 가공 1개 자리와 공급 12개 자리). 같은 앞 단계 key의
+                    # 같은 설비 입력은 제품이 달라도 같은 자리다(P01~P03 편조 → 테이핑).
+                    key = f"front:{machines}:{need.pool}"
+                    capacities[key] = max(capacities.get(key) or 0, need.count * len(step.candidates))
+                    fronts.setdefault(model.version_id, {})[need.pool] = key
+        return fronts
 
     def random_stream(self, name: str) -> random.Random:
         """확률 요소마다 독립된 stream(전역 random 금지, 07 §12). 이번 범위의 handler는 확률 요소가 없다."""
@@ -459,7 +492,8 @@ class _Run:
         if held is None:
             return
         key, asset = held
-        self.emit_for(lane, ev.BUFFER_LEFT, item_key=item.key, source=key, asset_key=asset)
+        if asset is None or not asset.startswith("front:"):  # 설비 앞 자리는 저장공간이 아니라 이벤트를 남기지 않는다
+            self.emit_for(lane, ev.BUFFER_LEFT, item_key=item.key, source=key, asset_key=asset)
         if asset is not None:
             self.spaces.release(asset)
 
@@ -492,8 +526,10 @@ class _Run:
         following = lane.model.nodes[step.key].next_key
         if following is None:
             return
-        space = self._limited_space(lane, following)
+        front = lane.front.get(step.key) if lane.model.nodes[following].kind == "operation" else None
+        space = front or self._limited_space(lane, following)
         if space is None or self.spaces.try_take(space):
+            self._hold_front(child, step.key, front)
             self._enter(lane, child, following, step.key)
             return
         policy = step.out_policies.get(asset) if asset is not None else None
@@ -508,7 +544,13 @@ class _Run:
             self.env.process(self._out_mover(lane, child, out_key, space, following, step.key))
             return
         yield from self._blocked(lane, step, op_id, asset, child, following, self.spaces.wait(space), resume)
+        self._hold_front(child, step.key, front)
         self._enter(lane, child, following, step.key)
+
+    def _hold_front(self, item: WorkItem, producer: str, front: str | None) -> None:
+        """다음 설비 앞 자리를 차지한 작업물. 다음 단계가 가져가면(`_leave_space`) 자리가 빈다."""
+        if front is not None:
+            self.in_space[item.key] = (producer, front)
 
     def _blocked(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, child: WorkItem,
                  destination: str, granted: simpy.Event, resume: str | None):

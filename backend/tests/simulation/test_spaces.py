@@ -129,7 +129,9 @@ def test_space_marked_not_allowed_or_in_unsupported_units_is_rejected():
     assert rules(in_kg) == {"SPACE_CAPACITY_UNIT_UNSUPPORTED"}
 
 
-def test_direct_handoff_between_steps_still_needs_the_unbounded_assumption():
+def test_direct_handoff_holds_one_item_in_front_of_the_next_machine():
+    """사용자 규칙(2026-10-28): 대기 공간 없이 바로 넘기면 다음 설비 앞에 1개(설비가 한 번에 처리하는 입력 수)까지
+    기다릴 수 있고, 자리가 차면 앞 설비가 산출을 쥐고 기다린다. 그래서 공간 무제한 가정이 필요 없다."""
     g = Graph()
     g.node("src", "source")
     g.node("a", "operation", step("split_length", processing=speed("30"), output=out_split(1000, 2),
@@ -139,8 +141,13 @@ def test_direct_handoff_between_steps_still_needs_the_unbounded_assumption():
     g.node("complete", "milestone")
     g.node("sink", "sink")
     snapshot = g.chain().snapshot()
-    assert "BUFFER_POLICY_UNKNOWN" in rules(snapshot)  # 다음 설비 IN 용량은 아직 모형에 없다
-    assert compile_snapshot(snapshot, UNBOUNDED).ok
+    assert "BUFFER_POLICY_UNKNOWN" not in rules(snapshot)
+    result = run_model(model_of(snapshot), [Arrival("2000", count=2)])
+    assert result.state == "completed" and len(result.of_type(ev.SINK_REACHED)) == 4
+    # a는 1,000m 단위를 100/3분마다 낸다. b는 1,000m에 100분. 셋째 단위(100분)가 나올 때 b 앞 자리(1개)에는 둘째가
+    # 기다리고 있어 a가 막힌다 → b가 둘째를 가져가는 400/3분에 풀린다
+    assert times(result, ev.OUT_BLOCKED, step_key="a")[0] == 100
+    assert times(result, ev.OUT_UNBLOCKED, step_key="a")[0] == F(400, 3)
 
 
 # --- 컴파일: OUT 배출 정책(DEC-006 대응표) -----------------------------------------------------------

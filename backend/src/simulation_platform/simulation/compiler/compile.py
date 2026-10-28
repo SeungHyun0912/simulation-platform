@@ -207,16 +207,14 @@ class _Compiler:
         """경로가 지나는 저장공간의 용량과, 용량을 모르는 대기 장소를 확인한다.
 
         - 자산 버전의 저장 용량이 유한(item)이면 자리 수, 무제한이면 None. 같은 공간은 노드가 달라도 하나의 용량이다.
-        - 용량이 미정인 공간과, 단계에서 다음 단계로 바로 넘기는 대기(다음 설비 IN 용량은 아직 모형에 없음)는
-          시나리오가 `unbounded_buffers`로 명시해야 한다.
+        - 용량이 미정인 공간은 시나리오가 `unbounded_buffers`로 명시해야 한다.
+        - 단계에서 다음 단계로 바로 넘기는 직접 인계는 미정이 아니다: 다음 설비 앞 자리(설비 한 대당 한 번에 처리하는 입력 수,
+          최소 1)를 실행이 정한다(사용자 규칙 2026-10-28, runtime `_front_slots`).
         """
         spaces: dict[str, int | None] = {}
         unknown: list[str] = []  # 용량을 모르는 저장공간
-        handoffs: list[str] = []  # 단계에서 다음 단계로 바로 넘기는 대기(다음 설비 IN 용량은 아직 모형에 없음)
         for key in route:
             node = by_key[key]
-            if node["kind"] == "operation" and any(by_key[f]["kind"] == "operation" for f in succ.get(key, ())):
-                handoffs.append(key)
             if node["kind"] == "source" and node.get("asset_id"):  # 원자재 입고 위치: 용량이 정해졌을 때만 적용한다
                 kind, value = self._space_capacity(node["asset_id"])
                 if kind == "finite":
@@ -237,19 +235,14 @@ class _Compiler:
                            f"{key}: 저장 용량 단위 {value}은(는) 작업물 개수로 환산할 규칙이 없어 아직 실행하지 않습니다(item만 지원).", key)
             else:
                 unknown.append(key)
-        if unknown or handoffs:
+        if unknown:
             if not self.assumptions.unbounded_buffers:
                 self.issue("BUFFER_POLICY_UNKNOWN",
-                           f"용량을 모르는 대기 장소 {len(unknown) + len(handoffs)}곳(저장공간 용량 미정 또는 단계 간 직접 인계)이 "
-                           "있습니다. 용량을 모르는 값을 무제한으로 가정하지 않으므로 시나리오가 `unbounded_buffers`를 명시해야 합니다.",
-                           (unknown or handoffs)[0])
-            else:
-                if unknown:  # 저장공간 용량이 미정이라 공간 부족을 평가할 수 없다(병목 요약의 한계)
-                    self.used.append(AssumptionUse(
-                        "UNBOUNDED_BUFFERS", f"용량을 모르는 저장공간 {len(unknown)}곳을 용량 제한 없이 대기하는 것으로 가정"))
-                if handoffs:  # 저장공간이 아니라 단계 사이 직접 인계라 공간 부족과는 관계없다
-                    self.used.append(AssumptionUse(
-                        "UNBOUNDED_HANDOFFS", f"단계 사이 직접 인계 {len(handoffs)}곳을 용량 제한 없이 대기하는 것으로 가정"))
+                           f"용량을 모르는 저장공간 {len(unknown)}곳이 있습니다. 용량을 모르는 값을 무제한으로 가정하지 않으므로 "
+                           "시나리오가 `unbounded_buffers`를 명시해야 합니다.", unknown[0])
+            else:  # 저장공간 용량이 미정이라 공간 부족을 평가할 수 없다(병목 요약의 한계)
+                self.used.append(AssumptionUse(
+                    "UNBOUNDED_BUFFERS", f"용량을 모르는 저장공간 {len(unknown)}곳을 용량 제한 없이 대기하는 것으로 가정"))
         return spaces
 
     def _out_policies(self, key: str, candidates: tuple[str, ...], following: dict | None) -> dict[str, OutPolicy]:

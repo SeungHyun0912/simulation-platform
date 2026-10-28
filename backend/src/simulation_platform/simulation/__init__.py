@@ -5,5 +5,7 @@ SimPy는 가상 시간의 자원·이벤트만 처리한다. 이 패키지는 Fa
 입력으로 받은 snapshot(JSON 모양의 dict)만 읽는다. 실행 중 DB의 현재 상태를 조회하지 않는다.
 """
 
-ENGINE_VERSION = "c0.1"
+# 결과가 달라지는 엔진 동작이 바뀌면 올린다(같은 입력의 결과 비교가 버전이 다름을 알리도록).
+# c0.2(2026-10-28): 운반 자원 위치·빈 차 이동, 원자재 입고 위치 용량, 단계 사이 직접 인계의 설비 앞 자리, 출력 대기 기본 hold.
+ENGINE_VERSION = "c0.2"
 SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.0"})
