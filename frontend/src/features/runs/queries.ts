@@ -132,6 +132,20 @@ export function useRunBottlenecks(projectId: string, runId: string, enabled: boo
   return fromQuery(q, (d) => d);
 }
 
+/** 결과 리포트(0.16.0): 한 실행의 결과·병목·근본 원인·가정·한계를 한 번에 받는다. 끝난 실행이라 바뀌지 않는다. 409 = 공식 결과 없음. */
+export function useRunReport(projectId: string, runId: string): Loadable<Schemas["RunReportOut"]> {
+  const source = useDataSource();
+  const client = useApiClient();
+  const q = useQuery({
+    queryKey: projectKey(projectId, source, "run-report", runId),
+    enabled: source === "api" && projectId !== "" && runId !== "",
+    retry: false,
+    staleTime: Infinity,
+    queryFn: async ({ signal }) => (await client.get<Schemas["Single_RunReportOut_"]>(`/projects/${projectId}/runs/${runId}/report`, { signal })).body.data,
+  });
+  return fromQuery(q, (d) => d);
+}
+
 /** 설비 타임라인(0.13.0). 크므로(일 단위 한 달치 ≈ 2MB) 설비 20대씩 나눠 받고, 화면은 주 단위로 시작한다. */
 export function useAssetTimeline(projectId: string, runId: string, window: string, enabled: boolean): Loadable<PagedResult<Schemas["AssetTimelineOut"]>> {
   const source = useDataSource();

@@ -140,21 +140,7 @@ export function RunResultSection({ result, projectId }: { result: RunResult; pro
         <>
           <h3>이 실행에 쓰인 가정</h3>
           {/* 공정·단계마다 같은 가정이 되풀이되어 길어지므로 가정 코드별로 묶어 건수를 보이고 펼쳐 본다 */}
-          {groupAssumptions(result.assumptions ?? []).map(([code, list]) => (
-            <details key={code}>
-              <summary>
-                <code>{code}</code> {ASSUMPTION_LABELS[code] ?? ""} · {list.length}건
-              </summary>
-              <ul>
-                {list.map((a, i) => (
-                  <li key={`${a.code}-${i}`}>
-                    {a.node_key ? `(${a.node_key}) ` : ""}
-                    {a.message}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ))}
+          <AssumptionGroups list={result.assumptions ?? []} />
         </>
       )}
       {(result.compile_issues ?? []).length > 0 && (
@@ -182,8 +168,30 @@ const ASSUMPTION_LABELS: Record<string, string> = {
   CARRIER_EMPTY_MOVE: "운반 자원 빈 차 이동 시간",
   UNBOUNDED_HANDOFFS: "단계 사이 직접 인계 제한 없음(0.15.2부터 나오지 않음)",
 };
-function groupAssumptions(list: NonNullable<RunResult["assumptions"]>): [string, NonNullable<RunResult["assumptions"]>][] {
-  const m = new Map<string, NonNullable<RunResult["assumptions"]>>();
+/** 쓰인 가정을 코드별로 묶어 건수 + 펼치기로 보인다(실행 상세·결과 리포트 공용). */
+export function AssumptionGroups({ list }: { list: Schemas["AssumptionUseOut"][] }) {
+  return (
+    <>
+      {groupAssumptions(list).map(([code, items]) => (
+        <details key={code}>
+          <summary>
+            <code>{code}</code> {ASSUMPTION_LABELS[code] ?? ""} · {items.length}건
+          </summary>
+          <ul>
+            {items.map((a, i) => (
+              <li key={`${a.code}-${i}`}>
+                {a.node_key ? `(${a.node_key}) ` : ""}
+                {a.message}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </>
+  );
+}
+function groupAssumptions(list: Schemas["AssumptionUseOut"][]): [string, Schemas["AssumptionUseOut"][]][] {
+  const m = new Map<string, Schemas["AssumptionUseOut"][]>();
   for (const a of list) m.set(a.code, [...(m.get(a.code) ?? []), a]);
   return [...m];
 }

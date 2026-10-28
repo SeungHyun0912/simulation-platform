@@ -21,7 +21,7 @@ function addCompleted(server: FakeServer, n: number, patch: Record<string, unkno
 describe("병목 요약", () => {
   it("한 줄 요약·판정의 한계·기준값을 함께 보이고, 종류별로 묶어 순위·수준·위치·멈춘 양을 보인다", async () => {
     open(detail(1));
-    await screen.findByText("가장 큰 정체: P-001 압출 설비 대기", {}, slow);
+    await screen.findByText("가장 큰 정체: P-001 압출 설비 대기. 근본 원인: P-001 피복", {}, slow);
     expect(screen.getByText("이 판정의 한계")).toBeInTheDocument();
     expect(screen.getByText(/공간 부족은 평가되지 않습니다/)).toBeInTheDocument();
     expect(screen.getByText(/판정 기준값: 적체 최소 개수 3/)).toBeInTheDocument();
@@ -119,20 +119,63 @@ describe("0.12.0~0.15.x 결과 표시 보강", () => {
     expect(within(table).getByText("(입고 대기)")).toBeInTheDocument();
   });
 
-  it("병목에 원인 필드(0.16.0 예정 root_cause·chain)가 오면 '원인' 영역에 보이고, 없으면 그리지 않는다", async () => {
+  it("병목에 원인 필드(0.16.0 root_cause·chain)가 있는 후보만 '원인' 영역을 그리고, 없는 후보는 그리지 않는다", async () => {
+    open(detail(1));
+    const busy = await screen.findByRole("region", { name: "병목 종류: 설비 가동 대기" }, slow);
+    const items = within(busy).getAllByRole("listitem", { name: /^병목 \d+위/ });
+    const cause = within(items[0]!).getByLabelText("병목 원인");
+    expect(cause).toHaveTextContent("근본 원인: P-001 · 피복 · 설비 EQ-002 가동률 97%");
+    expect(within(cause).getByLabelText("막힘이 번진 경로")).toHaveTextContent("단계 압출 → 공간 ST-041 서버 공간 41 → 단계 피복");
+    expect(within(items[1]!).queryByLabelText("병목 원인")).not.toBeInTheDocument();
+  });
+});
+
+describe("고칠 곳(0.16.0 root_causes)", () => {
+  it("멈춘 곳 목록보다 먼저, 근본 원인별 순위·묶인 병목 수·수준·설비 가동률·설명을 보인다", async () => {
+    open(detail(1));
+    const list = await screen.findByRole("region", { name: "고칠 곳" }, slow);
+    const items = within(list).getAllByRole("listitem", { name: /^고칠 곳 \d+위/ });
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("1위");
+    expect(items[0]).toHaveTextContent("P-001 서버 제품 1 · 단계 피복");
+    expect(items[0]).toHaveTextContent("가동률 97%");
+    expect(items[0]).toHaveTextContent("묶인 병목 2건(높음 1 · 중간 1) · 관련 순위 1·2위");
+    expect(items[0]).toHaveTextContent("설비: EQ-002 서버 설비 2 97%");
+    expect(items[0]).toHaveTextContent("묶인 멈춘 양 합(참고) 1,800 작업물·분");
+    // 가동률이 낮은 원인은 서버 설명(투입 조건 먼저 확인)을 그대로, 입력 대기는 설비가 없어도 숨기지 않는다
+    expect(items[1]).toHaveTextContent("설비 속도보다 투입 조건을 먼저 확인하세요.");
+    expect(items[1]).toHaveTextContent("가동률 31%");
+    // 고칠 곳이 멈춘 곳(종류별)보다 먼저 나온다
+    const kinds = screen.getByRole("region", { name: "병목 종류: 설비 가동 대기" });
+    expect(list.compareDocumentPosition(kinds) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("고칠 곳이 많으면(실데이터 20곳) 상위 5곳만 먼저 보이고 '모두 보기'로 펼친다", async () => {
+    const user = userEvent.setup();
     const server = createFakeServer((req, std) => {
       const r = std(req);
       if (req.path.endsWith("/bottlenecks")) {
-        const body = r.body as { data: { findings: Record<string, unknown>[] } };
-        body.data.findings[0]!.root_cause = { asset_code: "EQ-096", reason: "하류 설비 가동" };
+        const d = (r.body as { data: { root_causes: Record<string, unknown>[] } }).data;
+        d.root_causes = Array.from({ length: 8 }, (_, i) => ({ ...d.root_causes[0]!, rank: i + 1, step_key: `s${i}`, step_label: `단계 ${i + 1}` }));
       }
       return r;
     });
     open(detail(1), server);
-    const busy = await screen.findByRole("region", { name: "병목 종류: 설비 가동 대기" }, slow);
-    const items = within(busy).getAllByRole("listitem", { name: /^병목 \d+위/ });
-    expect(within(items[0]!).getByLabelText("병목 원인")).toHaveTextContent("EQ-096");
-    expect(within(items[1]!).queryByLabelText("병목 원인")).not.toBeInTheDocument();
+    const list = await screen.findByRole("region", { name: "고칠 곳" }, slow);
+    expect(within(list).getAllByRole("listitem", { name: /^고칠 곳 \d+위/ })).toHaveLength(5);
+    await user.click(within(list).getByRole("button", { name: "고칠 곳 모두 보기(8곳)" }));
+    expect(within(list).getAllByRole("listitem", { name: /^고칠 곳 \d+위/ })).toHaveLength(8);
+  });
+
+  it("root_causes가 빈 목록이면 고칠 곳 영역을 그리지 않는다", async () => {
+    const server = createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith("/bottlenecks")) (r.body as { data: { root_causes: unknown[] } }).data.root_causes = [];
+      return r;
+    });
+    open(detail(1), server);
+    await screen.findByRole("region", { name: "병목 종류: 설비 가동 대기" }, slow);
+    expect(screen.queryByRole("region", { name: "고칠 곳" })).not.toBeInTheDocument();
   });
 });
 
