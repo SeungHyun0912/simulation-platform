@@ -88,6 +88,14 @@ EXPECTED = {
     ("post", "/api/v1/projects/{project_id}/scenario-versions/{version_id}/refresh"),
     # scope runs 확장 (contract 0.16.0)
     ("get", "/api/v1/projects/{project_id}/runs/{run_id}/report"),
+    # scope layouts (contract 0.17.0)
+    ("get", "/api/v1/projects/{project_id}/layout-versions"),
+    ("post", "/api/v1/projects/{project_id}/layout-versions"),
+    ("get", "/api/v1/projects/{project_id}/layout-versions/{version_id}"),
+    ("patch", "/api/v1/projects/{project_id}/layout-versions/{version_id}"),
+    ("put", "/api/v1/projects/{project_id}/layout-versions/{version_id}/content"),
+    ("post", "/api/v1/projects/{project_id}/layout-versions/{version_id}/validate"),
+    ("post", "/api/v1/projects/{project_id}/layout-versions/{version_id}/approve"),
 }
 
 
@@ -108,6 +116,7 @@ def test_local_debug_auth_is_not_exposed():
 REVISION = "/api/v1/projects/{project_id}/asset-revisions/{revision_id}"
 PROCESS = "/api/v1/projects/{project_id}/process-versions/{version_id}"
 SCENARIO_VERSION = "/api/v1/projects/{project_id}/scenario-versions/{version_id}"
+LAYOUT_VERSION = "/api/v1/projects/{project_id}/layout-versions/{version_id}"
 
 
 def test_mutating_operations_declare_if_match_and_precondition_errors():
@@ -130,6 +139,9 @@ def test_mutating_operations_declare_if_match_and_precondition_errors():
         ("patch", "/api/v1/projects/{project_id}/scenarios/{scenario_id}"),
         ("patch", SCENARIO_VERSION),
         ("post", f"{SCENARIO_VERSION}/approve"),
+        ("patch", LAYOUT_VERSION),
+        ("put", f"{LAYOUT_VERSION}/content"),
+        ("post", f"{LAYOUT_VERSION}/approve"),
     ]
     for method, path in targets:
         op = paths[path][method]

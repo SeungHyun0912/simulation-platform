@@ -148,6 +148,18 @@ class JobCancelTooLate(DomainError):
     status_code = 409
 
 
+class LayoutDraftExistsError(DomainError):
+    code = "LAYOUT_DRAFT_EXISTS"
+    status_code = 409
+
+
+class LayoutValidationFailed(DomainError):
+    """배치판 검증 오류가 있어 승인할 수 없음. details에 오류 목록."""
+
+    code = "LAYOUT_VALIDATION_FAILED"
+    status_code = 422
+
+
 class InvalidStateTransitionError(DomainError):
     code = "INVALID_STATE_TRANSITION"
     status_code = 409
