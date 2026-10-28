@@ -65,6 +65,10 @@ export type AssumptionsEdit = {
   /** "" = 정하지 않음(null). 서버가 아는 값은 `hold_for_operation` 하나다. */
   equipmentHold: string;
   unboundedBuffers: boolean;
+  /** 0.15.0 "hold" | "" (보내지 않음 = 서버 기본값 hold, 0.15.1). 서버가 모르는 값도 원문 보존 */
+  outRelease: string;
+  /** 0.15.0 운반 자원 빈 차 이동 시간(분), decimal ≥ 0. "" = 입력 없음(null) */
+  carrierEmptyMove: string;
   transport: TransportEdit[];
   residualScope: ResidualScopeEdit[];
 };
@@ -101,7 +105,7 @@ export type ScenarioVersionView = {
 let counter = 0;
 export const newKey = (prefix: string) => `${prefix}-${++counter}`;
 
-export const emptyAssumptions = (): AssumptionsEdit => ({ equipmentHold: "", unboundedBuffers: false, transport: [], residualScope: [] });
+export const emptyAssumptions = (): AssumptionsEdit => ({ equipmentHold: "", unboundedBuffers: false, outRelease: "", carrierEmptyMove: "", transport: [], residualScope: [] });
 export const emptyArrival = (): ArrivalEdit => ({ key: newKey("arr"), atMin: "0", count: "1", lengthM: "", weightKg: "", lot: "" });
 export const emptyProduct = (): ScenarioProductEdit => ({
   key: newKey("prod"),
@@ -142,6 +146,8 @@ export function toVersionView(v: Schemas["ScenarioVersionOut"]): ScenarioVersion
         assumptions: {
           equipmentHold: text(p.assumptions?.equipment_hold ?? null),
           unboundedBuffers: p.assumptions?.unbounded_buffers ?? false,
+          outRelease: text(p.assumptions?.out_release ?? null),
+          carrierEmptyMove: text(p.assumptions?.carrier_empty_move_minutes ?? null),
           transport: Object.entries(p.assumptions?.manual_transport_minutes ?? {}).map(([nodeKey, minutes]) => ({ key: newKey("tr"), nodeKey, minutes: String(minutes) })),
           residualScope: Object.entries(p.assumptions?.residual_scope ?? {}).map(([nodeKey, scope]) => ({ key: newKey("rs"), nodeKey, scope: String(scope) })),
         },
@@ -186,6 +192,8 @@ export function validateDraft(d: ScenarioDraft): ScenarioIssue[] {
       if (a.lengthM.trim() === "" && a.weightKg.trim() === "") add(`${ak}.amount`, "길이 또는 무게 중 하나는 입력해야 합니다(서로 환산하지 않습니다).");
       if (a.lot.trim().length > SCENARIO_LIMITS.code) add(`${ak}.lot`, `로트는 ${SCENARIO_LIMITS.code}자 이하입니다.`);
     }
+    if (p.assumptions.carrierEmptyMove.trim() !== "" && !isNonNegativeDecimal(p.assumptions.carrierEmptyMove))
+      add(`${k}.carrierEmptyMove`, "0 이상의 분을 입력하세요(비우면 입력 없음, 0도 명시한 값입니다).");
     const nodes = new Set<string>();
     for (const t of p.assumptions.transport) {
       const tk = `${k}.transport.${t.key}`;
@@ -208,7 +216,8 @@ export function validateDraft(d: ScenarioDraft): ScenarioIssue[] {
   return out;
 }
 
-export const assumptionsUsed = (a: AssumptionsEdit) => a.equipmentHold !== "" || a.unboundedBuffers || a.transport.length > 0 || a.residualScope.length > 0;
+export const assumptionsUsed = (a: AssumptionsEdit) =>
+  a.equipmentHold !== "" || a.unboundedBuffers || a.outRelease !== "" || a.carrierEmptyMove.trim() !== "" || a.transport.length > 0 || a.residualScope.length > 0;
 
 /* ---------------- 저장 본문 ---------------- */
 
@@ -232,6 +241,9 @@ export function productsToDto(d: ScenarioDraft): ProductDto[] {
     assumptions: {
       equipment_hold: p.assumptions.equipmentHold === "" ? null : (p.assumptions.equipmentHold as "hold_for_operation"),
       unbounded_buffers: p.assumptions.unboundedBuffers,
+      // 0.15.0: 비우면 보내지 않는다(null). out_release를 보내지 않으면 서버 기본값 hold(0.15.1)
+      out_release: p.assumptions.outRelease === "" ? null : (p.assumptions.outRelease as "hold"),
+      carrier_empty_move_minutes: nullIfBlank(p.assumptions.carrierEmptyMove),
       manual_transport_minutes: Object.fromEntries(p.assumptions.transport.map((t) => [t.nodeKey, t.minutes.trim()])),
       residual_scope: Object.fromEntries(p.assumptions.residualScope.map((r) => [r.nodeKey, r.scope as "machine"])),
     },

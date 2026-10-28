@@ -88,7 +88,8 @@ export function useMetricDefinitions(enabled = true): Loadable<Schemas["MetricDe
   return fromQuery(q, (d) => d);
 }
 
-export type MetricParams = { window: string; metricKey: string };
+/** 지표 조회 조건. 차원 필터는 함께 쓸 수 있다(0.12.0, 모두 만족하는 행만). */
+export type MetricParams = { window: string; metricKey: string; stepKey?: string };
 export type PagedResult<T> = { items: T[]; hasMore: boolean; fetchMore: () => void; fetchingMore: boolean };
 
 /** 실행 지표(공식 결과). 선택된 시도가 없으면 409 RUN_RESULT_NOT_AVAILABLE이며 호출한 화면이 안내한다. */
@@ -103,7 +104,7 @@ export function useRunMetrics(projectId: string, runId: string, params: MetricPa
     getNextPageParam: (last: Page<Schemas["MetricOut"]>) => next(last),
     queryFn: async ({ pageParam, signal }): Promise<Page<Schemas["MetricOut"]>> => {
       const r = await client.get<Schemas["ListOut_MetricOut_"]>(`/projects/${projectId}/runs/${runId}/metrics`, {
-        query: { limit: 200, cursor: pageParam, window: params.window, metric_key: params.metricKey },
+        query: { limit: 200, cursor: pageParam, window: params.window, metric_key: params.metricKey, step_key: params.stepKey },
         signal,
       });
       return { items: r.body.data, nextCursor: r.body.page.next_cursor };

@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.13.0, openapi_sha256 ea8ee8239ec4280d04805b2a519f920e8a2cd91f2835814b184a3f05cf0ac704
+// 기준 계약: version 0.15.2, openapi_sha256 f4df60cddfdb9edbd282ddb9e194f9ecefd6bc69bd015d471e88238de75d859a
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
@@ -277,6 +277,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/assets/{asset_id}/uses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Asset Uses
+         * @description 그 자산을 쓰는 제품·공정 버전·노드: 공간 노드의 저장 공간(`space`)이거나 단계의 후보 설비(`equipment_candidate`).
+         */
+        get: operations["list_asset_uses_api_v1_projects__project_id__assets__asset_id__uses_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/materials": {
         parameters: {
             query?: never;
@@ -317,6 +337,27 @@ export interface paths {
          * @description code·name·form·default_spec·notes 수정. default_spec은 보낸 필드만 교체한다. If-Match 필수.
          */
         patch: operations["patch_material_api_v1_projects__project_id__materials__material_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/process-graphs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Process Graphs
+         * @description 여러 제품의 공정 그래프를 한 번에(제품 코드 순). 기준에 맞는 버전이 없는 제품은 `version: null`로 나온다.
+         *     항목마다 ETag가 있어 바로 편집 요청(If-Match)에 쓸 수 있다.
+         */
+        get: operations["list_process_graphs_api_v1_projects__project_id__process_graphs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project_id}/process-versions/{version_id}": {
@@ -874,6 +915,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Scenario Version
+         * @description 초안의 제품별 공정 버전을 그 제품의 **현재 승인본**으로 바꾸고 자산 고정을 맞춘다(도착·가정·순서는 그대로).
+         *     본문은 선택: `product_ids`(일부 제품만), `assets`(latest 기본 | keep). 바뀐 내용은 `process_changes`·`asset_changes`로
+         *     돌려준다. 승인본은 409 `VERSION_IMMUTABLE`(새 초안을 먼저 만든다).
+         */
+        post: operations["refresh_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/scenario-versions/{version_id}/validate": {
         parameters: {
             query?: never;
@@ -1086,6 +1149,25 @@ export interface components {
             sort_order?: number | null;
             space?: components["schemas"]["SpacePatch"] | null;
         };
+        /** AssetPinChangeOut */
+        AssetPinChangeOut: {
+            /** Asset Code */
+            asset_code?: string | null;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "pinned" | "updated" | "removed";
+            /** From Revision Id */
+            from_revision_id?: string | null;
+            /** To Revision Id */
+            to_revision_id?: string | null;
+        };
         /** AssetRevisionOut */
         AssetRevisionOut: {
             /** Approved At */
@@ -1200,18 +1282,7 @@ export interface components {
              * Uses
              * @description 이 설비를 후보로 가진 제품·단계
              */
-            uses: components["schemas"]["AssetUseOut"][];
-        };
-        /** AssetUseOut */
-        AssetUseOut: {
-            /** Process Version Id */
-            process_version_id: string;
-            /** Product Code */
-            product_code?: string | null;
-            /** Step Key */
-            step_key: string;
-            /** Step Label */
-            step_label?: string | null;
+            uses: components["schemas"]["simulation_platform__schemas__run__AssetUseOut"][];
         };
         /** AssumptionUseOut */
         AssumptionUseOut: {
@@ -1230,6 +1301,11 @@ export interface components {
          */
         AssumptionsDto: {
             /**
+             * Carrier Empty Move Minutes
+             * @description 운반 자원(지게차·AMR)이 다른 곳에서 일을 받으면 빈 차로 옮겨 가는 시간(분). 운반 단계에 설비 후보가 있으면 필요(0.15.0)
+             */
+            carrier_empty_move_minutes?: string | null;
+            /**
              * Equipment Hold
              * @description 한 작업이 여러 산출을 낼 때 설비 점유 정책(07 §13)
              */
@@ -1241,6 +1317,11 @@ export interface components {
             manual_transport_minutes?: {
                 [key: string]: string;
             };
+            /**
+             * Out Release
+             * @description 다음 공간이 가득 찼을 때, 승인된 자산 버전에 OUT 배출 정책이 없는 설비는 산출을 쥐고 기다린다(0.15.0)
+             */
+            out_release?: "hold" | null;
             /**
              * Residual Scope
              * @description 잔량 이월 단계(node_key)별 잔량 범위(공정에 미정일 때만)
@@ -1817,6 +1898,66 @@ export interface components {
             /** Row Version */
             row_version: number;
         };
+        /** GraphSummaryEdge */
+        GraphSummaryEdge: {
+            /** Edge Key */
+            edge_key: string;
+            /** Edge Kind */
+            edge_kind: string;
+            /**
+             * From Node Id
+             * Format: uuid
+             */
+            from_node_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * To Node Id
+             * Format: uuid
+             */
+            to_node_id: string;
+        };
+        /** GraphSummaryNode */
+        GraphSummaryNode: {
+            /**
+             * Asset Id
+             * @description 공간 노드의 저장 공간 자산
+             */
+            asset_id?: string | null;
+            /**
+             * Candidate Asset Ids
+             * @description 단계 노드의 후보 설비
+             */
+            candidate_asset_ids?: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Node Key */
+            node_key: string;
+            /**
+             * Operation Type
+             * @description 단계 노드의 처리 방식(handler)
+             */
+            operation_type?: string | null;
+        };
+        /** GraphSummaryOut */
+        GraphSummaryOut: {
+            /** Completion Node Id */
+            completion_node_id?: string | null;
+            /** Edges */
+            edges: components["schemas"]["GraphSummaryEdge"][];
+            /** Nodes */
+            nodes: components["schemas"]["GraphSummaryNode"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2003,6 +2144,12 @@ export interface components {
             data: components["schemas"]["AssetTimelineOut"][];
             page: components["schemas"]["Page"];
         };
+        /** ListOut[AssetUseOut] */
+        ListOut_AssetUseOut_: {
+            /** Data */
+            data: components["schemas"]["simulation_platform__schemas__process__AssetUseOut"][];
+            page: components["schemas"]["Page"];
+        };
         /** ListOut[EventOut] */
         ListOut_EventOut_: {
             /** Data */
@@ -2031,6 +2178,12 @@ export interface components {
         ListOut_MetricOut_: {
             /** Data */
             data: components["schemas"]["MetricOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[ProcessGraphItem] */
+        ListOut_ProcessGraphItem_: {
+            /** Data */
+            data: components["schemas"]["ProcessGraphItem"][];
             page: components["schemas"]["Page"];
         };
         /** ListOut[ProcessVersionListItem] */
@@ -2568,6 +2721,58 @@ export interface components {
              * @enum {string}
              */
             trigger: "unknown" | "not_applicable" | "per_operation" | "per_input_replacement" | "per_output_replacement" | "on_product_change" | "on_shift_start" | "once_per_run";
+        };
+        /** ProcessChangeOut */
+        ProcessChangeOut: {
+            /**
+             * From Process Version Id
+             * Format: uuid
+             */
+            from_process_version_id: string;
+            /** From Version No */
+            from_version_no?: number | null;
+            /** Product Code */
+            product_code?: string | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "changed" | "unchanged" | "no_approved_version" | "not_requested";
+            /**
+             * To Process Version Id
+             * Format: uuid
+             */
+            to_process_version_id: string;
+            /** To Version No */
+            to_version_no?: number | null;
+        };
+        /** ProcessGraphItem */
+        ProcessGraphItem: {
+            /**
+             * Etag
+             * @description 그 공정 버전의 ETag(row_version). 그래프 PUT·단계 PATCH의 If-Match
+             */
+            etag?: string | null;
+            /** @description mode=full일 때 그래프 전체(단건 조회와 같은 모양) */
+            graph?: components["schemas"]["GraphOut"] | null;
+            /** Product Code */
+            product_code: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Name */
+            product_name: string;
+            /** @description mode=summary일 때 노드·간선 요약 */
+            summary?: components["schemas"]["GraphSummaryOut"] | null;
+            /** @description 기준에 맞는 공정 버전이 없으면 null(그래프도 없음) */
+            version: components["schemas"]["ProcessVersionSummary"] | null;
         };
         /**
          * ProcessVersionCreate
@@ -3315,6 +3520,29 @@ export interface components {
              */
             product_id: string;
         };
+        /** ScenarioRefreshIn */
+        ScenarioRefreshIn: {
+            /**
+             * Assets
+             * @description latest: 쓰는 자산을 현재 승인 버전으로 다시 고정하고 안 쓰는 고정은 뺀다, keep: 기존 고정은 두고 새로 쓰는 자산만 채운다
+             * @default latest
+             * @enum {string}
+             */
+            assets: "latest" | "keep";
+            /**
+             * Product Ids
+             * @description 일부 제품만 갱신(생략하면 전부)
+             */
+            product_ids?: string[] | null;
+        };
+        /** ScenarioRefreshOut */
+        ScenarioRefreshOut: {
+            /** Asset Changes */
+            asset_changes: components["schemas"]["AssetPinChangeOut"][];
+            /** Process Changes */
+            process_changes: components["schemas"]["ProcessChangeOut"][];
+            version: components["schemas"]["ScenarioVersionOut"];
+        };
         /** ScenarioVersionCreate */
         ScenarioVersionCreate: {
             /**
@@ -3529,6 +3757,10 @@ export interface components {
         Single_ScenarioOut_: {
             data: components["schemas"]["ScenarioOut"];
         };
+        /** Single[ScenarioRefreshOut] */
+        Single_ScenarioRefreshOut_: {
+            data: components["schemas"]["ScenarioRefreshOut"];
+        };
         /** Single[ScenarioVersionOut] */
         Single_ScenarioVersionOut_: {
             data: components["schemas"]["ScenarioVersionOut"];
@@ -3714,6 +3946,47 @@ export interface components {
             status: "active" | "consumed" | "completed";
             /** Weight Kg */
             weight_kg?: string | null;
+        };
+        /** AssetUseOut */
+        simulation_platform__schemas__process__AssetUseOut: {
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Node Key */
+            node_key: string;
+            /** Node Label */
+            node_label: string;
+            process_version: components["schemas"]["ProcessVersionSummary"];
+            /** Product Code */
+            product_code: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Name */
+            product_name: string;
+            /** Role Key */
+            role_key?: string | null;
+            /**
+             * Use
+             * @description 공간 노드의 자산이거나, 단계의 후보 설비
+             * @enum {string}
+             */
+            use: "space" | "equipment_candidate";
+        };
+        /** AssetUseOut */
+        simulation_platform__schemas__run__AssetUseOut: {
+            /** Process Version Id */
+            process_version_id: string;
+            /** Product Code */
+            product_code?: string | null;
+            /** Step Key */
+            step_key: string;
+            /** Step Label */
+            step_label?: string | null;
         };
     };
     responses: never;
@@ -4938,6 +5211,59 @@ export interface operations {
             };
         };
     };
+    list_asset_uses_api_v1_projects__project_id__assets__asset_id__uses_get: {
+        parameters: {
+            query?: {
+                /** @description 제품마다 볼 공정 버전 기준 */
+                basis?: "approved" | "latest";
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_AssetUseOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_materials_api_v1_projects__project_id__materials_get: {
         parameters: {
             query?: {
@@ -5202,6 +5528,68 @@ export interface operations {
             };
             /** @description Precondition Required */
             428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_process_graphs_api_v1_projects__project_id__process_graphs_get: {
+        parameters: {
+            query?: {
+                /** @description approved: 현재 승인본(기본), latest: 가장 최근 버전 */
+                basis?: "approved" | "latest";
+                /** @description 이 제품들만(반복해서 보낸다) */
+                product_id?: string[] | null;
+                /** @description 이 공정 버전들(최대 50개, 주면 basis·product_id는 무시) */
+                version_id?: string[] | null;
+                /** @description summary: 노드·간선 요약(기본), full: 그래프 전체 */
+                mode?: "summary" | "full";
+                /** @description 한 번에 제품 수(최대 50) */
+                limit?: number;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_ProcessGraphItem_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7524,6 +7912,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Single_ScenarioVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    refresh_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ScenarioRefreshIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_ScenarioRefreshOut_"];
                 };
             };
             /** @description Unauthorized */

@@ -48,6 +48,53 @@ export function LevelBadge({ level }: { level: string }) {
   );
 }
 
+/**
+ * 근본 원인 자리. 병목은 "멈춘 곳"이라 하류가 느리면 상류가 1위가 될 수 있다. Backend가 0.16.0에서 `root_cause`(원인 설비)·`chain`(번진 경로)을
+ * 더하면 여기서 보인다. 아직 계약에 없는 필드라 타입 밖에서 읽고, 없으면 아무것도 그리지 않는다.
+ */
+function RootCause({ f }: { f: Bottleneck }) {
+  const extra = f as Bottleneck & { root_cause?: unknown; chain?: unknown };
+  if (extra.root_cause == null && extra.chain == null) return null;
+  const rc = asRecord(extra.root_cause);
+  const chain = Array.isArray(extra.chain) ? extra.chain.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : null;
+  // 아는 모양(개발 서버 응답 기준): 설명·제품·단계·설비·가동률. 모르는 모양이면 원문 줄로 보인다.
+  const known = rc && (typeof rc.explanation === "string" || typeof rc.step_label === "string");
+  const assets = rc && Array.isArray(rc.assets) ? rc.assets.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : [];
+  return (
+    <div aria-label="병목 원인">
+      <strong>원인</strong>
+      {known ? (
+        <>
+          {typeof rc.explanation === "string" && <p>{rc.explanation}</p>}
+          <p className={styles.muted}>
+            근본 원인: {[rc.product_code, rc.step_label ?? rc.step_key].filter(Boolean).join(" · ")}
+            {assets.length > 0 &&
+              ` · 설비 ${assets.map((x) => `${String(x.code ?? "")}${x.utilization != null ? ` 가동률 ${percentText(String(x.utilization))}` : ""}`).join(", ")}`}
+          </p>
+        </>
+      ) : (
+        rc && (
+          <ul className={styles.evidence}>
+            {evidenceLines(rc).map((l) => (
+              <li key={l.key}>
+                {l.label}: {l.text}
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+      {chain && chain.length > 0 && (
+        <p className={styles.muted} aria-label="막힘이 번진 경로">
+          막힘이 번진 경로(멈춘 곳 → 근본 원인):{" "}
+          {chain.map((c) => `${c.kind === "space" ? "공간 " : c.kind === "step" ? "단계 " : ""}${String(c.label ?? c.key ?? "?")}`).join(" → ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const asRecord = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
 /** 병목 한 건: 순위·수준·위치·멈춘 양·종류 안 비율·설명, 근거는 펼쳐 본다. */
 export function FindingItem({ f }: { f: Bottleneck }) {
   return (
@@ -62,6 +109,8 @@ export function FindingItem({ f }: { f: Bottleneck }) {
         <span className={styles.muted}>같은 종류 안 {percentText(f.share)} · 종류 안 {f.rank_in_kind}위</span>
       </div>
       <p>{f.explanation}</p>
+      {/* 근본 원인·막힘이 번진 경로(0.16.0 예정 root_cause·chain). 필드가 오면 여기에 그린다(지금은 서버가 주지 않아 비어 있음). */}
+      <RootCause f={f} />
       <details>
         <summary>근거 수치</summary>
         <ul className={styles.evidence}>

@@ -106,6 +106,16 @@ describe.skipIf(!LIVE)("실제 서버 데이터로 그린 시나리오·실행 �
     await waitFor(() => expect(screen.queryByRole("table", { name: "입력 차이" }) ?? screen.queryByText("입력 차이가 없습니다")).not.toBeNull(), slow);
   });
 
+  it("엔진 버전이 다른 실행끼리(c0.1↔c0.2) 비교하면 '비교할 수 없음'을 맨 위에 보인다", async (ctx) => {
+    // Backend 안내(2026-10-28): c3640d5d = 엔진 c0.2, f18c3dcb = c0.1(같은 조건). 개발 DB가 바뀌면 건너뛴다.
+    const all = await json<{ id: string }[]>(`/projects/${projectId}/runs?limit=50`);
+    const c02 = all.find((r) => r.id.startsWith("c3640d5d"));
+    const c01 = all.find((r) => r.id.startsWith("f18c3dcb"));
+    if (!c02 || !c01) return ctx.skip();
+    renderApp(`/projects/${projectId}/runs/${c02.id}/compare/${c01.id}`, { source: "api", fetchImpl: realFetch() });
+    expect(await screen.findByText(/엔진 버전이 달라 결과를 그대로 비교할 수 없습니다/, {}, slow)).toBeInTheDocument();
+  });
+
   it("취소된 실행은 취소됨과 종료 사유를 보이고 지표·이벤트는 요청 결과 없음으로 안내한다", async (ctx) => {
     const cancelled = runs.find((r) => r.status === "cancelled");
     if (!cancelled) return ctx.skip();

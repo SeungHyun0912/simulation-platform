@@ -411,6 +411,44 @@ export function processRoute(req: FakeRequest, state: FakeState, h: Helpers): Fa
   const P = state.processes;
   const my = (productId: string) => P.versions.filter((v) => v.product_id === productId);
 
+  // 0.14.0 공정 일괄 조회(요약): 제품 코드 순, 한 번에 최대 50개, 공정이 없는 제품은 version null
+  if (method === "GET" && path === `/projects/${h.project}/process-graphs`) {
+    const basis = req.query.get("basis") ?? "approved";
+    const limit = Math.min(50, Number(req.query.get("limit") ?? 20));
+    const start = Number(req.query.get("cursor") ?? 0);
+    const products = [...state.products].sort((a, b) => a.code.localeCompare(b.code));
+    const items = products.map((pr) => {
+      const mine = P.versions.filter((v) => v.product_id === pr.id).sort((a, b) => b.version_no - a.version_no);
+      const v = basis === "latest" ? mine[0] : mine.find((x) => x.status === "approved");
+      const g = v ? P.graphs[v.id] : undefined;
+      return {
+        product_id: pr.id,
+        product_code: pr.code,
+        product_name: pr.name,
+        version: v ? { id: v.id, version_no: v.version_no, status: v.status, approved_at: v.approved_at } : null,
+        etag: v ? `"${v.row_version}"` : null,
+        graph: null,
+        summary: g
+          ? {
+              completion_node_id: g.completion_node_id ?? null,
+              nodes: g.nodes.map((n) => ({
+                id: n.id,
+                node_key: n.node_key,
+                kind: n.kind,
+                label: n.label,
+                asset_id: n.asset_id ?? null,
+                operation_type: n.step?.operation_type ?? null,
+                candidate_asset_ids: (n.step?.resources ?? []).flatMap((r) => (r.candidates ?? []).map((c) => c.asset_id)),
+              })),
+              edges: g.edges.map((e) => ({ id: e.id, edge_key: e.edge_key, from_node_id: e.from_node_id, to_node_id: e.to_node_id, edge_kind: e.edge_kind ?? "material" })),
+            }
+          : null,
+      };
+    });
+    const page = items.slice(start, start + limit);
+    return { status: 200, body: { data: page, page: { limit, next_cursor: start + limit < items.length ? String(start + limit) : null } } };
+  }
+
   const es = /^\/projects\/([^/]+)\/process-versions\/([^/]+)\/editor-state$/.exec(path);
   if (es) {
     if (es[1] !== h.project) return h.notFound();

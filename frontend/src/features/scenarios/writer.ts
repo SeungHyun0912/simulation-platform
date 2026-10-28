@@ -56,6 +56,18 @@ export function useScenarioWriter(projectId: string) {
         return (await client.post<Schemas["Single_PrecheckOut_"]>(`${base}/scenario-versions/${versionId}/validate`)).body.data;
       },
 
+      /**
+       * 최신 공정으로 갱신(0.14.0): 초안의 제품별 공정 버전을 현재 승인본으로, 자산 고정을 현재 승인 버전으로 맞춘다.
+       * 도착·가정·순서는 그대로다. If-Match = 시나리오 버전 row_version. 승인본은 409, 바뀐 내용은 process_changes·asset_changes.
+       */
+      async refresh(versionId: string, body: Schemas["ScenarioRefreshIn"], version: number): Promise<{ version: ScenarioVersionView; result: Schemas["ScenarioRefreshOut"] }> {
+        const r = await client.post<Schemas["Single_ScenarioRefreshOut_"]>(`${base}/scenario-versions/${versionId}/refresh`, { body, ifMatch: version });
+        const v = toVersionView(r.body.data.version);
+        store(v);
+        refreshLists(v.scenarioId);
+        return { version: v, result: r.body.data };
+      },
+
       /** 승인(관리자). 사전검증 오류가 있으면 422 SCENARIO_NOT_RUNNABLE. 승인 후 내용은 고정된다. */
       async approve(versionId: string, version: number): Promise<ScenarioVersionView> {
         const r = await client.post<Schemas["Single_ScenarioVersionOut_"]>(`${base}/scenario-versions/${versionId}/approve`, { ifMatch: version });

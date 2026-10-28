@@ -194,6 +194,104 @@ describe("API 모드: 시나리오 버전 편집", () => {
   });
 });
 
+describe("API 모드: 운반 자원·출력 대기 가정(0.15.0)", () => {
+  it("빈 차 이동 분·출력 대기를 입력하면 가정으로 저장하고 사유를 요구하며, 음수는 막는다", async () => {
+    const user = userEvent.setup();
+    const { server } = open(versionUrl(2));
+    await screen.findByRole("heading", { level: 1, name: /SC-B v1/ }, slow);
+    await fillProduct(user);
+    await user.type(screen.getByLabelText("제품 1 운반 자원 빈 차 이동(분)"), "-1");
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+    expect(screen.getAllByText(/0 이상의 분을 입력하세요/).length).toBeGreaterThan(0);
+    await user.clear(screen.getByLabelText("제품 1 운반 자원 빈 차 이동(분)"));
+    await user.type(screen.getByLabelText("제품 1 운반 자원 빈 차 이동(분)"), "3");
+    await user.selectOptions(screen.getByLabelText("제품 1 다음 공간이 가득 찰 때 설비 산출"), "hold");
+    expect(screen.getAllByText(/가정을 썼으므로 사유를 입력하세요/).length).toBeGreaterThan(0);
+    await user.type(screen.getByLabelText("가정 사유"), "운반 자원 2대 공유");
+    await user.click(screen.getByRole("button", { name: "저장" }));
+    await screen.findByText("시나리오 버전을 저장했습니다.", {}, slow);
+    const a = patches(server)[0]!.body.products[0].assumptions;
+    expect(a).toMatchObject({ carrier_empty_move_minutes: "3", out_release: "hold" });
+  });
+
+  it("정하지 않으면 두 값 모두 null로 보낸다(out_release는 서버 기본값 hold)", async () => {
+    const user = userEvent.setup();
+    const { server } = open(versionUrl(2));
+    await screen.findByRole("heading", { level: 1, name: /SC-B v1/ }, slow);
+    await fillProduct(user);
+    await user.click(screen.getByRole("button", { name: "저장" }));
+    await screen.findByText("시나리오 버전을 저장했습니다.", {}, slow);
+    expect(patches(server)[0]!.body.products[0].assumptions).toMatchObject({ carrier_empty_move_minutes: null, out_release: null });
+  });
+});
+
+describe("API 모드: 최신 공정으로 갱신(0.14.0)", () => {
+  /** P-001의 승인본을 v1 → v2로 바꿔 시나리오가 옛 공정 버전을 가리키게 한다 */
+  const promoteV2 = (server: FakeServer) => {
+    const vs = server.state.processes.versions;
+    vs.find((v) => v.id === processVersionId(1))!.status = "superseded";
+    vs.find((v) => v.id === processVersionId(2))!.status = "approved";
+  };
+
+  it("승인본에서 '새 초안을 만들어 최신 공정으로 갱신'하면 초안을 만들고 갱신한 뒤 그 초안에서 바뀐 내용을 보인다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    promoteV2(server);
+    const { router } = open(versionUrl(1), server);
+    await screen.findByRole("heading", { level: 1, name: /SC-A v1/ }, slow);
+    await user.click(await screen.findByRole("button", { name: "새 초안을 만들어 최신 공정으로 갱신" }, slow));
+    await waitFor(() => expect(router.state.location.pathname).not.toBe(versionUrl(1)), slow);
+    const post = server.writes().find((w) => w.path.endsWith("/refresh"))!;
+    expect(post.headers["If-Match"]).toBe('"1"');
+    expect(post.body).toEqual({ assets: "latest" });
+    const proc = await screen.findByRole("table", { name: "공정 버전 변경" }, slow);
+    expect(proc).toHaveTextContent("새 승인본으로 바뀜");
+    expect(proc).toHaveTextContent("v1");
+    expect(proc).toHaveTextContent("v2");
+    expect(screen.getByRole("table", { name: "자산 고정 변경" })).toHaveTextContent("ST-041");
+    expect(screen.getByText(/공정 1개가 새 승인본으로 바뀌었고/)).toBeInTheDocument();
+    // 갱신된 초안은 새 공정 버전을 가리킨다
+    const draftId = router.state.location.pathname.split("/").pop()!;
+    expect(server.state.scenarios.versions.find((v) => v.id === draftId)!.products[0]!.process_version_id).toBe(processVersionId(2));
+  });
+
+  it("초안에서는 바로 갱신하고, '기존 고정 유지'를 고르면 assets=keep으로 보낸다. 저장하지 않은 변경이 있으면 막는다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    const draft = server.state.scenarios.versions.find((v) => v.id === scenarioVersionId(2))!;
+    draft.products = structuredClone(server.state.scenarios.versions.find((v) => v.id === scenarioVersionId(1))!.products);
+    promoteV2(server);
+    open(versionUrl(2), server);
+    await screen.findByRole("heading", { level: 1, name: /SC-B v1/ }, slow);
+    await user.type(screen.getByLabelText("메모"), "x");
+    expect(screen.getByRole("button", { name: "최신 승인 공정으로 갱신" })).toBeDisabled();
+    await user.clear(screen.getByLabelText("메모"));
+    await user.selectOptions(screen.getByLabelText("자산 고정"), "keep");
+    await user.click(screen.getByRole("button", { name: "최신 승인 공정으로 갱신" }));
+    expect(await screen.findByRole("table", { name: "공정 버전 변경" }, slow)).toHaveTextContent("새 승인본으로 바뀜");
+    expect(server.writes().find((w) => w.path.endsWith("/refresh"))!.body).toEqual({ assets: "keep" });
+    expect(screen.getByText("자산 고정은 바뀌지 않았습니다.")).toBeInTheDocument();
+    // 갱신 결과는 편집기가 서버 값으로 다시 시작해도 남는다
+    expect(screen.getByRole("status", { name: "" }).textContent ?? "").toMatch(/최신 승인 공정·자산 버전으로 갱신했습니다/);
+  });
+
+  it("다른 사용자가 먼저 고쳤으면(412) 덮어쓰지 않고 충돌을 알린다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    open(versionUrl(2), server);
+    await screen.findByRole("heading", { level: 1, name: /SC-B v1/ }, slow);
+    server.state.scenarios.versions.find((v) => v.id === scenarioVersionId(2))!.row_version = 7;
+    await user.click(screen.getByRole("button", { name: "최신 승인 공정으로 갱신" }));
+    expect(await screen.findByText(/다른 사용자가 먼저 수정했습니다/, {}, slow)).toBeInTheDocument();
+  });
+
+  it("조회자에게는 갱신 버튼이 없다", async () => {
+    open(versionUrl(1), asRole("viewer"));
+    await screen.findByRole("heading", { level: 1, name: /SC-A v1/ }, slow);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /최신 공정으로 갱신/ })).not.toBeInTheDocument(), slow);
+  });
+});
+
 describe("API 모드: 사전검증·승인·실행 요청", () => {
   it("사전검증은 저장한 값을 서버에 묻고 오류를 그대로 보인다(저장 전에는 막힘)", async () => {
     const user = userEvent.setup();

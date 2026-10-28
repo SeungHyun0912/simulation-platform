@@ -74,6 +74,99 @@ describe("병목 요약", () => {
   });
 });
 
+describe("0.12.0~0.15.x 결과 표시 보강", () => {
+  it("단계별 지표: 단계 키를 넣으면 step_key 필터로 서버에 묻는다(차원 필터는 함께 쓸 수 있음)", async () => {
+    const user = userEvent.setup();
+    const { server } = open(detail(1));
+    await screen.findByRole("table", { name: "실행 지표" }, slow);
+    await user.type(screen.getByLabelText("단계 키"), "insulate");
+    await waitFor(() => expect(server.requests.some((r) => r.path.endsWith(`/runs/${runId(1)}/metrics`) && r.query.get("step_key") === "insulate")).toBe(true), slow);
+  });
+
+  it("단계 차원(step_key)은 '단계'로 보인다", async () => {
+    const server = createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith(`/runs/${runId(1)}/metrics`)) {
+        const body = r.body as { data: { dimensions: Record<string, string> }[] };
+        body.data[0]!.dimensions = { process_version_id: "pv", step_key: "insulate" };
+      }
+      return r;
+    });
+    open(detail(1), server);
+    const table = await screen.findByRole("table", { name: "실행 지표" }, slow);
+    expect(within(table).getByText("insulate")).toBeInTheDocument();
+    expect(within(table).getAllByText(/단계:/).length).toBeGreaterThan(0);
+  });
+
+  it("새 이벤트 종류(CARRIER_MOVED·ENTRY_WAITING)는 원문과 함께 한국어 이름·이동 경로를 보이고, 작업물이 없는 입고 대기도 깨지지 않는다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith("/events")) {
+        const body = r.body as { data: Record<string, unknown>[] };
+        body.data[0] = { ...body.data[0], event_type: "CARRIER_MOVED", source: "st-001", destination: "st-004", item_key: null, quantities: { minutes: "3" } };
+        body.data[1] = { ...body.data[1], event_type: "ENTRY_WAITING", destination: "src", item_key: null };
+      }
+      return r;
+    });
+    open(detail(1), server);
+    await screen.findByRole("table", { name: "실행 지표" }, slow);
+    await user.click(screen.getByRole("button", { name: "이벤트 보기" }));
+    const table = await screen.findByRole("table", { name: "실행 이벤트" }, slow);
+    expect(within(table).getByText("운반 자원 빈 차 이동")).toBeInTheDocument();
+    expect(within(table).getByText("st-001 → st-004")).toBeInTheDocument();
+    expect(within(table).getByText("입고 위치가 가득 차 원자재 입고 대기")).toBeInTheDocument();
+    expect(within(table).getByText("(입고 대기)")).toBeInTheDocument();
+  });
+
+  it("병목에 원인 필드(0.16.0 예정 root_cause·chain)가 오면 '원인' 영역에 보이고, 없으면 그리지 않는다", async () => {
+    const server = createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith("/bottlenecks")) {
+        const body = r.body as { data: { findings: Record<string, unknown>[] } };
+        body.data.findings[0]!.root_cause = { asset_code: "EQ-096", reason: "하류 설비 가동" };
+      }
+      return r;
+    });
+    open(detail(1), server);
+    const busy = await screen.findByRole("region", { name: "병목 종류: 설비 가동 대기" }, slow);
+    const items = within(busy).getAllByRole("listitem", { name: /^병목 \d+위/ });
+    expect(within(items[0]!).getByLabelText("병목 원인")).toHaveTextContent("EQ-096");
+    expect(within(items[1]!).queryByLabelText("병목 원인")).not.toBeInTheDocument();
+  });
+});
+
+describe("병목 근본 원인(개발 서버가 먼저 내는 0.16.0 모양)", () => {
+  it("근본 원인 설명·단계·설비 가동률과 막힘이 번진 경로를 읽기 좋게 보인다", async () => {
+    const server = createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith("/bottlenecks")) {
+        const body = r.body as { data: { findings: Record<string, unknown>[] } };
+        body.data.findings[0]!.root_cause = {
+          product_code: "P04",
+          step_key: "single-main",
+          step_label: "싱글 메인 집합",
+          utilization: "0.988715",
+          assets: [{ asset_id: "x", code: "EQ-096", name: "AL 메인 싱글", utilization: "0.988715" }],
+          explanation: "근본 원인은 P04 싱글 메인 집합입니다.",
+        };
+        body.data.findings[0]!.chain = [
+          { kind: "step", key: "double", label: "AL 더블 집합" },
+          { kind: "space", key: "st-019", label: "ST-019" },
+          { kind: "step", key: "single-main", label: "싱글 메인 집합" },
+        ];
+      }
+      return r;
+    });
+    open(detail(1), server);
+    const busy = await screen.findByRole("region", { name: "병목 종류: 설비 가동 대기" }, slow);
+    const cause = within(within(busy).getAllByRole("listitem", { name: /^병목 \d+위/ })[0]!).getByLabelText("병목 원인");
+    expect(cause).toHaveTextContent("근본 원인은 P04 싱글 메인 집합입니다.");
+    expect(cause).toHaveTextContent("근본 원인: P04 · 싱글 메인 집합 · 설비 EQ-096 가동률 98.9%");
+    expect(within(cause).getByLabelText("막힘이 번진 경로")).toHaveTextContent("단계 AL 더블 집합 → 공간 ST-019 → 단계 싱글 메인 집합");
+  });
+});
+
 describe("설비 타임라인", () => {
   it("주 단위로 시작해 설비별 구간 가동률을 숫자로 보이고, 쓰이지 않은 설비는 기본으로 숨긴다", async () => {
     const { server } = open(detail(1));

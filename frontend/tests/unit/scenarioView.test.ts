@@ -31,7 +31,7 @@ const serverVersion = (): Schemas["ScenarioVersionOut"] => ({
       process_version_id: "pv-1",
       priority: 2,
       arrivals: [{ at_min: "0", count: 3, length_m: null, weight_kg: "3300", lot: "L1" }],
-      assumptions: { equipment_hold: "hold_for_operation", unbounded_buffers: true, manual_transport_minutes: { "op-a": "0" }, residual_scope: { "op-b": "lot" } },
+      assumptions: { equipment_hold: "hold_for_operation", unbounded_buffers: true, out_release: null, carrier_empty_move_minutes: "2.5", manual_transport_minutes: { "op-a": "0" }, residual_scope: { "op-b": "lot" } },
     },
   ],
   assets: [{ asset_id: "a1", asset_revision_id: "r1" }],

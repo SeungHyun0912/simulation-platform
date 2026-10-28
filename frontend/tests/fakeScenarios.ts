@@ -336,6 +336,30 @@ export function scenarioRoute(req: FakeRequest, state: FakeState, h: Helpers): F
   }
 
   // ---- 시나리오 버전 ----
+  // 0.14.0 최신 공정으로 갱신: 초안의 제품별 공정 버전을 현재 승인본으로(도착·가정은 그대로)
+  const rf = new RegExp(`^/projects/${P}/scenario-versions/([^/]+)/refresh$`).exec(path);
+  if (rf && method === "POST") {
+    const v = S.versions.find((x) => x.id === rf[1]);
+    if (!v) return h.notFound();
+    if (viewer) return h.forbidden();
+    const im = req.headers["If-Match"];
+    if (im === undefined) return h.missingIfMatch();
+    if (v.status === "approved") return h.errorBody(409, "VERSION_IMMUTABLE", "승인된 버전은 갱신할 수 없습니다.", [{ message: "승인본입니다." }]);
+    if (im !== `"${v.row_version}"`) return h.staleVersion(v.row_version);
+    const process_changes = v.products.map((p) => {
+      const approved = state.processes.versions.find((x) => x.product_id === p.product_id && x.status === "approved");
+      const from = state.processes.versions.find((x) => x.id === p.process_version_id);
+      if (!approved) return { product_id: p.product_id, product_code: null, from_process_version_id: p.process_version_id, from_version_no: from?.version_no ?? null, to_process_version_id: p.process_version_id, to_version_no: from?.version_no ?? null, status: "no_approved_version" as const };
+      const changed = approved.id !== p.process_version_id;
+      const out = { product_id: p.product_id, product_code: null, from_process_version_id: p.process_version_id, from_version_no: from?.version_no ?? null, to_process_version_id: approved.id, to_version_no: approved.version_no, status: changed ? ("changed" as const) : ("unchanged" as const) };
+      p.process_version_id = approved.id;
+      return out;
+    });
+    const asset_changes = (req.body?.assets ?? "latest") === "latest" ? [{ asset_id: "aaaaaaaa-0000-4000-8000-000000000041", asset_code: "ST-041", change: "updated" as const, from_revision_id: null, to_revision_id: "rrrrrrrr-0000-4000-8000-000000000001" }] : [];
+    v.row_version += 1;
+    return { status: 200, headers: h.etag(v.row_version), body: { data: { version: fix(v), process_changes, asset_changes } } };
+  }
+
   const vm = new RegExp(`^/projects/${P}/scenario-versions/([^/]+)(?:/(validate|approve))?$`).exec(path);
   if (vm) {
     const v = S.versions.find((x) => x.id === vm[1]);
