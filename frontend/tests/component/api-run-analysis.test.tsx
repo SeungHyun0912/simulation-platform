@@ -167,6 +167,42 @@ describe("병목 근본 원인(개발 서버가 먼저 내는 0.16.0 모양)", (
   });
 });
 
+describe("병목 근본 원인: null·빈 목록", () => {
+  const withCause = (rootCause: unknown, chain: unknown) =>
+    createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith("/bottlenecks")) {
+        const f = (r.body as { data: { findings: Record<string, unknown>[] } }).data.findings[0]!;
+        f.root_cause = rootCause;
+        f.chain = chain;
+      }
+      return r;
+    });
+  const firstItem = async () => {
+    const busy = await screen.findByRole("region", { name: "병목 종류: 설비 가동 대기" }, slow);
+    return within(busy).getAllByRole("listitem", { name: /^병목 \d+위/ })[0]!;
+  };
+
+  it("원인이 null(판정 불가)이고 경로가 빈 목록이면 원인 영역을 그리지 않는다", async () => {
+    open(detail(1), withCause(null, []));
+    expect(within(await firstItem()).queryByLabelText("병목 원인")).not.toBeInTheDocument();
+  });
+
+  it("원인은 판정할 수 없지만 경로가 있으면 그 사실을 밝히고 경로만 보인다", async () => {
+    open(detail(1), withCause(null, [{ kind: "step", key: "a", label: "단계 A" }]));
+    const cause = within(await firstItem()).getByLabelText("병목 원인");
+    expect(cause).toHaveTextContent("근본 원인을 판정할 수 없습니다");
+    expect(within(cause).getByLabelText("막힘이 번진 경로")).toHaveTextContent("단계 단계 A");
+  });
+
+  it("원인은 있고 경로가 빈 목록이면 경로 줄 없이 원인만 보이며, 설명 문장은 서버 그대로다", async () => {
+    open(detail(1), withCause({ product_code: "P03", step_label: "실리콘 편조", assets: [], explanation: "ST-002 → P03 실리콘 편조 17.3%. 투입 조건 먼저 확인" }, []));
+    const cause = within(await firstItem()).getByLabelText("병목 원인");
+    expect(cause).toHaveTextContent("ST-002 → P03 실리콘 편조 17.3%. 투입 조건 먼저 확인");
+    expect(within(cause).queryByLabelText("막힘이 번진 경로")).not.toBeInTheDocument();
+  });
+});
+
 describe("설비 타임라인", () => {
   it("주 단위로 시작해 설비별 구간 가동률을 숫자로 보이고, 쓰이지 않은 설비는 기본으로 숨긴다", async () => {
     const { server } = open(detail(1));

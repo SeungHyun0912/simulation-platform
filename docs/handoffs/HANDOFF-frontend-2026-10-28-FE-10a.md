@@ -16,6 +16,10 @@
 | 9 | 설비 목록 지게차·AMR | 화면 변경 불필요(설비로 그대로 보임) — 실서버 화면 확인은 하지 않음 |
 | 10 | 이벤트·가정 코드 | 이벤트 표에 `CARRIER_MOVED`·`ENTRY_WAITING`·`OUT_BLOCKED` 등 한국어 이름 + 원문, **이동 열(source → destination)**, `item_key` null인 입고 대기는 "(입고 대기)". 결과의 "쓰인 가정"을 **코드별 묶음(건수 + 펼치기)** 으로 바꾸고 `OUT_RELEASE_HOLD`·`CARRIER_EMPTY_MOVE` 등 이름 표시(c0.2 실행에서 수십 줄로 길어짐을 화면에서 확인해 고침) |
 
+### 1-1. Backend 회신 반영(같은 날)
+- Backend: 0.16.0 필드는 PR #62 머지 전까지 바뀌지 않음, 머지 시 공지 → 그때 타입 재생성. 타입 밖에서 읽는 `root_cause`(null = 판정 불가)·`chain`(빈 목록)을 처리할 것. 가동률이 낮은 근본 원인은 설명에 "투입 조건 먼저 확인"이 붙으니 설명은 그대로 표시.
+- 반영: 원인 null + 빈 경로면 원인 영역을 그리지 않음(전에는 빈 "원인" 제목만 남던 문제 수정), 원인 null + 경로 있음이면 "근본 원인을 판정할 수 없습니다" + 경로만, 원인 있음 + 빈 경로면 경로 줄 없음. 설명은 서버 문장 그대로. 시험 3건 추가. `pnpm test` **691 통과**·73 건너뜀, build 0.
+
 ## 2. 변경 파일
 `frontend/src/features/runs/{RunAnalysisSections.tsx,RunDetailSections.tsx,queries.ts}`, `src/features/scenarios/{scenarioView.ts,ScenarioProductEditor.tsx,ScenarioVersionPage.tsx,writer.ts}`, `src/features/processes/{ProcessOverviewPage.tsx,processOverview.ts,queries.ts}`, 생성물, `tests/{fakeProcess.ts,fakeScenarios.ts}`, `tests/component/{api-scenarios,api-run-analysis,api-process-overview}.test.tsx`, `tests/unit/scenarioView.test.ts`, `tests/live/{live-scenario-run-ui,live-process-flow-ui}.test.tsx`.
 

@@ -54,15 +54,17 @@ export function LevelBadge({ level }: { level: string }) {
  */
 function RootCause({ f }: { f: Bottleneck }) {
   const extra = f as Bottleneck & { root_cause?: unknown; chain?: unknown };
-  if (extra.root_cause == null && extra.chain == null) return null;
-  const rc = asRecord(extra.root_cause);
-  const chain = Array.isArray(extra.chain) ? extra.chain.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : null;
+  const rc = asRecord(extra.root_cause); // null = 판정 불가
+  const chain = Array.isArray(extra.chain) ? extra.chain.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : [];
+  // 필드가 없거나(0.16.0 이전 서버), 원인 null + 빈 경로면 그리지 않는다
+  if (!rc && chain.length === 0) return null;
   // 아는 모양(개발 서버 응답 기준): 설명·제품·단계·설비·가동률. 모르는 모양이면 원문 줄로 보인다.
   const known = rc && (typeof rc.explanation === "string" || typeof rc.step_label === "string");
   const assets = rc && Array.isArray(rc.assets) ? rc.assets.map(asRecord).filter((x): x is Record<string, unknown> => x !== null) : [];
   return (
     <div aria-label="병목 원인">
       <strong>원인</strong>
+      {!rc && <p className={styles.muted}>근본 원인을 판정할 수 없습니다(막힘이 번진 경로만 보입니다).</p>}
       {known ? (
         <>
           {typeof rc.explanation === "string" && <p>{rc.explanation}</p>}
@@ -83,7 +85,7 @@ function RootCause({ f }: { f: Bottleneck }) {
           </ul>
         )
       )}
-      {chain && chain.length > 0 && (
+      {chain.length > 0 && (
         <p className={styles.muted} aria-label="막힘이 번진 경로">
           막힘이 번진 경로(멈춘 곳 → 근본 원인):{" "}
           {chain.map((c) => `${c.kind === "space" ? "공간 " : c.kind === "step" ? "단계 " : ""}${String(c.label ?? c.key ?? "?")}`).join(" → ")}
