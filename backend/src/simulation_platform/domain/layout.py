@@ -90,7 +90,10 @@ def save_errors(*, points: Sequence[Mapping], placements: Sequence[Mapping], por
 def validate(*, canvas: tuple[Decimal | None, Decimal | None], points: Mapping[str, tuple[Decimal, Decimal]],
              placements: Sequence[Mapping], port_points: Mapping[str, str], port_assets: Mapping[str, str],
              routes: Sequence[Mapping]) -> list[Issue]:
-    """승인 전 검증. points: key → (x, y), port_points: 포트 id → 점 key, port_assets: 포트 id → 자산 id."""
+    """승인 전 검증. points: key → (x, y), port_points: 포트 id → 점 key, port_assets: 포트 id → 자산 id.
+
+    field_path는 순번이 아니라 key 기준이다(응답 순서와 무관하게 화면이 대상을 찾도록): `/points/{point_key}`,
+    `/placements/{asset_id}`, `/port_points/{port_id}`, `/routes/{route_key}`."""
     issues: list[Issue] = []
     width, height = canvas
 
@@ -101,18 +104,19 @@ def validate(*, canvas: tuple[Decimal | None, Decimal | None], points: Mapping[s
         if outside(x, y):
             issues.append(Issue("warning", "LAY-005", f"/points/{key}", f"점 {key}가 도면 크기를 벗어납니다."))
     placed = set()
-    for i, p in enumerate(placements):
+    for p in placements:
         placed.add(p["asset_id"])
+        path = f"/placements/{p['asset_id']}"
         if outside(p["x_m"], p["y_m"]):
-            issues.append(Issue("warning", "LAY-005", f"/placements/{i}", "배치 중심이 도면 크기를 벗어납니다."))
+            issues.append(Issue("warning", "LAY-005", path, "배치 중심이 도면 크기를 벗어납니다."))
         if p.get("width_m") is None or p.get("height_m") is None:
-            issues.append(Issue("warning", "LAY-006", f"/placements/{i}", "가로·세로 크기를 모릅니다."))
-    for port, key in sorted(port_points.items(), key=lambda kv: kv[1]):
+            issues.append(Issue("warning", "LAY-006", path, "가로·세로 크기를 모릅니다."))
+    for port, key in sorted(port_points.items(), key=lambda kv: (kv[1], str(kv[0]))):
         if port_assets.get(port) not in placed:
-            issues.append(Issue("warning", "LAY-004", f"/port_points/{key}",
+            issues.append(Issue("warning", "LAY-004", f"/port_points/{port}",
                                 f"점 {key}에 매핑한 포트의 자산이 배치되지 않았습니다."))
-    for i, r in enumerate(routes):
-        path = f"/routes/{i}"
+    for r in routes:
+        path = f"/routes/{r['route_key']}"
         if r["from_port_id"] == r["to_port_id"]:
             issues.append(Issue("error", "LAY-007", path, "출발 포트와 도착 포트가 같습니다."))
         for side, port, end, rule in (("출발", r["from_port_id"], r["points"][0], "LAY-001"),

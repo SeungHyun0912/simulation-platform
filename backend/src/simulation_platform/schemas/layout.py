@@ -58,7 +58,8 @@ class LayoutVersionPatch(PatchIn):
     notes: FreeText | None = None
     canvas_width_m: PositiveDecimal | None = Field(default=None, description="도면 가로(m). 모르면 null")
     canvas_height_m: PositiveDecimal | None = Field(default=None, description="도면 세로(m). 모르면 null")
-    attributes: Attributes | None = Field(default=None, description="확장 속성(배경 이미지·축척 등). 통째로 교체")
+    attributes: Attributes | None = Field(
+        default=None, description="확장 속성. 통째로 교체. 약속 키 `background` = {url, width_px, height_px, m_per_px}(선택, 서버는 검사하지 않음)")
 
 
 class LayoutPointIn(StrictIn):
@@ -72,9 +73,10 @@ class PlacementIn(StrictIn):
     asset_id: uuid.UUID
     x_m: NonNegativeDecimal = Field(description="중심 x")
     y_m: NonNegativeDecimal = Field(description="중심 y")
-    width_m: PositiveDecimal | None = Field(default=None, description="가로(x 방향). 모르면 null")
-    height_m: PositiveDecimal | None = Field(default=None, description="세로(y 방향). 모르면 null")
-    rotation_deg: Rotation | None = Field(default=None, description="회전(도, 0 이상 360 미만). 모르면 null")
+    width_m: PositiveDecimal | None = Field(default=None, description="회전 전 가로(x 방향). 모르면 null")
+    height_m: PositiveDecimal | None = Field(default=None, description="회전 전 세로(y 방향). 모르면 null")
+    rotation_deg: Rotation | None = Field(
+        default=None, description="중심 기준 회전(도, 0 이상 360 미만). y가 아래쪽인 화면에서 시계 방향이 +. 모르면 null(0으로 그림)")
     attributes: Attributes = Field(default_factory=dict)
 
 

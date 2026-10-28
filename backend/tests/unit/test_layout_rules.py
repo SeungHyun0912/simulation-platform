@@ -44,7 +44,7 @@ def test_validation_checks_route_ends_against_the_mapped_port_points():
         return rules.validate(canvas=(D(10), D(10)), points={"P1": (D(1), D(1)), "P2": (D(2), D(2)), "P3": (D(11), D(2))},
                               placements=list(placements), port_points=port_points,
                               port_assets={"out": "A", "in": "B"},
-                              routes=[{"from_port_id": "out", "to_port_id": "in", "points": points}])
+                              routes=[{"route_key": "R1", "from_port_id": "out", "to_port_id": "in", "points": points}])
 
     good = run(["P1", "P2"], {"out": "P1", "in": "P2"},
                [{"asset_id": "A", "x_m": D(1), "y_m": D(1), "width_m": D(1), "height_m": D(1)},
@@ -56,3 +56,6 @@ def test_validation_checks_route_ends_against_the_mapped_port_points():
     unmapped = run(["P1", "P2"], {"out": "P1"})
     assert {i.rule_id for i in unmapped if i.severity == "error"} == {"LAY-003"}
     assert {i.rule_id for i in unmapped if i.severity == "warning"} >= {"LAY-004"}  # 배치하지 않은 자산의 포트
+    # field_path는 순번이 아니라 key 기준(응답 정렬과 무관): 경로 key, 포트 id, 자산 id, 점 key
+    assert {i.field_path for i in unmapped} >= {"/routes/R1", "/port_points/out"}
+    assert {i.field_path for i in good} == {"/points/P3"}
