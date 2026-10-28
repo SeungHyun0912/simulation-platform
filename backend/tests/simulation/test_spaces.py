@@ -129,9 +129,9 @@ def test_space_marked_not_allowed_or_in_unsupported_units_is_rejected():
     assert rules(in_kg) == {"SPACE_CAPACITY_UNIT_UNSUPPORTED"}
 
 
-def test_direct_handoff_holds_one_item_in_front_of_the_next_machine():
-    """사용자 규칙(2026-10-28): 대기 공간 없이 바로 넘기면 다음 설비 앞에 1개(설비가 한 번에 처리하는 입력 수)까지
-    기다릴 수 있고, 자리가 차면 앞 설비가 산출을 쥐고 기다린다. 그래서 공간 무제한 가정이 필요 없다."""
+def test_direct_handoff_keeps_the_output_on_the_machine_until_the_next_machine_takes_it():
+    """사용자 확정(2026-10-28): 설비의 Input/Output 위치는 버퍼가 아니다. 대기 공간 없이 바로 넘기면 다음 설비 앞에 따로
+    자리를 두지 않고, 앞 설비가 산출을 쥔 채(BLOCKED) 다음 설비가 가져갈 때까지 기다린다. 공간 무제한 가정은 필요 없다."""
     g = Graph()
     g.node("src", "source")
     g.node("a", "operation", step("split_length", processing=speed("30"), output=out_split(1000, 2),
@@ -144,10 +144,29 @@ def test_direct_handoff_holds_one_item_in_front_of_the_next_machine():
     assert "BUFFER_POLICY_UNKNOWN" not in rules(snapshot)
     result = run_model(model_of(snapshot), [Arrival("2000", count=2)])
     assert result.state == "completed" and len(result.of_type(ev.SINK_REACHED)) == 4
-    # a는 1,000m 단위를 100/3분마다 낸다. b는 1,000m에 100분. 셋째 단위(100분)가 나올 때 b 앞 자리(1개)에는 둘째가
-    # 기다리고 있어 a가 막힌다 → b가 둘째를 가져가는 400/3분에 풀린다
-    assert times(result, ev.OUT_BLOCKED, step_key="a")[0] == 100
+    # a는 1,000m 단위를 100/3분마다 낸다(한 작업에 둘). b는 1,000m에 100분. b는 첫 단위를 바로(100/3분) 가져가지만
+    # 둘째 단위는 b가 첫 단위를 끝내는 400/3분에야 가져간다 → a는 첫 작업을 끝낸 200/3분부터 400/3분까지 둘째를 쥐고 막힌다
+    assert times(result, ev.OUT_BLOCKED, step_key="a")[0] == F(200, 3)
     assert times(result, ev.OUT_UNBLOCKED, step_key="a")[0] == F(400, 3)
+    first_taken = [e for e in result.of_type(ev.OUT_BLOCKED) if e.step_key == "a" and e.sim_time == F(100, 3)]
+    assert not first_taken  # 바로 가져간 산출은 막힘을 남기지 않는다
+
+
+def test_direct_handoffs_of_two_processes_with_the_same_step_keys_do_not_mix_up():
+    """작업 id는 공정마다 따로 매겨져(두 공정 모두 a#1) 쥐고 있는 산출을 공정 버전과 함께 구분해야 한다(교착 회귀)."""
+    def lane():
+        g = Graph()
+        g.node("src", "source")
+        g.node("a", "operation", step("split_length", processing=speed("30"), output=out_split(1000, 2),
+                                      assets=(EQUIPMENT_1,)))
+        g.node("b", "operation", step("split_length", processing=speed("10"), output=out_split(1000, 1),
+                                      assets=(EQUIPMENT_2,)))
+        g.node("complete", "milestone")
+        g.node("sink", "sink")
+        return Lane(model_of(g.chain().snapshot(project_id=PROJECT)), (Arrival("2000", count=2),))
+
+    result = run_models([lane(), lane()])
+    assert (result.state, result.reason) == ("completed", None) and len(result.of_type(ev.SINK_REACHED)) == 8
 
 
 # --- 컴파일: OUT 배출 정책(DEC-006 대응표) -----------------------------------------------------------
