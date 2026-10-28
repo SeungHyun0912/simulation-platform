@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.16.0, openapi_sha256 13fa2fb9afce00b5bc9808d57fdfaa4d9b1dff463745beeeecd4504c478842ad
+// 기준 계약: version 0.16.1, openapi_sha256 13fa2fb9afce00b5bc9808d57fdfaa4d9b1dff463745beeeecd4504c478842ad
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {

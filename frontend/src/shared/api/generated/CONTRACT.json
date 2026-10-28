@@ -1,5 +1,5 @@
 {
-  "contract_version": "0.16.0",
+  "contract_version": "0.16.1",
   "openapi_sha256": "13fa2fb9afce00b5bc9808d57fdfaa4d9b1dff463745beeeecd4504c478842ad",
   "approved_scopes": [
     "project-assets-ports",
