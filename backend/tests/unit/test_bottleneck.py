@@ -83,3 +83,9 @@ def test_limitations_tell_when_space_shortage_was_not_evaluated():
     assert any("무제한" in note and "space_full" in note for note in unbounded)
     assert not any("무제한으로 가정한 실행" in note for note in run(codes=set())["limitations"])
     assert run()["thresholds"]["pileup_min_peak_items"] == "3"
+
+
+def test_limitations_say_carriers_were_modelled_when_the_run_used_carriers():
+    notes = run(codes={"CARRIER_EMPTY_MOVE"})["limitations"]
+    assert any("지정된 대수와 위치" in note for note in notes)
+    assert not any("대수를 모델링하지 않" in note for note in notes)

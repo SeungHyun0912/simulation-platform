@@ -207,15 +207,19 @@ class _Compiler:
         """경로가 지나는 저장공간의 용량과, 용량을 모르는 대기 장소를 확인한다.
 
         - 자산 버전의 저장 용량이 유한(item)이면 자리 수, 무제한이면 None. 같은 공간은 노드가 달라도 하나의 용량이다.
-        - 용량이 미정인 공간과, 단계에서 다음 단계로 바로 넘기는 대기(다음 설비 IN 용량은 아직 모형에 없음)는
-          시나리오가 `unbounded_buffers`로 명시해야 한다.
+        - 용량이 미정인 공간은 시나리오가 `unbounded_buffers`로 명시해야 한다.
+        - 단계에서 다음 단계로 바로 넘기는 직접 인계는 미정이 아니다: 다음 설비 앞 자리(설비 한 대당 한 번에 처리하는 입력 수,
+          최소 1)를 실행이 정한다(사용자 규칙 2026-10-28, runtime `_front_slots`).
         """
         spaces: dict[str, int | None] = {}
-        unknown: list[str] = []
+        unknown: list[str] = []  # 용량을 모르는 저장공간
         for key in route:
             node = by_key[key]
-            if node["kind"] == "operation" and any(by_key[f]["kind"] == "operation" for f in succ.get(key, ())):
-                unknown.append(key)
+            if node["kind"] == "source" and node.get("asset_id"):  # 원자재 입고 위치: 용량이 정해졌을 때만 적용한다
+                kind, value = self._space_capacity(node["asset_id"])
+                if kind == "finite":
+                    spaces[node["asset_id"]] = value
+                continue
             if node["kind"] != "buffer":
                 continue
             asset = node["asset_id"]
@@ -234,11 +238,11 @@ class _Compiler:
         if unknown:
             if not self.assumptions.unbounded_buffers:
                 self.issue("BUFFER_POLICY_UNKNOWN",
-                           f"용량을 모르는 대기 장소 {len(unknown)}곳(저장공간 용량 미정 또는 단계 간 직접 인계)이 있습니다. "
-                           "용량을 모르는 값을 무제한으로 가정하지 않으므로 시나리오가 `unbounded_buffers`를 명시해야 합니다.", unknown[0])
-            else:
+                           f"용량을 모르는 저장공간 {len(unknown)}곳이 있습니다. 용량을 모르는 값을 무제한으로 가정하지 않으므로 "
+                           "시나리오가 `unbounded_buffers`를 명시해야 합니다.", unknown[0])
+            else:  # 저장공간 용량이 미정이라 공간 부족을 평가할 수 없다(병목 요약의 한계)
                 self.used.append(AssumptionUse(
-                    "UNBOUNDED_BUFFERS", f"용량을 모르는 대기 장소 {len(unknown)}곳을 용량 제한 없이 대기하는 것으로 가정"))
+                    "UNBOUNDED_BUFFERS", f"용량을 모르는 저장공간 {len(unknown)}곳을 용량 제한 없이 대기하는 것으로 가정"))
         return spaces
 
     def _out_policies(self, key: str, candidates: tuple[str, ...], following: dict | None) -> dict[str, OutPolicy]:
@@ -271,7 +275,13 @@ class _Compiler:
                 policies[asset] = OutPolicy("release_after_out", int(capacity["value"]))
             else:
                 unknown.append(asset)
-        if unknown:
+        if unknown and self.assumptions.out_release == "hold":
+            for asset in unknown:  # 시나리오 가정: 다음 공간에 자리가 날 때까지 산출을 쥐고 설비가 기다린다
+                policies[asset] = OutPolicy("hold")
+            self.used.append(AssumptionUse(
+                "OUT_RELEASE_HOLD", f"{key}: OUT 배출 정책이 정해지지 않은 설비 {len(unknown)}대는 다음 공간"
+                f"({following['node_key']})이 가득 차면 산출을 쥐고 기다리는 것으로 가정", key))
+        elif unknown:
             self.issue("OUT_RELEASE_POLICY_UNKNOWN",
                        f"{key}: 다음 공간({following['node_key']})의 용량이 유한해 막힐 수 있는데 설비 {len(unknown)}대의 OUT 배출 정책"
                        "(block_machine_while_waiting) 또는 OUT 용량이 미정입니다. 승인된 자산 버전에서 정해야 합니다(DEC-006).", key)
@@ -307,6 +317,17 @@ class _Compiler:
         self._check_hold_policy(key, handler, output, candidates)
         residual = self._residual(key, step, handler, candidates)
         out_policies = self._out_policies(key, candidates, (by_key or {}).get(next_key) if next_key else None)
+        carrier_move = None
+        if handler.name == TRANSPORT and candidates:  # 운반 자원이 정해진 운반: 자원의 위치를 따진다
+            carrier_move = self.assumptions.carrier_empty_move_minutes
+            if carrier_move is None:
+                self.issue("CARRIER_EMPTY_MOVE_UNKNOWN",
+                           f"{key}: 운반 자원 {len(candidates)}대가 정해졌는데, 다른 곳에 있던 자원이 일을 받은 곳까지 빈 차로 "
+                           "옮겨 가는 시간이 없습니다. 시나리오가 `carrier_empty_move_minutes`를 명시해야 합니다.", key)
+            else:
+                self.used.append(AssumptionUse(
+                    "CARRIER_EMPTY_MOVE", f"{key}: 운반 자원은 다음 명령이 없으면 목적지에서 기다리고, 다른 곳에서 일을 받으면 "
+                    f"빈 차로 {carrier_move}분 이동", key))
         handoff = step["handoff_rule"]["mode"]
         if handoff not in ("per_output_unit", "total_batch"):
             handoff = "per_output_unit"  # 미정이면 도메인 검증이 이미 막았다(수동 운반은 한 개 산출)
@@ -318,7 +339,8 @@ class _Compiler:
             worker_unlimited=worker_unlimited, setup_minutes=setup, timing=timing, output=output,
             handoff=handoff, residual_mode=step["residual_rule"]["mode"],
             transport_minutes=transport_minutes, residual=residual, out_policies=out_policies,
-            inputs=inputs, consume_policy=consume_policy, delay=delay, setup_trigger=setup_trigger)
+            inputs=inputs, consume_policy=consume_policy, delay=delay, setup_trigger=setup_trigger,
+            carrier_move_minutes=carrier_move)
 
     def _transport_minutes(self, key: str, handler: HandlerDef, step: dict) -> Fraction | None:
         """수동 운반의 이동 시간(보빈 하나가 한 번 옮겨지는 시간, 상하차 포함은 값에 담는다).

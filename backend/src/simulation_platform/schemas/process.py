@@ -485,3 +485,57 @@ class EditorStateOut(Out):
     row_version: int = Field(description="저장 전에는 0. 공정 버전의 row_version과 별개다.")
     updated_at: UtcDatetime | None
     updated_by: uuid.UUID | None
+
+
+# --- 공정 일괄 조회·자산 사용처(CR be13, 0.14.0) ---------------------------------------------------------
+
+class GraphSummaryNode(Out):
+    id: uuid.UUID
+    node_key: str
+    kind: str
+    label: str
+    asset_id: uuid.UUID | None = Field(default=None, description="공간 노드의 저장 공간 자산")
+    operation_type: str | None = Field(default=None, description="단계 노드의 처리 방식(handler)")
+    candidate_asset_ids: list[uuid.UUID] = Field(default_factory=list, description="단계 노드의 후보 설비")
+
+
+class GraphSummaryEdge(Out):
+    id: uuid.UUID
+    edge_key: str
+    from_node_id: uuid.UUID
+    to_node_id: uuid.UUID
+    edge_kind: str
+
+
+class GraphSummaryOut(Out):
+    nodes: list[GraphSummaryNode]
+    edges: list[GraphSummaryEdge]
+    completion_node_id: uuid.UUID | None = None
+
+
+class ProcessGraphItem(Out):
+    product_id: uuid.UUID
+    product_code: str
+    product_name: str
+    version: "ProcessVersionSummary | None" = Field(description="기준에 맞는 공정 버전이 없으면 null(그래프도 없음)")
+    etag: str | None = Field(default=None, description="그 공정 버전의 ETag(row_version). 그래프 PUT·단계 PATCH의 If-Match")
+    graph: GraphOut | None = Field(default=None, description="mode=full일 때 그래프 전체(단건 조회와 같은 모양)")
+    summary: GraphSummaryOut | None = Field(default=None, description="mode=summary일 때 노드·간선 요약")
+
+
+class AssetUseOut(Out):
+    product_id: uuid.UUID
+    product_code: str
+    product_name: str
+    process_version: "ProcessVersionSummary"
+    node_id: uuid.UUID
+    node_key: str
+    node_label: str
+    use: Literal["space", "equipment_candidate"] = Field(description="공간 노드의 자산이거나, 단계의 후보 설비")
+    role_key: str | None = None
+
+
+from simulation_platform.schemas.catalog import ProcessVersionSummary
+
+ProcessGraphItem.model_rebuild()
+AssetUseOut.model_rebuild()

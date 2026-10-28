@@ -30,6 +30,7 @@ from simulation_platform.domain.pagination import (
     make_tag,
 )
 from simulation_platform.models import (
+    Asset,
     Product,
     Scenario,
     ScenarioAsset,
@@ -42,16 +43,20 @@ from simulation_platform.repositories import process as process_repo
 from simulation_platform.repositories import scenarios as repo
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.scenario import (
+    AssetPinChangeOut,
     AssumptionUseOut,
     CompileIssueOut,
     PrecheckIssue,
     PrecheckOut,
+    ProcessChangeOut,
     ProductPrecheck,
     ScenarioAssetDto,
     ScenarioCreate,
     ScenarioOut,
     ScenarioPatch,
     ScenarioProductDto,
+    ScenarioRefreshIn,
+    ScenarioRefreshOut,
     ScenarioVersionCreate,
     ScenarioVersionListItem,
     ScenarioVersionOut,
@@ -444,3 +449,76 @@ def approve_version(session: Session, principal: Principal, project_id: uuid.UUI
               entity_id=version.id, before={"status": "draft"},
               after={"status": "approved", "version_no": version.version_no}, request_id=request_id)
     return _version_out(session, _reload(session, project_id, version.id))
+
+
+# --- 최신 승인 공정으로 갱신(CR be14) ------------------------------------------------------------------------
+
+def refresh_version(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID,
+                    expected: int, body: ScenarioRefreshIn | None, request_id: str | None) -> ScenarioRefreshOut:
+    """초안의 제품별 공정 버전을 그 제품의 현재 승인본으로 바꾸고 자산 고정을 맞춘다. 도착·가정·순서는 그대로."""
+    body = body or ScenarioRefreshIn()
+    access = require_project(session, principal, project_id)
+    require_write(access)
+    version = _version_or_404(session, project_id, version_id, for_update=True)
+    if version.status != "draft":
+        raise VersionImmutableError("초안이 아닌 시나리오 버전은 갱신할 수 없습니다.", [ErrorDetail(
+            message=f"현재 상태는 {version.status}입니다. 새 초안을 만든 뒤 갱신하세요.", field_path="/status")])
+    if version.row_version != expected:
+        raise _stale(version.row_version)
+    rows = repo.products_of(session, project_id, version.id)
+    wanted = None if body.product_ids is None else set(body.product_ids)
+    summaries = process_repo.summaries_for_products(session, project_id, [r.product_id for r in rows])
+    before_versions = repo.process_versions(session, project_id, {r.process_version_id for r in rows})
+    codes = {p.id: p.code for p in session.scalars(select(Product).where(
+        Product.project_id == project_id, Product.id.in_({r.product_id for r in rows})))}
+    process_changes = []
+    for row in rows:
+        current = summaries[row.product_id][1]
+        before = before_versions.get(row.process_version_id)
+        if wanted is not None and row.product_id not in wanted:
+            status, target = "not_requested", before
+        elif current is None:
+            status, target = "no_approved_version", before
+        elif current.id == row.process_version_id:
+            status, target = "unchanged", current
+        else:
+            status, target = "changed", current
+        process_changes.append(ProcessChangeOut(
+            product_id=row.product_id, product_code=codes.get(row.product_id),
+            from_process_version_id=row.process_version_id, from_version_no=None if before is None else before.version_no,
+            to_process_version_id=target.id if target is not None else row.process_version_id,
+            to_version_no=None if target is None else target.version_no, status=status))
+    pinned = {a.asset_id: a.asset_revision_id for a in repo.assets_of(session, project_id, version.id)}
+    new_versions = {c.to_process_version_id for c in process_changes}
+    used = repo.assets_used_by(session, project_id, new_versions)
+    if body.assets == "latest":
+        target_pins = {a: r.id for a, r in repo.approved_revisions(session, project_id, used).items()}
+    else:
+        target_pins = dict(pinned)
+        target_pins.update({a: r.id for a, r in repo.approved_revisions(session, project_id, used - set(pinned)).items()})
+    asset_codes = {a.id: a.code for a in session.scalars(select(Asset).where(
+        Asset.project_id == project_id, Asset.id.in_(set(pinned) | set(target_pins))))} if pinned or target_pins else {}
+    asset_changes = []
+    for asset in sorted(set(pinned) | set(target_pins), key=lambda a: (asset_codes.get(a) or "", str(a))):
+        old, new = pinned.get(asset), target_pins.get(asset)
+        if old == new:
+            continue
+        change = "pinned" if old is None else "removed" if new is None else "updated"
+        asset_changes.append(AssetPinChangeOut(asset_id=asset, asset_code=asset_codes.get(asset),
+                                               from_revision_id=old, to_revision_id=new, change=change))
+    with transaction(session, {}):
+        for row, item in zip(rows, process_changes, strict=True):
+            if item.status == "changed":
+                row.process_version_id = item.to_process_version_id
+        if asset_changes:
+            _write_assets(session, version, sorted(target_pins.items()), principal.user_id)
+        _touch(version, principal)
+        audit(session, organization_id=access.project.organization_id, project_id=project_id,
+              actor_id=principal.user_id, action="scenario_version.refresh", entity_type="scenario_version",
+              entity_id=version.id, before=None,
+              after={"processes": [{"product_id": str(c.product_id), "from": str(c.from_process_version_id),
+                                    "to": str(c.to_process_version_id), "status": c.status} for c in process_changes],
+                     "assets": [{"asset_id": str(c.asset_id), "change": c.change} for c in asset_changes],
+                     "mode": body.assets}, request_id=request_id)
+    return ScenarioRefreshOut(version=_version_out(session, _reload(session, project_id, version.id)),
+                              process_changes=process_changes, asset_changes=asset_changes)

@@ -30,6 +30,7 @@ ENTRY_WAITING = "ENTRY_WAITING"  # 설비가 아닌 위치(도착·공간·miles
 RESIDUAL_CREATED = "RESIDUAL_CREATED"
 RESIDUAL_CARRIED = "RESIDUAL_CARRIED"
 RESIDUAL_DISCARDED = "RESIDUAL_DISCARDED"
+CARRIER_MOVED = "CARRIER_MOVED"  # 운반 자원이 일을 받은 곳까지 빈 차로 이동(다음 명령이 없으면 목적지에서 기다린다)
 STATE_SNAPSHOT = "STATE_SNAPSHOT"  # 하루·주·월 경계의 관측용 상태 요약(재개용 체크포인트가 아니다)
 
 # 설비의 배타적 상태(07 §9). IN 대기는 작업물 상태이며 설비 상태와 별도다.

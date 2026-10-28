@@ -64,6 +64,16 @@ EQUIPMENT = [
     (96, 96, "AL 집합 싱글", "AL"),
 ]
 
+# --- 운반 자원(사용자 확정 2026-10-28): 지게차 3대는 지게차 경로들이, AMR 2대는 AMR 경로들이 함께 쓴다(설비로 등록) -----------
+CARRIERS = [("FL-001", "지게차 1", "지게차"), ("FL-002", "지게차 2", "지게차"), ("FL-003", "지게차 3", "지게차"),
+            ("AMR-001", "AMR 1", "AMR"), ("AMR-002", "AMR 2", "AMR")]
+CARRIER_CODES = {"지게차": ["FL-001", "FL-002", "FL-003"], "AMR": ["AMR-001", "AMR-002"]}
+
+# --- 공간 용량(사용자 확정 2026-10-28): 동시에 놓을 수 있는 보빈·롤 개수 ----------------------------------------------
+SPACE_CAPACITY = dict(zip([f"ST-{n:03d}" for n in range(1, 23)],
+                          [150, 20, 1, 16, 48, 96, 204, 56, 48, 25, 90, 139, 108, 30, 40, 40, 24, 38, 120, 9, 1, 1],
+                          strict=True))
+
 # --- 공간(§3): (코드, 기준 명칭, 용도·주의). ST-021·ST-022는 AMR 도킹 위치(dock), 나머지는 저장·대기(storage) ---------
 SPACES = [
     ("ST-001", "원자재 보관 공간", "실리콘 원자재·도체 상품 원자재, ST-005와 별도"),
@@ -114,7 +124,7 @@ def count(value: int) -> dict:
 UNKNOWN = {"mode": "unknown"}
 NOT_APPLICABLE = {"mode": "not_applicable"}
 NA = "n/a"  # 길이 없음(해당 없음). 값이 정해지지 않은 unknown과 다르다
-INTAKE_MARK = "정리 반영(2026-10-27 3차)"
+INTAKE_MARK = "정리 반영(2026-10-28 4차)"
 TRANSPORT_MINUTES = 4  # 이동 3분 + 상하차 1분(사용자 결정, 해석은 CR be09 §6-⑥)
 
 
@@ -181,7 +191,7 @@ def out_mass(weight_kg, units) -> dict:
 INSPECTOR = {"role_key": "inspector", "resource_kind": "worker", "selection_mode": "one_of",
              "required_count": 1, "capacity_mode": "unlimited", "allocation_rule": {"mode": "unknown"},
              "candidates": []}
-# 운반 자원: 지게차 3대·AMR 2대가 있지만 이번에는 무제한으로 시작한다(대수는 메모에 사실로 기록, 사용자 결정)
+# 운반 자원은 2026-10-28부터 설비(FL-*·AMR-*)로 둔다(`Route.transport`). 무제한 운반 작업자는 더 쓰지 않는다.
 CARRIER = {**INSPECTOR, "role_key": "carrier"}
 INPUT_RULE = {"acquire_scope": "per_operation", "consume_policy": "consume"}
 
@@ -264,11 +274,12 @@ class Route:
         return self._add(key, "operation", label, step=step)
 
     def transport(self, key, method, origin, target) -> dict:
-        """문서가 방식(지게차·AMR)을 정한 운반. 보빈 1개씩 독립 이동하며 이동 3분 + 상하차 1분(사용자 결정),
-        운반 자원은 이번에는 무제한이다(지게차 3대·AMR 2대는 후속 운반 자원 기능에서 쓴다)."""
-        return self.op(key, f"{method} 운반 {origin}→{target}", "transport_manual", [],
-                       processing=per_unit(TRANSPORT_MINUTES, "sequential_units"), output=out_pass(),
-                       worker="carrier")
+        """문서가 방식(지게차·AMR)을 정한 운반. 보빈 1개씩, 이동 3분 + 상하차 1분(사용자 결정). 운반 자원은 같은 종류의
+        설비(지게차 3대·AMR 2대)를 여러 경로가 함께 쓴다(사용자 확정 2026-10-28, 비어 있는 자원을 코드 순서로)."""
+        node = self.op(key, f"{method} 운반 {origin}→{target}", "transport_manual", CARRIER_CODES[method],
+                       processing=per_unit(TRANSPORT_MINUTES, "sequential_units"), output=out_pass())
+        node["step"]["resources"][0]["role_key"] = "carrier"
+        return node
 
     def link(self, a, b, kind="material", movement=None):
         edge = {"id": str(uuid.uuid4()), "edge_key": f"{a['node_key']}-{b['node_key']}",
@@ -515,7 +526,9 @@ def previous_notes_heads(product) -> tuple[str, ...]:
              "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
     second = (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). 정리 반영(2026-10-27 2차): 사용자가 확정한 값은 문서 값과 구분해 "
               "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
-    return legacy_notes_head(product), first, second
+    third = (f"{PRODUCTS[product]} — 근거 {SOURCE}. 초안(draft). 정리 반영(2026-10-27 3차): 사용자가 확정한 값은 문서 값과 구분해 "
+             "아래에 적었고, 문서가 정하지 않은 나머지는 unknown으로 두었다.")
+    return legacy_notes_head(product), first, second, third
 
 
 def notes_head(product) -> str:
@@ -528,8 +541,9 @@ INTAKE_NOTES = [
      "입력은 작업마다 확보(실제 소비는 작업 끝이나 결과가 같아 시작 때 소비, 설비는 작업이 끝날 때까지 독점), 모든 인계는 보빈별."),
     "사용자 확정: 준비·교체 시간 값이 없으면 0분, 120분 준비는 제품이 바뀔 때(on_product_change, \"제품\" 뜻은 임시로 제품 종류).",
 ]
-TRANSPORT_NOTE = (f"운반(사용자 확정): 보빈 1개씩 독립 이동, 이동 3분 + 상하차 1분 = {TRANSPORT_MINUTES}분, 운반 자원은 무제한으로 시작"
-                  "(지게차 3대·AMR 2대는 후속 운반 자원 기능에서 사용).")
+TRANSPORT_NOTE = (f"운반(사용자 확정): 보빈 1개씩, 이동 3분 + 상하차 1분 = {TRANSPORT_MINUTES}분. 운반 자원은 지게차 3대(FL-001~003)·"
+                  "AMR 2대(AMR-001~002)를 같은 종류의 경로들이 함께 쓰고, 다음 명령이 없으면 목적지에서 기다린다(2026-10-28). "
+                  "빈 차 이동 시간은 시나리오 가정(`carrier_empty_move_minutes`).")
 
 
 def definitions(assets: dict[str, str]) -> dict[str, dict]:
@@ -629,6 +643,13 @@ def seed_assets(seeder, engine, project) -> dict:
             seeder.post(url, {"kind": "equipment", "code": code, "name": name, "sort_order": sort,
                               "notes": note, "equipment": {"equipment_type": name}})
             created += 1
+    for index, (code, name, kind) in enumerate(CARRIERS, start=1):
+        if code in existing:
+            continue
+        seeder.post(url, {"kind": "equipment", "code": code, "name": name, "sort_order": 900 + index * 10,
+                          "notes": f"운반 자원({kind}). 같은 종류의 운반 경로들이 함께 쓴다(사용자 확정 2026-10-28).",
+                          "equipment": {"equipment_type": kind}})
+        created += 1
     for index, (code, name, note) in enumerate(SPACES, start=1):
         if code in existing:
             continue
@@ -638,6 +659,25 @@ def seed_assets(seeder, engine, project) -> dict:
                           "space": {"space_type": "AMR 도킹 위치" if kind == "dock" else "저장·대기 공간"}})
         created += 1
     return {"created": created}
+
+
+def seed_capacities(seeder, project) -> int:
+    """공간마다 확정 용량의 자산 버전을 승인한다. 승인된 자산 버전이 이미 있으면 건드리지 않는다(멱등, 사람이 고친 값 보존)."""
+    listed = {a["code"]: a for a in _get(seeder, f"{API}/projects/{project}/assets?limit=200")}
+    approved = 0
+    for code, capacity in SPACE_CAPACITY.items():
+        asset = listed.get(code)
+        if asset is None or asset.get("current_revision"):
+            continue
+        rev = seeder.post(f"{API}/projects/{project}/assets/{asset['id']}/revisions")
+        rev = seeder.patch(f"{API}/projects/{project}/asset-revisions/{rev['id']}",
+                           {"storage_capacity": {"mode": "finite", "value": str(capacity), "unit": "item"}},
+                           rev["row_version"])
+        for action in ("submit", "approve"):
+            rev = _send(seeder, "post", f"{API}/projects/{project}/asset-revisions/{rev['id']}/{action}", None,
+                        rev["row_version"])
+        approved += 1
+    return approved
 
 
 def seed_products(seeder, project) -> dict[str, str]:
@@ -756,6 +796,7 @@ def seed(engine: Engine) -> dict:
     project = fixtures["project"]
     seeder = seed_demo_data.Seeder(engine, fixtures["users"]["admin"])
     assets = seed_assets(seeder, engine, project)
+    assets["capacities_approved"] = seed_capacities(seeder, project)
     ids = asset_ids(engine, project)
     products = seed_products(seeder, project)
     processes = seed_processes(seeder, project, products, ids)

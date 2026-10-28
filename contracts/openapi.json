@@ -411,6 +411,65 @@
         "title": "AssetPatch",
         "type": "object"
       },
+      "AssetPinChangeOut": {
+        "properties": {
+          "asset_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Code"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "change": {
+            "enum": [
+              "pinned",
+              "updated",
+              "removed"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "from_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Revision Id"
+          },
+          "to_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Revision Id"
+          }
+        },
+        "required": [
+          "asset_id",
+          "change"
+        ],
+        "title": "AssetPinChangeOut",
+        "type": "object"
+      },
       "AssetRevisionOut": {
         "properties": {
           "approved_at": {
@@ -762,7 +821,7 @@
           "uses": {
             "description": "이 설비를 후보로 가진 제품·단계",
             "items": {
-              "$ref": "#/components/schemas/AssetUseOut"
+              "$ref": "#/components/schemas/simulation_platform__schemas__run__AssetUseOut"
             },
             "title": "Uses",
             "type": "array"
@@ -775,46 +834,6 @@
           "buckets"
         ],
         "title": "AssetTimelineOut",
-        "type": "object"
-      },
-      "AssetUseOut": {
-        "properties": {
-          "process_version_id": {
-            "title": "Process Version Id",
-            "type": "string"
-          },
-          "product_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Code"
-          },
-          "step_key": {
-            "title": "Step Key",
-            "type": "string"
-          },
-          "step_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Step Label"
-          }
-        },
-        "required": [
-          "process_version_id",
-          "step_key"
-        ],
-        "title": "AssetUseOut",
         "type": "object"
       },
       "AssumptionUseOut": {
@@ -850,6 +869,18 @@
         "additionalProperties": false,
         "description": "공정의 미정을 이 시나리오에서만 해소하는 가정(master 공정은 바뀌지 않는다, ADR-017).\n\n키는 그 공정 버전의 node_key다. 값이 하나라도 있으면 시나리오 버전의 `assumption_reason`이 필요하다.",
         "properties": {
+          "carrier_empty_move_minutes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "운반 자원(지게차·AMR)이 다른 곳에서 일을 받으면 빈 차로 옮겨 가는 시간(분). 운반 단계에 설비 후보가 있으면 필요(0.15.0)",
+            "title": "Carrier Empty Move Minutes"
+          },
           "equipment_hold": {
             "anyOf": [
               {
@@ -875,6 +906,19 @@
             },
             "title": "Manual Transport Minutes",
             "type": "object"
+          },
+          "out_release": {
+            "anyOf": [
+              {
+                "const": "hold",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "다음 공간이 가득 찼을 때, 승인된 자산 버전에 OUT 배출 정책이 없는 설비는 산출을 쥐고 기다린다(0.15.0)",
+            "title": "Out Release"
           },
           "residual_scope": {
             "additionalProperties": {
@@ -2442,6 +2486,141 @@
         "title": "GraphOut",
         "type": "object"
       },
+      "GraphSummaryEdge": {
+        "properties": {
+          "edge_key": {
+            "title": "Edge Key",
+            "type": "string"
+          },
+          "edge_kind": {
+            "title": "Edge Kind",
+            "type": "string"
+          },
+          "from_node_id": {
+            "format": "uuid",
+            "title": "From Node Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "to_node_id": {
+            "format": "uuid",
+            "title": "To Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edge_key",
+          "from_node_id",
+          "to_node_id",
+          "edge_kind"
+        ],
+        "title": "GraphSummaryEdge",
+        "type": "object"
+      },
+      "GraphSummaryNode": {
+        "properties": {
+          "asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "공간 노드의 저장 공간 자산",
+            "title": "Asset Id"
+          },
+          "candidate_asset_ids": {
+            "description": "단계 노드의 후보 설비",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Candidate Asset Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "node_key": {
+            "title": "Node Key",
+            "type": "string"
+          },
+          "operation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "단계 노드의 처리 방식(handler)",
+            "title": "Operation Type"
+          }
+        },
+        "required": [
+          "id",
+          "node_key",
+          "kind",
+          "label"
+        ],
+        "title": "GraphSummaryNode",
+        "type": "object"
+      },
+      "GraphSummaryOut": {
+        "properties": {
+          "completion_node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Node Id"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphSummaryEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphSummaryNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "title": "GraphSummaryOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2890,6 +3069,26 @@
         "title": "ListOut[AssetTimelineOut]",
         "type": "object"
       },
+      "ListOut_AssetUseOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/simulation_platform__schemas__process__AssetUseOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[AssetUseOut]",
+        "type": "object"
+      },
       "ListOut_EventOut_": {
         "properties": {
           "data": {
@@ -2988,6 +3187,26 @@
           "page"
         ],
         "title": "ListOut[MetricOut]",
+        "type": "object"
+      },
+      "ListOut_ProcessGraphItem_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessGraphItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "ListOut[ProcessGraphItem]",
         "type": "object"
       },
       "ListOut_ProcessVersionListItem_": {
@@ -4449,6 +4668,146 @@
           }
         },
         "title": "PreconditionDelay",
+        "type": "object"
+      },
+      "ProcessChangeOut": {
+        "properties": {
+          "from_process_version_id": {
+            "format": "uuid",
+            "title": "From Process Version Id",
+            "type": "string"
+          },
+          "from_version_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Version No"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "changed",
+              "unchanged",
+              "no_approved_version",
+              "not_requested"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "to_process_version_id": {
+            "format": "uuid",
+            "title": "To Process Version Id",
+            "type": "string"
+          },
+          "to_version_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Version No"
+          }
+        },
+        "required": [
+          "product_id",
+          "from_process_version_id",
+          "to_process_version_id",
+          "status"
+        ],
+        "title": "ProcessChangeOut",
+        "type": "object"
+      },
+      "ProcessGraphItem": {
+        "properties": {
+          "etag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "그 공정 버전의 ETag(row_version). 그래프 PUT·단계 PATCH의 If-Match",
+            "title": "Etag"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "mode=full일 때 그래프 전체(단건 조회와 같은 모양)"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "mode=summary일 때 노드·간선 요약"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessVersionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기준에 맞는 공정 버전이 없으면 null(그래프도 없음)"
+          }
+        },
+        "required": [
+          "product_id",
+          "product_code",
+          "product_name",
+          "version"
+        ],
+        "title": "ProcessGraphItem",
         "type": "object"
       },
       "ProcessVersionCreate": {
@@ -6487,6 +6846,67 @@
         "title": "ScenarioProductDto",
         "type": "object"
       },
+      "ScenarioRefreshIn": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "default": "latest",
+            "description": "latest: 쓰는 자산을 현재 승인 버전으로 다시 고정하고 안 쓰는 고정은 뺀다, keep: 기존 고정은 두고 새로 쓰는 자산만 채운다",
+            "enum": [
+              "latest",
+              "keep"
+            ],
+            "title": "Assets",
+            "type": "string"
+          },
+          "product_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "일부 제품만 갱신(생략하면 전부)",
+            "title": "Product Ids"
+          }
+        },
+        "title": "ScenarioRefreshIn",
+        "type": "object"
+      },
+      "ScenarioRefreshOut": {
+        "properties": {
+          "asset_changes": {
+            "items": {
+              "$ref": "#/components/schemas/AssetPinChangeOut"
+            },
+            "title": "Asset Changes",
+            "type": "array"
+          },
+          "process_changes": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessChangeOut"
+            },
+            "title": "Process Changes",
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/ScenarioVersionOut"
+          }
+        },
+        "required": [
+          "version",
+          "process_changes",
+          "asset_changes"
+        ],
+        "title": "ScenarioRefreshOut",
+        "type": "object"
+      },
       "ScenarioVersionCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7130,6 +7550,18 @@
           "data"
         ],
         "title": "Single[ScenarioOut]",
+        "type": "object"
+      },
+      "Single_ScenarioRefreshOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScenarioRefreshOut"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[ScenarioRefreshOut]",
         "type": "object"
       },
       "Single_ScenarioVersionOut_": {
@@ -7787,6 +8219,111 @@
           "created_at"
         ],
         "title": "WorkItemOut",
+        "type": "object"
+      },
+      "simulation_platform__schemas__process__AssetUseOut": {
+        "properties": {
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "node_key": {
+            "title": "Node Key",
+            "type": "string"
+          },
+          "node_label": {
+            "title": "Node Label",
+            "type": "string"
+          },
+          "process_version": {
+            "$ref": "#/components/schemas/ProcessVersionSummary"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "role_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Key"
+          },
+          "use": {
+            "description": "공간 노드의 자산이거나, 단계의 후보 설비",
+            "enum": [
+              "space",
+              "equipment_candidate"
+            ],
+            "title": "Use",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "product_code",
+          "product_name",
+          "process_version",
+          "node_id",
+          "node_key",
+          "node_label",
+          "use"
+        ],
+        "title": "AssetUseOut",
+        "type": "object"
+      },
+      "simulation_platform__schemas__run__AssetUseOut": {
+        "properties": {
+          "process_version_id": {
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          },
+          "step_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Label"
+          }
+        },
+        "required": [
+          "process_version_id",
+          "step_key"
+        ],
+        "title": "AssetUseOut",
         "type": "object"
       }
     }
@@ -9647,6 +10184,96 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/assets/{asset_id}/uses": {
+      "get": {
+        "description": "그 자산을 쓰는 제품·공정 버전·노드: 공간 노드의 저장 공간(`space`)이거나 단계의 후보 설비(`equipment_candidate`).",
+        "operationId": "list_asset_uses_api_v1_projects__project_id__assets__asset_id__uses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "제품마다 볼 공정 버전 기준",
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "approved",
+              "description": "제품마다 볼 공정 버전 기준",
+              "enum": [
+                "approved",
+                "latest"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_AssetUseOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Asset Uses",
+        "tags": [
+          "process-versions"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/materials": {
       "get": {
         "operationId": "list_materials_api_v1_projects__project_id__materials_get",
@@ -10096,6 +10723,178 @@
         "summary": "Patch Material",
         "tags": [
           "materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/process-graphs": {
+      "get": {
+        "description": "여러 제품의 공정 그래프를 한 번에(제품 코드 순). 기준에 맞는 버전이 없는 제품은 `version: null`로 나온다.\n항목마다 ETag가 있어 바로 편집 요청(If-Match)에 쓸 수 있다.",
+        "operationId": "list_process_graphs_api_v1_projects__project_id__process_graphs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "approved: 현재 승인본(기본), latest: 가장 최근 버전",
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "approved",
+              "description": "approved: 현재 승인본(기본), latest: 가장 최근 버전",
+              "enum": [
+                "approved",
+                "latest"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          },
+          {
+            "description": "이 제품들만(반복해서 보낸다)",
+            "in": "query",
+            "name": "product_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 제품들만(반복해서 보낸다)",
+              "title": "Product Id"
+            }
+          },
+          {
+            "description": "이 공정 버전들(최대 50개, 주면 basis·product_id는 무시)",
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 공정 버전들(최대 50개, 주면 basis·product_id는 무시)",
+              "title": "Version Id"
+            }
+          },
+          {
+            "description": "summary: 노드·간선 요약(기본), full: 그래프 전체",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "summary",
+              "description": "summary: 노드·간선 요약(기본), full: 그래프 전체",
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "description": "한 번에 제품 수(최대 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "한 번에 제품 수(최대 50)",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "서버가 발급한 불투명 cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서버가 발급한 불투명 cursor",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOut_ProcessGraphItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Process Graphs",
+        "tags": [
+          "process-versions"
         ]
       }
     },
@@ -14260,6 +15059,155 @@
           }
         },
         "summary": "Approve Scenario Version",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/scenario-versions/{version_id}/refresh": {
+      "post": {
+        "description": "초안의 제품별 공정 버전을 그 제품의 **현재 승인본**으로 바꾸고 자산 고정을 맞춘다(도착·가정·순서는 그대로).\n본문은 선택: `product_ids`(일부 제품만), `assets`(latest 기본 | keep). 바뀐 내용은 `process_changes`·`asset_changes`로\n돌려준다. 승인본은 409 `VERSION_IMMUTABLE`(새 초안을 먼저 만든다).",
+        "operationId": "refresh_scenario_version_api_v1_projects__project_id__scenario_versions__version_id__refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag 값. 예: \"17\"",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag 값. 예: \"17\"",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ScenarioRefreshIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_ScenarioRefreshOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "summary": "Refresh Scenario Version",
         "tags": [
           "scenarios"
         ]

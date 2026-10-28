@@ -362,7 +362,7 @@ FE는 조회한 그래프를 그대로 수정해 보내야 하며(모르는 필�
 ## 5. 시나리오·실행 API
 
 > 아래 표에서 시나리오 6행(목록~승인)은 §5.1로, 실행 5행(요청·목록·조회·input·cancel)은 §5.2로, `events`·`lineage`
-> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로, 설비 타임라인은 §5.6, 두 실행 비교는 §5.7로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0·0.13.0)되었다. `rerun`과 저장형 `comparisons` 행은 PROPOSED이며 후속 CR에서 다룬다.
+> 2행은 §5.3으로, `metrics`와 `GET /metric-definitions`는 §5.4로, `bottlenecks`는 §5.5로, 설비 타임라인은 §5.6, 두 실행 비교는 §5.7로, 공정 일괄 조회·자산 사용처·시나리오 갱신은 §5.8로, 운반 자원·출력 대기 가정은 §5.9로 **승인**(contract 0.7.0·0.9.0·0.10.0·0.11.0·0.12.0·0.13.0·0.14.0·0.15.0)되었다. `rerun`과 저장형 `comparisons` 행은 PROPOSED이며 후속 CR에서 다룬다.
 
 | Method | Path | 의미 |
 |---|---|---|
@@ -526,6 +526,31 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 - **오류:** 같은 run끼리 422, 다른 프로젝트·없는 run 404, 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE`.
 - **해석 원칙:** 엔진은 결정적이라(같은 입력이면 같은 결과) 차이는 입력 차이에서 온다. 공정 내용의 차이는 `GET /process-versions/{v}/diff?against=`로 본다(비교 요약에는 버전 id만). 서로 다른 제품의 생산량은 합산하지 않는다.
 - **재시뮬레이션 흐름(참고):** 공정 정보를 고치려면 승인본에서 새 초안을 만들어(`POST /products/{p}/process-versions`, `base_version_id`) 수정·승인하고, 시나리오의 새 버전에서 그 공정 버전을 고른 뒤 승인·실행한다. 두 run을 이 API로 비교한다.
+
+### 5.8 승인 확장 — BE-13·BE-14 (contract 0.14.0): 공정 일괄 조회·자산 사용처·시나리오 갱신
+근거: `docs/change-requests/CR-backend-20261027-be13-batch-process-graphs.md`, `…-be14-scenario-refresh.md`(사용자 명시 승인 2026-10-27). 필드·타입의 정본은 openapi.json. 앞의 둘은 scope `process-versions`, 갱신은 scope `scenario-versions`의 확장이다.
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/process-graphs | viewer | 여러 제품의 공정 그래프. 쿼리 `basis`(approved 기본 \| latest), `product_id`(반복), `version_id`(반복, 최대 50개, 주면 basis·product_id 무시), `mode`(summary 기본 \| full), `limit`(1~50, 기본 20)·`cursor`(제품 코드 순) |
+| GET | /projects/{p}/assets/{asset_id}/uses | viewer | 그 자산을 쓰는 제품·공정 버전·노드. 쿼리 `basis`(approved 기본 \| latest) |
+| POST | /projects/{p}/scenario-versions/{v}/refresh | editor | 초안의 제품별 공정 버전을 현재 승인본으로, 자산 고정을 현재 승인 버전으로 맞춘다. If-Match 필수 |
+
+- **공정 일괄 조회(`ProcessGraphItem`):** `product_id`·`product_code`·`product_name`, `version`(기준에 맞는 공정 버전 요약, 없으면 null), `etag`(그 버전의 ETag — 그래프 PUT·단계 PATCH의 If-Match에 바로 쓴다), `mode=summary`면 `summary`(노드: `id`·`node_key`·`kind`·`label`·`asset_id`·`operation_type`·`candidate_asset_ids`, 간선: `id`·`edge_key`·`from_node_id`·`to_node_id`·`edge_kind`, `completion_node_id`), `mode=full`이면 `graph`(단건 `GET …/graph`와 같은 `GraphOut`). `basis=approved`는 현재 승인본, `latest`는 가장 최근 버전(초안일 수 있음). 이 프로젝트에 없는 `version_id`가 있으면 404, 51개 이상이면 422.
+- **자산 사용처(`AssetUseOut`):** 제품·공정 버전 요약·노드(`node_id`·`node_key`·`node_label`)와 `use`(`space`: 공간 노드의 저장 공간, `equipment_candidate`: 단계의 후보 설비, 이때 `role_key`). 제품마다 기준에 맞는 버전 하나만 본다. 실행 결과 기준의 사용처는 §5.6 타임라인의 `uses[]`다.
+- **시나리오 갱신:** 본문(선택, 닫힌 객체) `product_ids`(일부 제품만), `assets`(`latest` 기본: 쓰는 자산을 현재 승인 버전으로 다시 고정하고 안 쓰는 고정은 뺀다 \| `keep`: 기존 고정은 두고 새로 쓰는 자산만 채운다). 도착·가정·우선순위·순서는 그대로다. 응답 `ScenarioRefreshOut`: `version`(갱신된 시나리오 버전), `process_changes[]`(`product_id`·`product_code`, 이전·새 공정 버전 id와 번호, `status`: changed \| unchanged \| no_approved_version \| not_requested), `asset_changes[]`(`asset_id`·`asset_code`, 이전·새 자산 버전, `change`: pinned \| updated \| removed). ETag는 갱신된 시나리오 버전의 row_version. 승인본은 409 `VERSION_IMMUTABLE`, If-Match 없음 428·어긋남 412, viewer 403.
+- **다시 실행하는 흐름:** 공정 승인본 복제(`POST /products/{p}/process-versions`, `base_version_id`)·수정·승인 → `POST /scenarios/{s}/versions`(최근 승인 시나리오 복사) → `POST /scenario-versions/{v}/refresh` → 사전검증·승인 → `POST /runs` → `GET /runs/{a}/compare/{b}`(공정 버전·자산 용량 차이가 `input_changes`에 나온다).
+
+### 5.9 승인 확장 — BE-15 (contract 0.15.0): 운반 자원·공간 용량·출력 대기 가정
+근거: `docs/change-requests/CR-backend-20261028-be15-capacity-carriers.md`(사용자 결정 2026-10-28). operation 변경 없음.
+
+- **시나리오 가정(`assumptions`, 제품별) 필드 추가:** `out_release`(`"hold"` | null): 다음 공간이 가득 차 막힐 수 있을 때 승인된 자산 버전에 OUT 배출 정책이 없는 설비는 산출을 쥐고 기다린다(정책이 있는 설비는 그 정책). `carrier_empty_move_minutes`(decimal ≥ 0 | null): 운반 자원(지게차·AMR)이 다른 곳에서 일을 받으면 그곳까지 빈 차로 이동하는 시간(분). 운반 단계에 설비 후보가 있으면 필요하다. 둘 다 쓰면 `assumption_reason`이 필요하다(SCN-ASM-001).
+- **운반 자원 모델:** 지게차·AMR은 설비 자산이고 운반 단계(`transport_manual`)의 후보로 둔다. 같은 자산이 여러 운반 단계·제품의 후보면 대수가 공유된다. 운반을 마친 자원은 목적지에 머물고(다음 명령이 없으면 대기), 다른 곳의 일은 빈 차 이동 뒤에 한다. 처음 쓰는 자원은 그 자리에 있다고 본다. 운반 자원이 없는 운반 단계는 지금처럼 무제한·독립 이동이다.
+- **새 엔진 코드(열린 목록):** 이벤트 `CARRIER_MOVED`(`source` 직전 위치, `destination` 일을 받은 곳, `quantities.minutes`; 이동 중 설비 상태는 RESERVED라 지표의 `reserved_time_min`에 들어간다). 사용한 가정 `OUT_RELEASE_HOLD`, `CARRIER_EMPTY_MOVE`, `UNBOUNDED_HANDOFFS`(단계 사이 직접 인계를 무제한으로 가정 — 공간 용량 미정 `UNBOUNDED_BUFFERS`와 따로 보고). 컴파일 오류 `CARRIER_EMPTY_MOVE_UNKNOWN`.
+- **병목 요약(§5.5) 변화:** `UNBOUNDED_BUFFERS`가 없으면(모든 저장공간 용량이 정해짐) 공간 부족(`space_full`)이 평가된다. 운반 자원을 모델링한 실행이면 운반 관련 한계 문구가 "지정된 대수와 위치로 계산"으로 바뀌고, 운반을 기다린 시간은 운반 단계의 `equipment_busy`로 나타난다.
+- **0.15.1(동작 패치, 스키마 불변):** `out_release`를 보내지 않아도 기본값이 `hold`다(사용자가 사실로 확정, 2026-10-28 — 그래서 가정 코드 `OUT_RELEASE_HOLD`가 시나리오에서 말하지 않아도 나온다). **원자재 입고 위치(source 노드의 저장공간) 용량을 적용한다**: 가득 차면 원자재가 자리가 날 때까지 들어오지 못하고(`ENTRY_WAITING`, `destination`=입고 노드, `item_key` null), 다음 공간으로 옮겨 가거나 단계가 가져가면 자리가 빈다(`BUFFER_LEFT`, `source`=입고 노드). 용량이 정해지지 않은 입고 위치는 제한하지 않는다. 운반 자원 선택은 먼저 비는 자원(동시에 비어 있으면 코드 순)이다(사용자 확정).
+- **0.15.2(동작 패치, 스키마 불변) — 설비 앞 자리(사용자 규칙 2026-10-28):** ① 설비와 설비 사이에 대기 공간이 있으면 그 공간에서 기다린다. ② 다음 설비가 여러 입력을 한 번에 처리하면 앞 대기 공간에서 한 번에 처리할 수가 다 쌓인 뒤 설비가 가동한다(기존 동작). ③ 대기 공간 없이 바로 넘기면(직접 인계) 다음 설비 앞에 **입력 확보 수 × 후보 설비 대수**만큼(기본 1개, 여러 입력을 한 번에 처리하면 그 수만큼 미리 넣어 둠) 기다릴 수 있고, 자리가 차면 앞 설비가 산출을 쥐고 기다린다(`OUT_BLOCKED`, `destination`=다음 단계). 자리는 다음 설비·입력별이며 같은 설비·입력을 쓰는 제품은 함께 쓴다. 같은 설비를 다시 쓰는 직접 인계(재방문)는 교착을 피하려고 제한하지 않는다. 그래서 직접 인계는 더 이상 `unbounded_buffers` 가정이 필요 없고 가정 코드 `UNBOUNDED_HANDOFFS`는 나오지 않는다. **엔진 버전 `c0.2`**(운반 자원·입고 위치·설비 앞 자리 반영) — 이전 run과 비교하면 `comparable=false`다.
+- **범위 밖:** 공간 사이 거리·경로.
 
 ## 6. LLM·위키 API
 

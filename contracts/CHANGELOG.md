@@ -5,6 +5,29 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.15.2 — 2026-10-28 · scope `scenario-versions`(동작 패치) · sha256 `f4df60cd…859a`(같음) · 기준 commit `77f8fb5`
+- **호환성: 0.15.1과 같은 OpenAPI(해시 동일).** **동작만 바뀐다:** 단계 사이 직접 인계에 다음 설비 앞 자리(입력 확보 수 × 후보 설비 대수)를 적용 — 자리가 차면 앞 설비의 출력이 막힌다(`OUT_BLOCKED`). 직접 인계에 공간 무제한 가정이 필요 없어 가정 코드 `UNBOUNDED_HANDOFFS`가 더 이상 나오지 않는다. **엔진 버전 `c0.1` → `c0.2`**(운반 자원·원자재 입고 위치·설비 앞 자리 반영 이후 처음 올림) — 예제의 `engine_version`도 바뀌었다.
+- 근거: 사용자 규칙(2026-10-28, 설비 앞 대기 1개·대기 공간 우선·한 번에 여러 입력이면 쌓일 때까지·앞 공간이 없으면 미리 넣어 두기). 상세는 04 §5.9.
+- **프런트가 해야 할 일:** 타입 재생성 불필요. 엔진 버전이 다른 run끼리의 비교는 `comparable=false`와 경고가 나오므로 화면에 그대로 보여 준다.
+
+## 0.15.1 — 2026-10-28 · scope `scenario-versions`(동작 패치) · sha256 `f4df60cd…859a`(0.15.0과 같음) · 기준 commit `c32f8fd`
+- **호환성: 0.15.0과 같은 OpenAPI(해시 동일).** 요청·응답 필드·operation 변경 없음. **동작만 바뀐다:** ① 시나리오 가정 `out_release`를 보내지 않아도 기본값이 `hold`(사용자 확정 사실) ② 원자재 입고 위치(source 노드 저장공간)의 용량을 적용 — 가득 차면 원자재가 들어오지 못하고 `ENTRY_WAITING`(입고 노드, `item_key` null)이 나온다.
+- 근거: 사용자 확인·지시(2026-10-28: 출력 대기 '실제와 맞음', '모두 반영해 줘'). 상세는 04 §5.9.
+- 데이터(개발 DB): 원본 `DEMO-WIRE`에도 운반 자원 5대(FL-001~003·AMR-001~002)·공간 22곳 용량(승인된 자산 버전)·초안 공정의 운반 단계 운반 자원 지정(시드 4차)을 반영했다.
+- **프런트가 해야 할 일:** 타입 재생성 불필요. 이벤트 목록에서 `item_key`가 null인 `ENTRY_WAITING`(아직 들어오지 못한 원자재)을 처리할 수 있어야 한다.
+
+## 0.15.0 — 2026-10-28 · scope `scenario-versions`(확장, BE-15) · sha256 `f4df60cd…859a` · 기준 commit `4d03a3e`
+- **호환성: 0.14.0과 호환(추가만).** operation 변경 없음. 시나리오 가정(`ScenarioProductDto.assumptions`)에 선택 필드 `out_release`("hold"|null)·`carrier_empty_move_minutes`(decimal|null)가 늘었다(응답에도 나온다). 엔진의 열린 목록에 이벤트 `CARRIER_MOVED`, 가정 코드 `OUT_RELEASE_HOLD`·`CARRIER_EMPTY_MOVE`·`UNBOUNDED_HANDOFFS`, 컴파일 오류 `CARRIER_EMPTY_MOVE_UNKNOWN`이 늘었다.
+- 근거: CR be15(사용자 결정 2026-10-28: 공간 용량 22개, 지게차·AMR 경로 공유, 다음 명령이 없으면 목적지 대기). 상세는 04 §5.9.
+- **동작 변경:** 단계 사이 직접 인계만 무제한이면 가정 코드가 `UNBOUNDED_BUFFERS`가 아니라 `UNBOUNDED_HANDOFFS`로 나온다(공간 용량이 모두 정해진 실행은 공간 부족 병목이 평가된다).
+- **프런트가 해야 할 일:** 타입 재생성. 시나리오 가정 편집 화면에 "공간이 가득 차면 설비가 산출을 쥐고 기다림"(`out_release`)과 "운반 자원 빈 차 이동 시간(분)"(`carrier_empty_move_minutes`)을 추가할 수 있다. 결과 화면에서 `CARRIER_MOVED` 이벤트와 새 가정 코드는 열린 목록으로 표시한다. 지게차·AMR은 설비 목록에 설비로 보인다(FL-*, AMR-*).
+
+## 0.14.0 — 2026-10-27 · scope `process-versions`·`scenario-versions`(확장, BE-13·BE-14) · sha256 `48dd386b…d4d5` · 기준 commit `0980ab1`
+- **호환성: 0.13.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 3개: `GET /process-graphs`(공정 일괄 조회), `GET /assets/{asset_id}/uses`(자산 사용처), `POST /scenario-versions/{v}/refresh`(시나리오 초안을 현재 승인 공정·자산 버전으로 갱신). 새 오류 코드 없음.
+- 근거: CR be13(FE 제안)·CR be14, 사용자 명시 승인(2026-10-27). 상세는 04 §5.8.
+- 핵심 규칙: 일괄 조회는 기본이 노드·간선 요약(`mode=summary`)이고 항목마다 ETag가 있다(한 번에 최대 50개). 시나리오 갱신은 **초안만**, 도착·가정·순서는 그대로 두고 공정 버전·자산 고정만 바꾸며 바뀐 내용을 `process_changes`·`asset_changes`로 돌려준다.
+- **프런트가 해야 할 일:** 타입 재생성. 프로젝트 전체 공정 화면은 제품마다 그래프를 따로 부르는 대신 `GET /process-graphs?mode=summary`(필요하면 `limit`·`cursor`)로 바꿀 수 있고, 여러 제품이 함께 쓰는 설비는 `GET /assets/{id}/uses`로 서버가 계산한 값을 쓸 수 있다. 공정을 고친 뒤 "최신 공정으로 갱신" 버튼은 `POST /scenarios/{s}/versions` → `POST /scenario-versions/{v}/refresh`(If-Match) 순서로 부르고, `process_changes`·`asset_changes`를 사용자에게 보여 준다.
+
 ## 0.13.0 — 2026-10-27 · scope `runs`(확장, BE-11·BE-12) · sha256 `ea8ee823…c704` · 기준 commit `2d14408`
 - **호환성: 0.12.0과 호환(추가만).** 기존 operation·필드 변경 없음. 새 operation 4개(`GET /runs/{r}/asset-timeline`, `GET /runs/{r}/assets/{asset_id}/states`, `GET /runs/{r}/compare/{other}`, `GET /runs/{r}/compare/{other}/metrics`). 새 오류 코드 없음.
 - 근거: CR be11(설비 상태 타임라인)·CR be12(두 실행 비교), 사용자 '후보로 정해준 API들을 순서대로 개발해 줘'(2026-10-27). 상세는 04 §5.6·§5.7. 04 초안의 저장형 `POST /comparisons`는 두지 않고 조회형으로 시작했다.
