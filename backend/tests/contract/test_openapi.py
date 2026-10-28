@@ -242,7 +242,7 @@ def test_contract_status_hash_matches_snapshot():
     assert status["status"] == "PARTIALLY_APPROVED"
     assert status["approved_scopes"] == ["project-assets-ports", "asset-revisions",
                                          "products-materials", "process-versions", "scenario-versions", "runs"]
-    assert status["contract_version"] == "0.16.1"
+    assert status["contract_version"] == "0.16.2"
 
 
 def test_process_0_5_0_additions_are_compatible_and_closed():
