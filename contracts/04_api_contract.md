@@ -552,6 +552,23 @@ target-based run은 정확한 진행률을 알 수 없으면 percent=null, 현�
 - **0.15.2(동작 패치, 스키마 불변) — 설비 앞 자리(사용자 규칙 2026-10-28):** ① 설비와 설비 사이에 대기 공간이 있으면 그 공간에서 기다린다. ② 다음 설비가 여러 입력을 한 번에 처리하면 앞 대기 공간에서 한 번에 처리할 수가 다 쌓인 뒤 설비가 가동한다(기존 동작). ③ 대기 공간 없이 바로 넘기면(직접 인계) 다음 설비 앞에 **입력 확보 수 × 후보 설비 대수**만큼(기본 1개, 여러 입력을 한 번에 처리하면 그 수만큼 미리 넣어 둠) 기다릴 수 있고, 자리가 차면 앞 설비가 산출을 쥐고 기다린다(`OUT_BLOCKED`, `destination`=다음 단계). 자리는 다음 설비·입력별이며 같은 설비·입력을 쓰는 제품은 함께 쓴다. 같은 설비를 다시 쓰는 직접 인계(재방문)는 교착을 피하려고 제한하지 않는다. 그래서 직접 인계는 더 이상 `unbounded_buffers` 가정이 필요 없고 가정 코드 `UNBOUNDED_HANDOFFS`는 나오지 않는다. **엔진 버전 `c0.2`**(운반 자원·입고 위치·설비 앞 자리 반영) — 이전 run과 비교하면 `comparable=false`다.
 - **범위 밖:** 공간 사이 거리·경로.
 
+### 5.10 승인 scope `runs` 확장 — BE-18 (contract 0.16.0): 병목 원인 추적·결과 리포트 묶음
+근거: `docs/change-requests/CR-backend-20261028-be17-root-cause-report.md`(사용자 지시 2026-10-28). 필드·타입의 정본은 openapi.json. 모든 값은 저장된 지표·결과 요약·입력 스냅샷에서 규칙으로 만든다(재실행·LLM 없음, 같은 run이면 같은 응답).
+
+| Method | Path | 권한 | 결과 |
+|---|---|---|---|
+| GET | /projects/{p}/runs/{r}/bottlenecks | viewer | (변경, 추가만) 후보마다 `root_cause`·`chain`, 요약에 `root_causes[]`. `definition_version` "2" |
+| GET | /projects/{p}/runs/{r}/report | viewer | 결과 리포트 묶음. 공식 결과가 없으면 409 `RUN_RESULT_NOT_AVAILABLE` |
+
+- **원인 추적 규칙:** 하류 설비가 느리면 막힘이 상류로 번져 상류가 "멈춘 곳" 1위가 된다. 그래서 후보마다 막힘을 하류로 따라간다. ① 단계의 출력 막힘(`step_blocked_item_min`)이 60작업물·분 이상이면 다음 위치로(다음이 공간이면 그 공간, 직접 인계면 다음 단계) ② 공간이면 **그 공간을 가진 모든 공정**의 꺼내 가는 단계 중 더 막힌 단계(막힘이 같으면 처리 시간이 긴 단계, 그래도 같으면 실행 입력 순서)로 ③ **막히지 않은 단계**에 닿으면 근본 원인. 시작 위치: 출력 막힘·설비 대기 → 그 단계(막혀 있지 않으면 자기 자신), 공간 대기·적체 → 그 공간. 같은 곳을 다시 지나거나 20단계를 넘거나 더 갈 곳이 없으면 판정 불가(`root_cause` null).
+- **`root_cause`(`RootCauseOut`):** `process_version_id`·`product_code`·`step_key`·`step_label`, `utilization`(후보 설비 중 최고 가동률), `assets[]`(`asset_id`·`code`·`name`·`utilization`, 가동률 높은 순 최대 3개), `input_wait_item_min`(그 단계의 입력 대기), `explanation`. 가동률이 50% 미만이면 설명에 "설비 속도보다 투입 조건을 먼저 확인"을 붙인다(묶음 투입·입력 대기가 흐름을 막았을 수 있음).
+- **`chain[]`(`ChainStepOut`):** 후보에서 근본 원인까지의 경로(`kind`: step \| space, `process_version_id`, `key`, `label`). 시작 위치가 첫 항목이다.
+- **`root_causes[]`(`RootCauseGroupOut`):** 근본 원인별로 묶은 후보 — `rank`(묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양), 제품·단계·가동률·설비, `findings`(묶인 후보 수, `limit`과 무관하게 전체 후보 기준), `levels`(high·medium·low별 수), `stalled_item_min`(합, 종류가 달라 겹칠 수 있는 참고값), `finding_ranks`, `explanation`. 화면의 "무엇을 고칠까" 목록이다.
+- **`headline`:** 1위 후보의 경로가 2곳 이상이면 끝에 "근본 원인: …"을 붙인다.
+- **리포트(`RunReportOut`):** `definition_version`, `run`(상태·종료 사유·엔진 버전·seed·입력 해시·관측 시간·품질·이벤트 수·끝 재공품), `scenario`(스냅샷의 시나리오 id·코드·버전·종료 규칙·가정 사유), `assumptions`(사용한 가정), `products[]`(실행 입력 순서: 제품·공정 버전, `completed_items`, 처음·마지막 완료, `metrics[]` = 입고 수·완료 길이·처리량·평균/최대 리드타임·재공품·폐기 길이의 실행 전체 값과 단위(해당 없으면 null), `shortfalls[]` = 끝난 시점의 입력 부족), `bottlenecks`(병목 요약 상위 10개, `GET …/bottlenecks?limit=10`과 같다), `top_assets[]`(가동률 상위 10대), `top_spaces[]`(적체 작업물·분 상위 10곳: 최대 적재·적체량·평균 대기·자리 대기), `summary[]`(규칙으로 만든 한국어 문장: 실행 결과 → 제품별 → 가장 큰 정체 → 고칠 곳 1~3 → 가동률 최고 설비 → 입력 부족), `limitations[]`(끝까지 실행되지 않은 결과 경고, 제품 합산 안 함, 병목 한계).
+- **원칙:** 서로 다른 제품의 생산량을 합산하지 않는다. 기준값(60작업물·분, 가동률 50% 등)은 임시 휴리스틱이며 `thresholds`에 드러난다.
+- 예제: 성공 응답은 worker가 끝낸 실행이 필요해 시험(`tests/unit/test_bottleneck.py`, `tests/unit/test_report.py`, `tests/integration/test_api_run_bottlenecks.py`, `tests/integration/test_api_run_report.py`)이 정본이다. 실제 6공정 결과는 인계 문서 BE-18에 있다.
+
 ## 6. LLM·위키 API
 
 
