@@ -166,7 +166,7 @@ class _Lane:
         # 단계 입력 pool(앞 노드 key). 저장공간이 여러 단계로 갈라지면 그 단계들이 같은 pool을 쓴다.
         self.pools = {i.pool: BatchPool(env) for step in lane.model.steps.values() for i in step.inputs}
         self.op_count = {key: 0 for key in lane.model.steps}
-        self.front: dict[str, str] = {}  # 직접 인계하는 단계 → 다음 설비 앞 자리 key
+        self.handoff: set[str] = set()  # 다음 설비에 직접 넘기는 단계(넘길 때까지 산출을 쥔다)
         self.pending = sum(a.count for a in lane.arrivals)
         self.partial: dict[str, list[WorkItem]] = {}  # 단계 → 입력 일부만 확보해 나머지를 기다리는 묶음
 
@@ -195,7 +195,7 @@ class _Run:
         self.env = simpy.Environment(initial_time=Fraction(0))
         self.log = EventLog(event_limit, sink=event_sink, retain=retain_events, batch_size=batch_size)
         self._next_snapshot = DAY_MIN if daily_snapshots else None
-        self._machine: dict[str, _Held] = {}
+        self._machine: dict[tuple[str, str], _Held] = {}  # (공정 버전, 작업 id) → 설비 안 소비된 부모(작업 id는 공정마다 따로 매김)
         self.carrier_at: dict[str, str] = {}  # 운반 자원 → 지금 있는 노드(마지막으로 내려놓은 곳). 처음에는 모른다  # 작업 id → 설비 안에서 처리 중인 소비된 부모
         self._completed: dict[str, list] = {}  # 공정 버전 → [완제품 수, 완제품 길이 합]
         self.factory = ItemFactory()
@@ -208,13 +208,17 @@ class _Run:
                 if asset in capacities and capacities[asset] != capacity:
                     raise ValueError(f"저장공간 {asset}의 용량이 공정마다 다릅니다(같은 자산 버전이어야 함).")
                 capacities[asset] = capacity
-        fronts = self._front_slots(lanes, capacities)
+        handoffs = self._direct_handoffs(lanes)
         self.spaces = SpaceAllocator(self.env, capacities)
         self.out_spaces = SpaceAllocator(self.env)  # 설비 OUT 자리(release_after_out)
         self.in_space: dict[str, tuple[str, str | None]] = {}  # 작업물 → (머무는 buffer key, 공간 asset)
         self.lanes = [_Lane(self.env, lane) for lane in lanes]
         for lane in self.lanes:
-            lane.front = fronts.get(lane.version, {})
+            lane.handoff = handoffs.get(lane.version, set())
+        # 직접 인계. 작업 id는 공정마다 따로 매겨지므로(P02·P03 모두 tape#16) 공정 버전과 함께 key로 쓴다.
+        self.handed: dict[str, tuple[str, str]] = {}  # 직접 넘긴 산출 → 아직 쥐고 있는 앞 작업(공정 버전, 작업 id)
+        self.holding: dict[tuple[str, str], list[WorkItem]] = {}  # 앞 작업 → 다음 설비가 아직 가져가지 않은 산출
+        self.handed_over: dict[tuple[str, str], simpy.Event] = {}  # 앞 작업 → 모두 가져가면 울리는 이벤트
         self.lane_of = {lane.version: lane for lane in self.lanes}
         self.came_from: dict[str, str] = {}  # 작업물 key → 대기하던 buffer key
         self.last_version: dict[str, str] = {}  # 설비 → 직전에 처리한 공정 버전(제품 전환 판단 기록용)
@@ -224,33 +228,27 @@ class _Run:
         self._shortfalls: list[dict] = []
 
     @staticmethod
-    def _front_slots(lanes: list[Lane], capacities: dict[str, int | None]) -> dict[str, dict[str, str]]:
-        """단계 사이 직접 인계(대기 공간 없음)의 자리(사용자 규칙 2026-10-28).
+    def _direct_handoffs(lanes: list[Lane]) -> dict[str, set[str]]:
+        """단계 사이 직접 인계(대기 공간 없음)를 찾는다(사용자 확정 2026-10-28).
 
-        다음 설비 앞에는 산출이 1개까지 기다릴 수 있고, 다음 설비가 한 번에 여러 입력을 처리하면 그 수만큼 하나씩 미리 넣어 둘
-        수 있다. 그래서 자리 수 = 다음 단계의 그 입력 확보 수 × 다음 단계 후보 설비 대수다. 같은 설비들을 쓰는 단계는 제품이
-        달라도 자리를 함께 쓴다. 다음 단계에 설비가 없으면(작업자 무제한) 제한하지 않는다. 반환: 공정 버전 → {앞 단계: 자리 key}."""
-        fronts: dict[str, dict[str, str]] = {}
+        설비의 Input/Output 위치는 경로·시간을 보기 위한 것이지 버퍼가 아니다. 그래서 다음 설비 앞에 따로 대기 자리를 두지
+        않고, 앞 설비가 산출을 Output에 쥔 채(설비 BLOCKED) 다음 설비가 가져갈 때까지 기다린다. 여러 입력을 한 번에 받는
+        설비(예: 싱글 메인 = 싱글-1의 1개 + 싱글-12의 12개)는 그 입력이 모두 준비되면 함께 가져간다. 다음 단계에 설비가 없거나
+        (작업자 무제한) 같은 설비를 다시 쓰는 인계(재방문, 교착 방지)는 쥐지 않는다. 반환: 공정 버전 → {직접 넘기는 앞 단계}."""
+        handoffs: dict[str, set[str]] = {}
         for lane in lanes:
             model = lane.model
             for step in model.steps.values():
                 if not step.candidates:
                     continue
-                machines = "|".join(sorted(step.candidates))
                 for need in step.inputs:
                     producer = model.nodes.get(need.pool)
                     if producer is None or producer.kind != "operation":
                         continue
                     if set(model.steps[need.pool].candidates) & set(step.candidates):
-                        # 같은 설비를 다시 쓰는 직접 인계(재방문)는 설비가 자기 산출을 자기 앞에 둔 채 막혀 교착이 되므로
-                        # 자리를 제한하지 않는다(실제 6공정에는 없음).
                         continue
-                    # 입력마다 넣는 자리가 따로다(예: 싱글 메인의 선행 가공 1개 자리와 공급 12개 자리). 같은 앞 단계 key의
-                    # 같은 설비 입력은 제품이 달라도 같은 자리다(P01~P03 편조 → 테이핑).
-                    key = f"front:{machines}:{need.pool}"
-                    capacities[key] = max(capacities.get(key) or 0, need.count * len(step.candidates))
-                    fronts.setdefault(model.version_id, {})[need.pool] = key
-        return fronts
+                    handoffs.setdefault(model.version_id, set()).add(need.pool)
+        return handoffs
 
     def random_stream(self, name: str) -> random.Random:
         """확률 요소마다 독립된 stream(전역 random 금지, 07 §12). 이번 범위의 handler는 확률 요소가 없다."""
@@ -321,7 +319,9 @@ class _Run:
                                      "waiting": have, "held": partial, "needed": need})
             held += sum(len(batch) for batch in lane.partial.values())
         active = sum(1 for i in self.items if i.status == "active")
-        return starving if starving and held == active and self.in_progress == 0 else []
+        # 산출을 넘기고 다음 설비가 가져가기만 기다리는 작업(직접 인계)은 진행 중이 아니다(그 산출은 입력 pool에 있다)
+        working = self.in_progress - len(self.handed_over)
+        return starving if starving and held == active and working == 0 else []
 
     def emit(self, event_type: str, **fields) -> Event:
         return self._note(self.log.emit(self.env.now, event_type, **fields))
@@ -492,8 +492,7 @@ class _Run:
         if held is None:
             return
         key, asset = held
-        if asset is None or not asset.startswith("front:"):  # 설비 앞 자리는 저장공간이 아니라 이벤트를 남기지 않는다
-            self.emit_for(lane, ev.BUFFER_LEFT, item_key=item.key, source=key, asset_key=asset)
+        self.emit_for(lane, ev.BUFFER_LEFT, item_key=item.key, source=key, asset_key=asset)
         if asset is not None:
             self.spaces.release(asset)
 
@@ -526,10 +525,14 @@ class _Run:
         following = lane.model.nodes[step.key].next_key
         if following is None:
             return
-        front = lane.front.get(step.key) if lane.model.nodes[following].kind == "operation" else None
-        space = front or self._limited_space(lane, following)
+        if step.key in lane.handoff and lane.model.nodes[following].kind == "operation":
+            # 직접 인계: 다음 설비가 볼 수 있게 넘기되, 가져갈 때까지 이 작업이 산출을 쥔다(작업 끝에서 기다림)
+            self.handed[child.key] = (lane.version, op_id)
+            self.holding.setdefault((lane.version, op_id), []).append(child)
+            self._enter(lane, child, following, step.key)
+            return
+        space = self._limited_space(lane, following)
         if space is None or self.spaces.try_take(space):
-            self._hold_front(child, step.key, front)
             self._enter(lane, child, following, step.key)
             return
         policy = step.out_policies.get(asset) if asset is not None else None
@@ -544,13 +547,42 @@ class _Run:
             self.env.process(self._out_mover(lane, child, out_key, space, following, step.key))
             return
         yield from self._blocked(lane, step, op_id, asset, child, following, self.spaces.wait(space), resume)
-        self._hold_front(child, step.key, front)
         self._enter(lane, child, following, step.key)
 
-    def _hold_front(self, item: WorkItem, producer: str, front: str | None) -> None:
-        """다음 설비 앞 자리를 차지한 작업물. 다음 단계가 가져가면(`_leave_space`) 자리가 빈다."""
-        if front is not None:
-            self.in_space[item.key] = (producer, front)
+    def _taken(self, items: tuple[WorkItem, ...]) -> None:
+        """다음 설비(또는 운반 자원)가 직접 인계 산출을 가져갔다: 모두 가져가면 쥐고 있던 앞 작업을 놓아 준다."""
+        for item in items:
+            producer = self.handed.pop(item.key, None)
+            if producer is None:
+                continue
+            left = self.holding.get(producer, [])
+            if item in left:
+                left.remove(item)
+            if not left:
+                self.holding.pop(producer, None)
+                waiting = self.handed_over.pop(producer, None)
+                if waiting is not None:
+                    waiting.succeed()
+
+    def _settled(self) -> simpy.Event:
+        """같은 시각에 이미 잡힌 다른 일이 모두 처리된 뒤에 울리는 이벤트(낮은 우선순위). 다음 설비가 바로 가져가면
+        막힘 이벤트를 남기지 않으려고 쓴다."""
+        event = simpy.Event(self.env)
+        event._ok, event._value = True, None
+        self.env.schedule(event, priority=2)
+        return event
+
+    def _hold_until_taken(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None):
+        producer = (lane.version, op_id)
+        if not self.holding.get(producer):
+            return
+        yield self._settled()
+        left = self.holding.get(producer)
+        if not left:
+            return
+        waiting = self.env.event()
+        self.handed_over[producer] = waiting
+        yield from self._blocked(lane, step, op_id, asset, left[0], lane.model.nodes[step.key].next_key, waiting, None)
 
     def _blocked(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, child: WorkItem,
                  destination: str, granted: simpy.Event, resume: str | None):
@@ -604,6 +636,7 @@ class _Run:
             self._clear_foreign_residual(lane, step, op_id, asset)
             if step.carrier_move_minutes is not None:
                 yield from self._carrier_to_pickup(lane, step, op_id, asset)
+        self._taken(items)  # 직접 인계 산출을 설비(운반 자원)가 가져갔다: 앞 설비가 풀린다
         if delay is not None and delay.occupancy == "occupies_machine":
             yield from self._precondition_delay(lane, step, op_id, asset, delay)  # 설비를 쥔 채 기다린다
         pool_key = None
@@ -632,7 +665,7 @@ class _Run:
             parent = items[planned.ordinal - 1] if plan.relation == "supply" else item
             child = self._make_output(lane, step, parent, plan.relation, planned.length_m, planned.weight_kg)
             children.append(child)
-            held_now = self._machine.get(op_id)
+            held_now = self._machine.get((lane.version, op_id))
             if held_now is not None and plan.relation == "split" and child.length_m is not None:
                 held_now.produced_m += child.length_m
             self.emit_for(lane, ev.OUTPUT_UNIT_READY, step_key=step.key, operation_id=op_id,
@@ -659,13 +692,14 @@ class _Run:
                                                             "scope": step.residual.scope})
         for child in held:  # 일괄 인계는 설비를 놓기 전에 내보낸다(막히면 설비가 점유된 채 기다림)
             yield from self._deliver(lane, step, op_id, asset, child, None)
+        yield from self._hold_until_taken(lane, step, op_id, asset)  # 직접 인계는 다음 설비가 가져갈 때까지 쥔다
         if asset is not None:
             if step.carrier_move_minutes is not None:  # 다음 명령이 없으면 내려놓은 곳(목적지)에서 기다린다
                 self.carrier_at[asset] = lane.model.nodes[step.key].next_key or step.key
             self._asset_state(lane, step, op_id, asset, ev.IDLE)
             self.last_version[asset] = lane.version
             self.allocator.release(asset)
-        self._machine.pop(op_id, None)
+        self._machine.pop((lane.version, op_id), None)
         self.in_progress -= 1
 
     def _carrier_to_pickup(self, lane: _Lane, step: StepModel, op_id: str, asset: str):
@@ -699,7 +733,7 @@ class _Run:
             if relation in ("split", "yield"):
                 consumed.status = "consumed"
         if relation in ("split", "yield"):
-            self._machine[op_id] = _Held(lane.version, step.key, items)
+            self._machine[(lane.version, op_id)] = _Held(lane.version, step.key, items)
 
     def _record_lineage(self, lane: _Lane, step: StepModel, op_id: str, items: tuple[WorkItem, ...],
                         children: list[WorkItem], plan) -> None:
