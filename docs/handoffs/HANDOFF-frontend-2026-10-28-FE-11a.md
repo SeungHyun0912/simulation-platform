@@ -39,6 +39,11 @@
 - 실데이터 `root_causes[].finding_ranks`가 리포트의 병목 상위 10개 밖 순위(예: 41·44위)를 가리킴 → 리포트에서는 순위 번호만 보이고 링크하지 않음.
 - 리포트 상단 관측 품질 경고와 병목 요약 안의 "불완전한 관측" 경고가 같은 내용으로 두 번 보임(같은 원천). 필요하면 다음 작업에서 하나로 줄임.
 
+### 5-1. Backend 회신 반영(FE-11b, 같은 날)
+- 1) `finding_ranks`가 전체 후보 기준인 것은 의도(04 §5.10) → 번호만 표시 유지. 2) 분 값 소수 6자리는 계약 그대로(표시용 min) → 소수 1자리 표시 유지.
+- 3) `run.quality_status`와 `bottlenecks.quality_status`는 항상 같음 → 리포트에서는 **맨 위 경고 한 번만**(`BottleneckSummaryView showQuality={false}`), 실행 상세 병목 섹션은 그대로. 시험 1건 추가, `pnpm typecheck`·`lint`·`build` 0, `pnpm test` 0(**701 통과**·74 건너뜀).
+- 예고: 0.16.1은 동작 패치(OpenAPI 해시 같음, 재생성 불필요). 엔진 c0.3이라 이전 실행과 비교하면 `comparable=false` — 화면은 이미 처리. 최신 run `aa1a48b2…`는 머지 공지 후 읽기 확인 예정(**미실행**).
+
 ## 6. 재검증 방법
 1. `frontend/`에서 typecheck·lint·test·check:api·build, `pnpm test:live`(읽기).
 2. 수동: 실행 상세(끝난 실행) → "결과 리포트 보기" → 한계가 맨 위인지, 제품별로 따로인지, 고칠 곳 "모두 보기" 확인. 결과 없는 실행 URL에 `/report`를 붙이면 안내가 나오는지.

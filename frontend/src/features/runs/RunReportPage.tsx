@@ -224,7 +224,8 @@ export function RunReportPage() {
       </Section>
 
       <Section id="rep-bottlenecks" title="병목·고칠 곳">
-        <BottleneckSummaryView data={d.bottlenecks} />
+        {/* 관측 품질은 run과 항상 같아(Backend 답변) 맨 위 경고 한 번만 보인다 */}
+        <BottleneckSummaryView data={d.bottlenecks} showQuality={false} />
       </Section>
 
       <Section id="rep-assets" title="가동률 상위 설비">

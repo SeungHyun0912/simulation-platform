@@ -128,11 +128,11 @@ export function RunBottlenecksSection({ projectId, runId, enabled }: { projectId
 }
 
 /** 병목 요약 본문(실행 상세의 병목 섹션과 결과 리포트가 같이 쓴다): 고칠 곳 → 멈춘 곳(종류별) → 한계·기준값 */
-export function BottleneckSummaryView({ data }: { data: Schemas["BottleneckSummaryOut"] }) {
+export function BottleneckSummaryView({ data, showQuality = true }: { data: Schemas["BottleneckSummaryOut"]; showQuality?: boolean }) {
   const [openKinds, setOpenKinds] = useState<ReadonlySet<string>>(new Set());
   return (
     <>
-      {QUALITY[data.quality_status] && (
+      {showQuality && QUALITY[data.quality_status] && (
         <StateNotice kind="conflict" title="불완전한 관측">
           {QUALITY[data.quality_status]}
         </StateNotice>

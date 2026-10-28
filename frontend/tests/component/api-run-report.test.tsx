@@ -59,6 +59,22 @@ describe("결과 리포트", () => {
     expect(screen.getByText(/공간 buf2 용량 미확인/)).toBeInTheDocument();
   });
 
+  it("관측이 불완전하면 경고를 맨 위에 한 번만 보인다(병목 요약 안에서 되풀이하지 않음)", async () => {
+    const server = createFakeServer((req, std) => {
+      const r = std(req);
+      if (req.path.endsWith("/report")) {
+        const d = (r.body as { data: { run: { quality_status: string }; bottlenecks: { quality_status: string } } }).data;
+        d.run.quality_status = "incomplete";
+        d.bottlenecks.quality_status = "incomplete";
+      }
+      return r;
+    });
+    open(report(1), server);
+    await screen.findByText("이 리포트의 한계", {}, slow);
+    expect(screen.getAllByText("불완전한 관측", { selector: "*" }).filter((e) => e.closest("[role=status],[role=alert],section,div")).length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("region", { name: "병목·고칠 곳" })).queryByText("불완전한 관측")).not.toBeInTheDocument();
+  });
+
   it("공식 결과가 없으면(409) 오류가 아니라 '결과 리포트가 없습니다' 안내를 보인다", async () => {
     const server = createFakeServer((req, std) => (req.path.endsWith("/report") ? errorBody(409, "RUN_RESULT_NOT_AVAILABLE", "공식 결과가 없습니다.") : std(req)));
     open(report(1), server);
