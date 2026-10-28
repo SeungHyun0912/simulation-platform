@@ -44,8 +44,8 @@
 화면 변경은 안내 문장 1줄뿐(새 색·간격·컴포넌트 없음) — 모든 항목 기존 상태 유지.
 
 ## 5. 관찰(Backend 참고)
-- 실행 중 취소가 heartbeat(10초)보다 빨리(약 1초) cancelled가 됨 — 문제는 아니고 안내보다 빠름.
-- 실행 목록(`GET /runs`) 항목에서는 취소된 실행의 `cancel_requested_at`이 null로 보임(단건 조회에서는 running 중 값이 있었음).
+- 실행 중 취소가 약 1초 만에 cancelled가 됨 → Backend 정정: worker는 이벤트 묶음(2,000건) 저장 때마다 취소를 확인하고, heartbeat 10초는 이벤트가 없는 구간의 상한일 뿐(정상).
+- 목록 `GET /runs` 항목(RunListItem)에는 `cancel_requested_at`이 아예 없음(의도). null은 FE 확인용 스크립트가 없는 필드를 읽은 것. 화면은 단건 조회(실행 상세)에서만 이 값을 읽어 문제없음.
 
 ## 6. 재검증 방법
 1. `frontend/`에서 typecheck·lint·test·check:api·build.

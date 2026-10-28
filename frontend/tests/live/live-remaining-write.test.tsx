@@ -77,7 +77,7 @@ describe.skipIf(!LIVE || !WRITE)("실서버 쓰기: 플로우차트 단계 자�
 
 /**
  * 장시간 실행(`LIVE_LONG=1`일 때만). FE-LIVE-S1의 최신 승인본이 도착 수량을 크게 늘린 버전(v4, 도착 400개)이어야 한다 — 준비는 API로 했다.
- * Backend 안내: worker는 2초마다 큐를 보고, 취소 요청은 heartbeat(10초)마다 확인하므로 running 중 취소는 최대 약 10초 뒤 cancelled가 된다.
+ * Backend 안내: worker는 2초마다 큐를 보고, 취소 요청은 이벤트 묶음(2,000건) 저장마다(이벤트가 없는 구간은 heartbeat 10초 상한) 확인한다.
  */
 const LONG = process.env.LIVE_LONG === "1";
 describe.skipIf(!LIVE || !WRITE || !LONG)("실서버 쓰기: 장시간 실행의 상태 갱신·실행 중 취소 (FE-LIVE-S1 큰 버전)", () => {
@@ -108,7 +108,7 @@ describe.skipIf(!LIVE || !WRITE || !LONG)("실서버 쓰기: 장시간 실행의
     await screen.findByRole("heading", { name: "결과 요약" }, slow);
   });
 
-  it("실행 중에 취소하면 '취소 요청됨'이 보이고(서버 running + cancel_requested_at), heartbeat 뒤 취소됨으로 바뀐다", { timeout: 300_000 }, async (ctx) => {
+  it("실행 중에 취소하면 '취소 요청됨'이 보이고(서버 running + cancel_requested_at), 곧 취소됨으로 바뀐다", { timeout: 300_000 }, async (ctx) => {
     if (!runProject) return ctx.skip();
     const { user, runId } = await requestRun(8300 + Math.floor(Math.random() * 100));
     await waitFor(() => expect(badge("실행 중")).not.toBeNull(), { timeout: 30_000, interval: 250 });
