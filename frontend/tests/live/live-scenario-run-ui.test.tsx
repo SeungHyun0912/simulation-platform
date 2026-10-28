@@ -118,7 +118,8 @@ describe.skipIf(!LIVE)("실제 서버 데이터로 그린 시나리오·실행 �
 
   it("0.16.0 결과 리포트: 한계·요약 문장·제품별 결과를 실서버 값으로 그리고, 근본 원인이 있으면 '고칠 곳'을 보인다", async (ctx) => {
     const all = await json<{ id: string }[]>(`/projects/${projectId}/runs?limit=50`);
-    const c02 = all.find((r) => r.id.startsWith("c3640d5d"));
+    // 0.16.1(엔진 c0.3) 최신 실행 aa1a48b2를 우선, 없으면 c0.2 실행 c3640d5d
+    const c02 = all.find((r) => r.id.startsWith("aa1a48b2")) ?? all.find((r) => r.id.startsWith("c3640d5d"));
     if (!c02) return ctx.skip();
     const probe = await realFetch()(`/api/v1/projects/${projectId}/runs/${c02.id}/report`);
     if (probe.status === 404) return ctx.skip(); // 0.16.0 코드로 다시 시작되지 않은 서버

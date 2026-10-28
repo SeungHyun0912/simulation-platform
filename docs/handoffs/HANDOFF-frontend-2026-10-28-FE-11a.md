@@ -44,6 +44,16 @@
 - 3) `run.quality_status`와 `bottlenecks.quality_status`는 항상 같음 → 리포트에서는 **맨 위 경고 한 번만**(`BottleneckSummaryView showQuality={false}`), 실행 상세 병목 섹션은 그대로. 시험 1건 추가, `pnpm typecheck`·`lint`·`build` 0, `pnpm test` 0(**701 통과**·74 건너뜀).
 - 예고: 0.16.1은 동작 패치(OpenAPI 해시 같음, 재생성 불필요). 엔진 c0.3이라 이전 실행과 비교하면 `comparable=false` — 화면은 이미 처리. 최신 run `aa1a48b2…`는 머지 공지 후 읽기 확인 예정(**미실행**).
 
+### 5-2. 0.16.1 머지 후 읽기 확인(FE-11c, 같은 날)
+- PR #64 MERGED(`cb5f52f`) 확인, origin/main 병합. `pnpm gen:api` → contract **0.16.1**, sha256 그대로 `13fa2fb9…42ad`(생성물은 버전 표기 2줄만 바뀜, 타입 변화 없음). 화면 코드 변경 없음.
+- 실서버 읽기(run `aa1a48b2-6708-4244-a532-ae6a7636de77`, 엔진 c0.3, 시나리오 S-MONTH-24 v4): 리포트 정상(한계 4줄, 제품 6개 완료 수 이전과 같음, 고칠 곳 19곳). live 시험 리포트 대상을 aa1a48b2 우선으로 바꿈. `pnpm test:live`(읽기, 8000) **43 통과**·31 건너뜀(쓰기 시험은 LIVE_WRITE 없이 건너뜀).
+- 전체 `typecheck`·`lint`·`check:api`·`test`·`build` 모두 0.
+- **Backend 확인 요청(관찰):** aa1a48b2의 `root_causes` 1위는 **P01 편조(EQ-002 13.8%, 묶인 14건·높음 1)**, 2위가 P04 싱글 메인 집합(EQ-096 98.9%, 11건·높음 3)인데, `headline`은 "근본 원인: P04 싱글 메인 집합(EQ-096)"입니다. 헤드라인은 1위 병목의 원인, 목록은 묶음 순위라 다를 수 있는지 확인이 필요합니다. 화면은 서버 값 그대로 보입니다.
+
+### 5-3. Backend 회신(헤드라인 ≠ 고칠 곳 1위)
+- Backend 확인: 의도가 아니라 **서버 순위 규칙 결함**. 0.16.2에서 `root_causes` 순위를 "묶인 후보 중 가장 높은 전체 순위(가장 작은 finding rank)" 기준으로 바꾸고 병목 `definition_version` "3"으로 올림. rank 설명이 바뀌어 OpenAPI 해시가 달라지므로 **타입 재생성 필요**.
+- FE 후속(0.16.2 머지 후): `pnpm gen:api`, `RootCauseList` 안내 문구 "순위는 묶인 병목의 수준 → 수 → 멈춘 양 순서입니다"를 새 규칙 문장으로 고침, 시드·시험의 고칠 곳 순서 확인, aa1a48b2(또는 새 run)에서 headline 근본 원인 = 고칠 곳 1위 읽기 확인. **미실행**(머지 대기).
+
 ## 6. 재검증 방법
 1. `frontend/`에서 typecheck·lint·test·check:api·build, `pnpm test:live`(읽기).
 2. 수동: 실행 상세(끝난 실행) → "결과 리포트 보기" → 한계가 맨 위인지, 제품별로 따로인지, 고칠 곳 "모두 보기" 확인. 결과 없는 실행 URL에 `/report`를 붙이면 안내가 나오는지.

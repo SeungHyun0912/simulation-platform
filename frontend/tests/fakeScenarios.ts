@@ -144,7 +144,7 @@ export function analysisBottlenecks(runId: string): Schemas["BottleneckSummaryOu
     run_id: runId,
     quality_status: "complete",
     observed: minutes("90"),
-    definition_version: "2",
+    definition_version: "3",
     headline: "가장 큰 정체: P-001 압출 설비 대기. 근본 원인: P-001 피복",
     root_causes: [
       {

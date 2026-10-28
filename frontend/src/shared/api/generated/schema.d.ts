@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.16.0, openapi_sha256 13fa2fb9afce00b5bc9808d57fdfaa4d9b1dff463745beeeecd4504c478842ad
+// 기준 계약: version 0.16.2, openapi_sha256 4b35e3db69865b6741eec94afce69af10ba0855c0a4af12782cafb09d84d367f
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
 
 export interface paths {
@@ -3462,7 +3462,7 @@ export interface components {
             product_name?: string | null;
             /**
              * Rank
-             * @description 묶인 후보의 가장 높은 level → 묶인 후보 수 → 멈춘 양 순
+             * @description 묶인 후보 중 가장 높은 전체 순위 순(1위 묶음 = 병목 1위 후보의 근본 원인 = headline)
              */
             rank: number;
             /**
