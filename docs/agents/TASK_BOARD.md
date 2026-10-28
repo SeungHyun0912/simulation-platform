@@ -31,6 +31,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-11·12 | 설비 상태 타임라인·상태 구간, 두 실행 비교(요약·지표 차이), 계약 0.13.0 | Backend | **구현완료·검증대기** | BE-10, CR be11·be12 | d81bd33 이후 / contract 0.13.0 | HANDOFF-backend-20261027-BE-11-12-timeline-compare |
 | BE-13·14 | 공정 일괄 조회·자산 사용처, 시나리오를 최신 승인 공정·자산 버전으로 갱신, 계약 0.14.0 | Backend | **구현완료·검증대기** | BE-11·12, CR be13·be14 | 5b1eb6d 이후 / contract 0.14.0 | HANDOFF-backend-20261027-BE-13-14-refresh-graphs |
 | BE-15 | 운반 자원(지게차·AMR) 위치·대수 모델링, 공간 용량 반영, 출력 대기 가정, 계약 0.15.0 | Backend | **구현완료·검증대기** | BE-13·14, CR be15 | 44e058e 이후 / contract 0.15.0 | HANDOFF-backend-20261028-BE-15-capacity-carriers |
+| BE-16 | 출력 대기 기본값, 원자재 입고 위치 용량, 원본 DEMO-WIRE 반영(시드 4차), 계약 0.15.1 | Backend | **구현완료·검증대기** | BE-15 | fc07858 이후 / contract 0.15.1 | HANDOFF-backend-20261028-BE-16-yard-capacity-seed |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |
