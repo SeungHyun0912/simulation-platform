@@ -35,7 +35,7 @@
 - Backend가 넣은 승인본: DEMO-WIRE v1 `0e7592fb…`, DEMO-WIRE-RUN v1 `c71a3561…`(도면 269.9 × 215.9 m, 설비 96대, 회전 0, 점·경로·ST 없음, attributes.source·inside 원문).
 - live 읽기 시험 추가·통과(96대 배치 표, 도면 크기, 읽기 전용, `inside`·`source.anchor=top_left` 원문 표시). 화면(개발 서버 읽기, Edge headless) 확인.
 - 고친 것: 전체 보기(1 m ≈ 2.3 px)에서 설비 코드 글자가 서로 겹쳐 **사각형보다 넓은 글자는 숨김**(선택한 배치는 위에 표시, 이름은 툴팁·접근성 이름·표). 배치 속성에 **"원본 값(attributes)"** 펼치기(원문 그대로, 계산에 쓰지 않음).
-- 관찰(Backend 전달): 57/96 배치의 x_m·y_m이 `source`(왼쪽 위 x·y + 가로·세로/2)로 다시 계산한 중심과 0.1 m 다름. 원본의 반올림 전 값으로 계산한 결과로 보이나 확인 요청.
+- 관찰: 57/96 배치의 x_m·y_m이 `source`(왼쪽 위 x·y + 가로·세로/2)로 다시 계산한 중심과 0.1 m 다름 → **Backend 회신: 정상.** x_m·y_m은 사용자 JSON의 center(반올림 전 원본 좌표로 계산)이고 source는 이미 반올림된 참고 원문. 위치의 정본은 x_m·y_m(FE는 이것만 씀).
 - DEMO-A 실서버 쓰기는 **미실행**: 허락이 Backend 세션 메시지로만 전달돼 사용자에게 직접 확인 중.
 - `pnpm test` 0(730 통과·82 건너뜀), typecheck·lint·check:api·build 0.
 
