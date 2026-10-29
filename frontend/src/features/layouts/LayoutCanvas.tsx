@@ -34,6 +34,9 @@ type Props = {
   onMovePlacement: (assetId: string, x: string, y: string) => void;
 };
 
+/** 자산 코드 글자가 차지하는 대략의 폭(px, --text-xs 기준). 사각형이 이보다 좁으면 글자를 숨긴다. */
+const labelWidth = (code: string) => code.length * 7 + 6;
+
 /** 격자 간격(m): 화면에서 24px 이상 벌어지는 가장 작은 값 */
 function gridStep(k: number) {
   for (const s of [0.5, 1, 2, 5, 10, 20, 50, 100]) if (s * k >= 24) return s;
@@ -208,10 +211,13 @@ export function LayoutCanvas(p: Props) {
               onKeyDown={(e) => onItemKey(e, () => p.onSelect(t), (dx, dy) => p.onMovePlacement(pl.assetId, coord(Number(pl.x) + dx), coord(Number(pl.y) + dy)))}
             >
               <rect x={-w / 2} y={-h / 2} width={w} height={h} />
-              {/* 크기 모름 표식은 작아서 글자는 표식 아래에 둔다(점 이름과 겹치지 않게) */}
-              <text y={unknown ? h / 2 + 28 : 4} textAnchor="middle" className={styles.label}>
-                {a?.code ?? "?"}
-              </text>
+              {/* 크기 모름 표식은 작아서 글자는 표식 아래에 둔다(점 이름과 겹치지 않게). 사각형이 글자보다 작으면(축소 시) 글자를 숨기고
+                  이름은 툴팁·접근성 이름·표로 본다 — 실데이터(설비 96대, 269.9 m)에서 전체 보기 때 글자가 겹쳤다. */}
+              {(unknown || (w >= labelWidth(a?.code ?? "?") && h >= 12) || p.selected === t) && (
+                <text y={unknown ? h / 2 + 28 : p.selected === t && !(w >= labelWidth(a?.code ?? "?") && h >= 12) ? -h / 2 - 6 : 4} textAnchor="middle" className={styles.label}>
+                  {a?.code ?? "?"}
+                </text>
+              )}
               {unknown && (
                 <text y={h / 2 + 40} textAnchor="middle" className={styles.portLabel}>
                   크기 모름

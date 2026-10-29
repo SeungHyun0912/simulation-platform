@@ -51,6 +51,30 @@ describe.skipIf(!LIVE)("배치판 화면 (실서버 읽기)", () => {
   });
 });
 
+describe.skipIf(!LIVE)("실데이터 배치판(DEMO-WIRE v1 승인본, 설비 96대) 읽기", () => {
+  // Backend 안내(2026-10-29): DEMO-WIRE v1 = 0e7592fb…, 도면 269.9 × 215.9 m, 점·경로 없음, 회전 0, attributes.source·inside 원문
+  const VID = "0e7592fb-5947-44c8-b2aa-995a803acc40";
+  it("승인본을 읽기 전용으로 그리고 96대 배치·도면 크기·원본 값을 서버 값 그대로 보인다", { timeout: 60_000 }, async (ctx) => {
+    const me = await json<{ projects: { id: string; code: string }[] }>("/me");
+    const wire = me.projects.find((p) => p.code === "DEMO-WIRE")?.id;
+    if (!wire) return ctx.skip();
+    const r = await realFetch()(`/api/v1/projects/${wire}/layout-versions/${VID}`);
+    if (r.status === 404) return ctx.skip();
+    const v = ((await r.json()) as { data: { placements: { asset_code: string; asset_name: string; attributes: Record<string, unknown> }[] } }).data;
+    const user = userEvent.setup();
+    renderApp(`/projects/${wire}/layouts/${VID}`, { source: "api", fetchImpl: realFetch() });
+    expect(await screen.findByText(new RegExp(`범위 269\\.9 × 215\\.9 m\\(도면 크기\\) · 점 0 · 배치 ${v.placements.length} · 경로 0`), {}, slow)).toBeInTheDocument();
+    expect(screen.getByText("승인된 배치판은 바꿀 수 없습니다")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "점 추가" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "배치 목록" })).getAllByRole("row")).toHaveLength(v.placements.length + 1);
+    const withInside = v.placements.find((p) => "inside" in p.attributes)!;
+    await user.click(screen.getByRole("button", { name: `배치 ${withInside.asset_code} 선택` }));
+    const panel = screen.getByRole("region", { name: `배치 ${withInside.asset_code} ${withInside.asset_name} 속성` });
+    expect(within(panel).getByLabelText("원본 값")).toHaveTextContent(`inside: ${String(withInside.attributes.inside)}`);
+    expect(within(panel).getByLabelText("원본 값")).toHaveTextContent("anchor=top_left");
+  });
+});
+
 describe.skipIf(!LIVE || !WRITE)("배치판 실서버 쓰기 (DEMO-A 초안 하나)", () => {
   it("초안을 만들거나 이어 쓰고, 점·배치·포트 매핑·경로를 저장한 뒤 서버 반올림 값과 경로 길이를 보고 검증한다", { timeout: 120_000 }, async (ctx) => {
     if (!demoA) return ctx.skip();

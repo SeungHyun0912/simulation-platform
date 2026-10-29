@@ -273,6 +273,19 @@ export function SelectionPanel({
           <TextField label="세로(m)" value={pl.height} disabled={!editable} error={err("height")} hint={pl.height.trim() ? "y 방향, 회전 전" : "모름(비움)"} onChange={(e) => set({ height: e.target.value })} />
           <TextField label="회전(도)" value={pl.rotation} disabled={!editable} error={err("rotation")} hint={pl.rotation.trim() ? "중심 기준 시계 방향 +" : "모름(비움) — 도면에는 0도로 그립니다"} onChange={(e) => set({ rotation: e.target.value })} />
         </FieldGrid>
+        {Object.keys(pl.attributes).length > 0 && (
+          <details>
+            <summary>원본 값(attributes)</summary>
+            <Note>가져온 원본 값을 그대로 보입니다(화면 계산에는 쓰지 않음). 예: source는 왼쪽 위 기준 x·y·가로·세로, inside는 소속 공간 원문 표기.</Note>
+            <ul aria-label="원본 값">
+              {Object.entries(pl.attributes).map(([k, val]) => (
+                <li key={k}>
+                  <code>{k}</code>: {typeof val === "object" && val !== null ? Object.entries(val as Record<string, unknown>).map(([kk, vv]) => `${kk}=${String(vv)}`).join(" · ") : String(val)}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         <h4>포트 → 점</h4>
         {(a?.ports ?? []).length === 0 ? (
           <Note>이 자산에는 포트가 없습니다.</Note>
