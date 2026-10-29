@@ -9,6 +9,14 @@ from simulation_platform.models.identity import (
     Project,
     ProjectMember,
 )
+from simulation_platform.models.layout import (
+    AssetPlacement,
+    LayoutPoint,
+    LayoutPortPoint,
+    LayoutRoute,
+    LayoutRoutePoint,
+    LayoutVersion,
+)
 from simulation_platform.models.process import (
     FlowEdge,
     FlowNode,
@@ -40,6 +48,7 @@ from simulation_platform.models.scenario import (
 __all__ = [
     "AppUser",
     "Asset",
+    "AssetPlacement",
     "AssetPort",
     "AssetRevision",
     "AuditLog",
@@ -48,6 +57,11 @@ __all__ = [
     "FlowEdge",
     "FlowNode",
     "Job",
+    "LayoutPoint",
+    "LayoutPortPoint",
+    "LayoutRoute",
+    "LayoutRoutePoint",
+    "LayoutVersion",
     "MaterialDefinition",
     "MetricResult",
     "Organization",
