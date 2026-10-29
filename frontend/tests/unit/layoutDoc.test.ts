@@ -153,3 +153,14 @@ describe("경로 점 편집(참고 라벨러 방식)", () => {
     expect(nearestPoint(doc(), 9, 9, 0.5)).toBeNull();
   });
 });
+
+describe("key 규칙(Backend 안내: 1~64자, 배치판 안에서 유일)", () => {
+  it("64자를 넘는 점·경로 이름은 저장 전에 막는다", () => {
+    const long = "P".repeat(65);
+    const d = { ...doc(), points: [...doc().points, { key: long, x: "1", y: "1", attributes: {} }], routes: [{ ...doc().routes[0]!, key: "R".repeat(65) }] };
+    const e = validateDoc(d);
+    expect(e[`point:${long}.key`]).toMatch(/64자 이하/);
+    expect(e[`route:${"R".repeat(65)}.key`]).toMatch(/64자 이하/);
+    expect(validateDoc({ ...doc(), points: [{ key: "P".repeat(64), x: "1", y: "1", attributes: {} }] })[`point:${"P".repeat(64)}.key`]).toBeUndefined();
+  });
+});

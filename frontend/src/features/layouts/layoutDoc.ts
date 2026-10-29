@@ -210,6 +210,8 @@ export function nearestPoint(d: LayoutDoc, x: number, y: number, maxDist: number
 /* ---------------- 화면 쪽 입력 검사(서버 검사 전에 막을 것만) ---------------- */
 
 const NUM = /^\d+(\.\d+)?$/;
+/** 점·경로 key 길이(Backend 안내 2026-10-29: 1~64자, 배치판 안에서 유일) */
+const KEY_MAX = 64;
 export type DocErrors = Record<string, string>;
 
 /**
@@ -222,6 +224,7 @@ export function validateDoc(d: LayoutDoc): DocErrors {
   for (const p of d.points) {
     const t = `point:${p.key}`;
     if (!p.key.trim()) e[`${t}.key`] = "점 이름이 비었습니다.";
+    else if (p.key.trim().length > KEY_MAX) e[`${t}.key`] = `점 이름은 ${KEY_MAX}자 이하입니다.`;
     else if (seen.has(p.key.trim())) e[`${t}.key`] = "같은 이름의 점이 있습니다.";
     seen.add(p.key.trim());
     if (!NUM.test(p.x.trim())) e[`${t}.x`] = "x는 0 이상의 숫자(m)입니다.";
@@ -239,6 +242,7 @@ export function validateDoc(d: LayoutDoc): DocErrors {
   for (const r of d.routes) {
     const t = `route:${r.key}`;
     if (!r.key.trim()) e[`${t}.key`] = "경로 이름이 비었습니다.";
+    else if (r.key.trim().length > KEY_MAX) e[`${t}.key`] = `경로 이름은 ${KEY_MAX}자 이하입니다.`;
     else if (routeKeys.has(r.key.trim())) e[`${t}.key`] = "같은 이름의 경로가 있습니다.";
     routeKeys.add(r.key.trim());
     if (r.points.length < 2) e[`${t}.points`] = "경로에는 점이 2개 이상 있어야 합니다.";
