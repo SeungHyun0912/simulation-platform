@@ -146,7 +146,7 @@ describe("배치판 편집: 도면·표", () => {
     await user.click(screen.getByRole("button", { name: /^점 P3 \(/ }));
     await user.selectOptions(within(panel).getByLabelText("도착 포트"), within(within(panel).getByLabelText("도착 포트")).getByRole("option", { name: "ST-041 ACCESS-01(접근)" }));
     await user.selectOptions(within(panel).getByLabelText("운반 방식"), "amr");
-    expect(within(panel).getByLabelText("고른 점 순서")).toHaveTextContent("P1 → P3");
+    expect(within(within(panel).getByLabelText("고른 점 순서")).getAllByRole("listitem").map((li) => li.textContent?.trim())).toEqual(["P1", "P3"]);
     await user.click(within(panel).getByRole("button", { name: "경로 만들기" }));
     const routes = screen.getByRole("table", { name: "경로 목록" });
     expect(routes).toHaveTextContent("R2");
@@ -251,5 +251,141 @@ describe("배치판 검증·승인", () => {
     expect(await screen.findByText(/이 역할은 배치판을 고칠 수 없습니다/, {}, slow)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "점 추가" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "내용 저장" })).not.toBeInTheDocument();
+  });
+});
+
+/** 화면 맞춤: zoom 1.075 → 1 m = 21.5 px, 원점 (24, 28) */
+const sx = (m: number) => 24 + 21.5 * m;
+const sy = (m: number) => 28 + 21.5 * m;
+const pointRows = () =>
+  within(screen.getByRole("table", { name: "점 목록" }))
+    .getAllByRole("row")
+    .slice(1)
+    .map((r) => (r as HTMLTableRowElement).cells[0]!.textContent);
+const draftOrder = () =>
+  within(within(screen.getByRole("region", { name: "경로 그리기" })).getByLabelText("고른 점 순서"))
+    .getAllByRole("listitem")
+    .map((li) => li.textContent?.trim());
+
+describe("경로 그리기 고도화(참고 라벨러 방식: 점 자동 생성·기존 점 선택)", () => {
+  it("설비를 누르면 그 산출 포트의 점에서 시작하고, 빈 곳은 새 점을 만들며, 공간을 누르면 접근 포트로 끝나고 Enter로 완성한다", async () => {
+    const user = userEvent.setup();
+    const { server } = open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(screen.getByRole("button", { name: /^배치 EQ-001 서버 설비 1/ }), { clientX: sx(8), clientY: sy(5) }); // OUT → P1(이미 연결)
+    fireEvent.click(canvas(), { clientX: sx(20), clientY: sy(15) }); // 빈 곳 → 새 점 P4
+    fireEvent.click(screen.getByRole("button", { name: /^배치 ST-041 서버 공간 41/ }), { clientX: sx(27), clientY: sy(9) }); // ACCESS → P3
+    expect(draftOrder()).toEqual(["P1", "P4 (새 점)", "P3"]);
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("region", { name: "경로 그리기" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "경로 R2 속성" })).toBeInTheDocument();
+    expect(pointRows()).toContain("P4");
+    await user.click(screen.getByRole("button", { name: "내용 저장" }));
+    await screen.findByText(/배치판 내용을 저장했습니다/, {}, slow);
+    const sent = puts(server)[0]!.body;
+    expect(sent.routes[1]).toMatchObject({ route_key: "R2", points: ["P1", "P4", "P3"] });
+    expect(sent.routes[1].from_port_id).toBe(sent.port_points.find((m: { point_key: string }) => m.point_key === "P1").port_id);
+    expect(sent.points.find((p: { point_key: string }) => p.point_key === "P4")).toMatchObject({ x_m: "20.0", y_m: "15.0" });
+  });
+
+  it("포트가 점에 연결되지 않은 설비를 누르면 그 자리에 점을 만들고 포트를 자동으로 연결한다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    const v2 = server.state.layouts.versions.find((v) => v.id === layoutVersionId(2))!;
+    v2.placements.push({ ...v2.placements[0]!, asset_id: "aaaaaaaa-0000-4000-8000-000000000002", asset_code: "EQ-002", asset_name: "서버 설비 2", x_m: "30.0", y_m: "15.0" });
+    open(editor(2), server);
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(screen.getByRole("button", { name: /^배치 EQ-002 서버 설비 2/ }), { clientX: sx(30), clientY: sy(15) });
+    fireEvent.click(screen.getByRole("button", { name: /^배치 ST-041 서버 공간 41/ }), { clientX: sx(27), clientY: sy(9) });
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("table", { name: "점 목록" })).toHaveTextContent("EQ-002 OUT(산출)");
+    expect(screen.getByRole("table", { name: "경로 목록" })).toHaveTextContent(/R2EQ-002 OUT\(산출\)ST-041 ACCESS-01\(접근\)/);
+  });
+
+  it("기존 점 가까이(화면 12px 안)를 누르면 새 점을 만들지 않고 그 점을 쓰며, '기존 점 추가'로도 고를 수 있다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(canvas(), { clientX: sx(13) + 5, clientY: sy(9) - 4 }); // P2(13, 9) 근처
+    await user.selectOptions(within(screen.getByRole("region", { name: "경로 그리기" })).getByLabelText("기존 점 추가"), "P3");
+    expect(draftOrder()).toEqual(["P2", "P3"]);
+    expect(pointRows()).toEqual(["P1", "P2", "P3"]); // 새 점 없음
+  });
+
+  it("Backspace는 마지막 점(자동으로 만든 점이면 그 점도)을 빼고, Esc는 그리기를 취소하며 자동으로 만든 점을 모두 지운다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(2) });
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(2) });
+    expect(pointRows()).toEqual(["P1", "P2", "P3", "P4", "P5"]);
+    await user.keyboard("{Backspace}");
+    expect(pointRows()).toEqual(["P1", "P2", "P3", "P4"]);
+    await user.keyboard("{Escape}");
+    expect(pointRows()).toEqual(["P1", "P2", "P3"]);
+    expect(screen.queryByRole("region", { name: "경로 그리기" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "경로 목록" })).not.toHaveTextContent("R2");
+  });
+
+  it("출발·도착 포트를 정할 수 없으면 끝내지 않고 이유를 알린다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(2) });
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(2) });
+    await user.keyboard("{Enter}");
+    expect(within(screen.getByRole("region", { name: "경로 그리기" })).getByRole("alert")).toHaveTextContent("출발·도착 포트를 고르세요");
+  });
+
+  it("선택 모드에서 경로 선을 더블클릭하면 그 자리에 점을 끼워 넣는다", async () => {
+    open(editor(2));
+    await ready();
+    fireEvent.doubleClick(screen.getByRole("button", { name: /^경로 R1 \(/ }), { clientX: sx(19), clientY: sy(9) }); // P2(13,9)–P3(25,9) 사이
+    expect(screen.getByRole("region", { name: "점 P4 속성" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^경로 R1 .*: P1 → P2 → P4 → P3$/ })).toBeInTheDocument();
+  });
+
+  it("경로 속성에서 점을 빼거나 기존 점을 끝에 붙이고, 쓰이지 않게 된 점은 한 번에 지운다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 R1 선택" }));
+    await user.click(within(screen.getByRole("region", { name: "경로 R1 속성" })).getByRole("button", { name: "2번째 점 P2 빼기" }));
+    expect(screen.getByRole("button", { name: /^경로 R1 .*: P1 → P3$/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "쓰지 않는 점 1개 지우기" }));
+    expect(pointRows()).toEqual(["P1", "P3"]);
+    await user.selectOptions(within(screen.getByRole("region", { name: "경로 R1 속성" })).getByLabelText("끝에 기존 점 추가"), "P1");
+    expect(screen.getByRole("button", { name: /^경로 R1 .*: P1 → P3 → P1$/ })).toBeInTheDocument();
+  });
+
+  it("되돌리기·다시 하기(Ctrl+Z / Ctrl+Y와 버튼): 경로 하나는 한 번에 되돌린다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "점 추가" }));
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(2) });
+    expect(pointRows()).toContain("P4");
+    await user.click(screen.getByRole("button", { name: "선택·이동" }));
+    await user.keyboard("{Control>}z{/Control}");
+    expect(pointRows()).not.toContain("P4");
+    await user.keyboard("{Control>}y{/Control}");
+    expect(pointRows()).toContain("P4");
+    // 경로: 자동 점 + 경로 → 되돌리기 한 번에 모두 사라진다
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(screen.getByRole("button", { name: /^배치 EQ-001 서버 설비 1/ }), { clientX: sx(8), clientY: sy(5) });
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(15) });
+    fireEvent.click(screen.getByRole("button", { name: /^배치 ST-041 서버 공간 41/ }), { clientX: sx(27), clientY: sy(9) });
+    await user.keyboard("{Enter}");
+    expect(pointRows()).toContain("P5");
+    await user.click(screen.getByRole("button", { name: "↺ 되돌리기" }));
+    expect(pointRows()).not.toContain("P5");
+    expect(screen.getByRole("table", { name: "경로 목록" })).not.toHaveTextContent("R2");
+    await user.click(screen.getByRole("button", { name: "다시 하기" }));
+    expect(screen.getByRole("table", { name: "경로 목록" })).toHaveTextContent("R2");
   });
 });

@@ -166,6 +166,47 @@ export function removeRoute(d: LayoutDoc, key: string): LayoutDoc {
   return { ...d, routes: d.routes.filter((r) => r.key !== key) };
 }
 
+/* ---------------- 경로 점 편집(참고: frontend/references/factory-labeler.html의 경로 도구) ---------------- */
+
+/** 경로의 i번째 자리 앞에 점을 끼워 넣는다(구간 더블클릭). 연달아 같은 점이 되면 넣지 않는다. */
+export function insertRoutePoint(d: LayoutDoc, routeKey: string, index: number, pointKey: string): LayoutDoc {
+  return {
+    ...d,
+    routes: d.routes.map((r) => {
+      if (r.key !== routeKey || r.points[index - 1] === pointKey || r.points[index] === pointKey) return r;
+      return { ...r, points: [...r.points.slice(0, index), pointKey, ...r.points.slice(index)] };
+    }),
+  };
+}
+
+/** 경로에서 i번째 점을 뺀다(점 자체는 남는다). 빠져서 연달아 같은 점이 되면 합친다. */
+export function removeRoutePointAt(d: LayoutDoc, routeKey: string, index: number): LayoutDoc {
+  return { ...d, routes: d.routes.map((r) => (r.key === routeKey ? { ...r, points: collapse(r.points.filter((_, i) => i !== index)) } : r)) };
+}
+
+/** 어디에도 쓰이지 않는 점(포트 연결도 경로도 없음) */
+export const unusedPoints = (d: LayoutDoc) => d.points.filter((p) => pointUsage(d, p.key).ports === 0 && pointUsage(d, p.key).routes.length === 0).map((p) => p.key);
+
+export function removePoints(d: LayoutDoc, keys: Iterable<string>): LayoutDoc {
+  let next = d;
+  for (const k of keys) next = removePoint(next, k);
+  return next;
+}
+
+/** (x, y)에서 maxDist(m) 안에 있는 가장 가까운 점 */
+export function nearestPoint(d: LayoutDoc, x: number, y: number, maxDist: number): string | null {
+  let best: string | null = null;
+  let bestD = maxDist;
+  for (const p of d.points) {
+    const dist = Math.hypot(Number(p.x) - x, Number(p.y) - y);
+    if (dist <= bestD) {
+      best = p.key;
+      bestD = dist;
+    }
+  }
+  return best;
+}
+
 /* ---------------- 화면 쪽 입력 검사(서버 검사 전에 막을 것만) ---------------- */
 
 const NUM = /^\d+(\.\d+)?$/;

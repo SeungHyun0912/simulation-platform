@@ -30,9 +30,25 @@ type Props = {
   onSelect: (t: Target | null) => void;
   onAddPoint: (x: number, y: number) => void;
   onRoutePoint: (key: string) => void;
+  /** 경로 모드에서 빈 곳·배치를 눌렀을 때(m 좌표, 누른 배치). 점은 화면이 자동으로 만들거나 가까운 점을 쓴다. */
+  onRouteClick: (x: number, y: number, placementId: string | null) => void;
+  /** 경로 모드 더블클릭: 그리기 끝내기 */
+  onRouteFinish: () => void;
+  /** 선택 모드에서 경로 구간 더블클릭: index 자리 앞에 (x, y) 점을 끼워 넣는다 */
+  onInsertOnRoute: (routeKey: string, index: number, x: number, y: number) => void;
+  /** 끌기를 시작할 때 한 번(되돌리기 기록용) */
+  onEditStart: () => void;
   onMovePoint: (key: string, x: string, y: string) => void;
   onMovePlacement: (assetId: string, x: string, y: string) => void;
 };
+
+/** 점 p에서 선분 ab까지의 거리 */
+function distSeg(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const t = dx || dy ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy))) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
 
 /** 자산 코드 글자가 차지하는 대략의 폭(px, --text-xs 기준). 사각형이 이보다 좁으면 글자를 숨긴다. */
 const labelWidth = (code: string) => code.length * 7 + 6;
@@ -46,7 +62,8 @@ function gridStep(k: number) {
 /**
  * 배치판 도면(SVG). 좌표계는 m·왼쪽 위 원점·y 아래(계약 0.17.0)로 화면 좌표와 방향이 같다. 배경 도면이 있으면 깔고 없으면 격자만 그린다.
  * 선택 모드: 점·배치를 끌어 옮기고(초안), 화살표 키로 0.1 m(Shift 1 m)씩 옮긴다. 점 추가 모드: 빈 곳을 누르면 점이 생긴다.
- * 경로 모드: 점을 순서대로 누른다. Ctrl+휠로 확대·축소, 빈 곳을 끌어 이동.
+ * 경로 모드: 빈 곳을 누르면 그 자리에 점이 생기고(가까운 기존 점은 그 점을 씀), 설비·공간을 누르면 그 포트의 점으로 잇는다. 더블클릭으로 끝낸다.
+ * 선택 모드에서 경로 선을 더블클릭하면 그 자리에 점을 끼워 넣는다. Ctrl+휠로 확대·축소, 빈 곳을 끌어 이동.
  */
 export function LayoutCanvas(p: Props) {
   const { doc, viewport, onViewportChange } = p;
@@ -60,6 +77,8 @@ export function LayoutCanvas(p: Props) {
     | null
   >(null);
   const [panning, setPanning] = useState(false);
+  /** 경로 모드에서 마우스 위치(m) — 마지막 점에서 이어지는 미리보기 선 */
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     vpRef.current = viewport;
   }, [viewport]);
@@ -107,10 +126,12 @@ export function LayoutCanvas(p: Props) {
   }
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
     const d = drag.current;
+    if (p.mode === "route" && p.routeDraft.length > 0 && !d) setHover(toWorld(e.clientX, e.clientY));
     if (!d) return;
     const dx = e.clientX - d.sx;
     const dy = e.clientY - d.sy;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (!d.moved && d.kind !== "pan") p.onEditStart();
     d.moved = true;
     if (d.kind === "pan") onViewportChange({ ...viewport, x: d.vx + dx, y: d.vy + dy });
     else if (d.kind === "point") p.onMovePoint(d.id, coord(d.ox + dx / k), coord(d.oy + dy / k));
@@ -130,6 +151,9 @@ export function LayoutCanvas(p: Props) {
     if (p.mode === "point" && !p.readOnly) {
       const w = toWorld(e.clientX, e.clientY);
       p.onAddPoint(w.x, w.y);
+    } else if (p.mode === "route" && !p.readOnly) {
+      const w = toWorld(e.clientX, e.clientY);
+      p.onRouteClick(w.x, w.y, null);
     } else if (p.mode === "select") p.onSelect(null);
   }
   const clickItem = (fn: () => void) => () => {
@@ -171,14 +195,21 @@ export function LayoutCanvas(p: Props) {
     <div className={styles.stage} ref={stageRef}>
       <svg
         ref={svgRef}
-        className={[styles.svg, panning ? styles.panning : "", p.mode === "point" && !p.readOnly ? styles.crosshair : ""].join(" ")}
+        className={[styles.svg, panning ? styles.panning : "", (p.mode === "point" || p.mode === "route") && !p.readOnly ? styles.crosshair : ""].join(" ")}
         role="group"
-        aria-label={`배치판 도면(단위 m, 원점 왼쪽 위). ${p.mode === "point" ? "빈 곳을 누르면 점을 추가합니다." : p.mode === "route" ? "경로에 넣을 점을 순서대로 누릅니다." : "점·배치를 끌거나 선택한 뒤 화살표 키로 옮깁니다."}`}
+        aria-label={`배치판 도면(단위 m, 원점 왼쪽 위). ${p.mode === "point" ? "빈 곳을 누르면 점을 추가합니다." : p.mode === "route" ? "경로 그리기: 빈 곳을 누르면 점이 생기고, 기존 점·설비를 누르면 그곳으로 잇습니다. 더블클릭이나 Enter로 끝냅니다." : "점·배치를 끌거나 선택한 뒤 화살표 키로 옮깁니다."}`}
         onPointerDown={onBgDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onClick={onBgClick}
+        onDoubleClick={(e) => {
+          if (p.mode === "route" && !p.readOnly) {
+            e.preventDefault();
+            p.onRouteFinish();
+          }
+        }}
+        onPointerLeave={() => setHover(null)}
       >
         <rect data-bg="1" x="-100000" y="-100000" width="200000" height="200000" fill="transparent" />
         {p.background && (
@@ -207,8 +238,20 @@ export function LayoutCanvas(p: Props) {
               aria-pressed={p.selected === t}
               aria-label={`배치 ${name}${unknown ? " (크기 모름)" : ""}${pl.rotation.trim() === "" ? " (회전 모름)" : ""}${p.errorTargets.has(t) ? " (오류 있음)" : ""}`}
               onPointerDown={(e) => onItemDown(e, "placement", pl.assetId, pl.x, pl.y)}
-              onClick={clickItem(() => p.mode !== "route" && p.onSelect(t))}
-              onKeyDown={(e) => onItemKey(e, () => p.onSelect(t), (dx, dy) => p.onMovePlacement(pl.assetId, coord(Number(pl.x) + dx), coord(Number(pl.y) + dy)))}
+              onClick={(e) => {
+                if (suppressClick.current) return;
+                if (p.mode === "route" && !p.readOnly) {
+                  const w = toWorld(e.clientX, e.clientY);
+                  p.onRouteClick(w.x, w.y, pl.assetId);
+                } else if (p.mode !== "route") p.onSelect(t);
+              }}
+              onKeyDown={(e) =>
+                onItemKey(
+                  e,
+                  () => (p.mode === "route" && !p.readOnly ? p.onRouteClick(Number(pl.x), Number(pl.y), pl.assetId) : p.onSelect(t)),
+                  (dx, dy) => p.onMovePlacement(pl.assetId, coord(Number(pl.x) + dx), coord(Number(pl.y) + dy)),
+                )
+              }
             >
               <rect x={-w / 2} y={-h / 2} width={w} height={h} />
               {/* 크기 모름 표식은 작아서 글자는 표식 아래에 둔다(점 이름과 겹치지 않게). 사각형이 글자보다 작으면(축소 시) 글자를 숨기고
@@ -244,6 +287,25 @@ export function LayoutCanvas(p: Props) {
                 tabIndex={0}
                 aria-label={`경로 ${r.key}${r.mode ? ` (${r.mode})` : ""}: ${r.points.join(" → ")}${p.errorTargets.has(t) ? " (오류 있음)" : ""}`}
                 onClick={clickItem(() => p.mode !== "route" && p.onSelect(t))}
+                onDoubleClick={(e) => {
+                  if (p.mode !== "select" || p.readOnly) return;
+                  e.stopPropagation();
+                  const w = toWorld(e.clientX, e.clientY);
+                  const pts = r.points.map((key) => pointByKey.get(key)).map((pt) => (pt ? { x: Number(pt.x), y: Number(pt.y) } : null));
+                  let best = -1;
+                  let bestD = Infinity;
+                  for (let i = 1; i < pts.length; i++) {
+                    const a = pts[i - 1];
+                    const b = pts[i];
+                    if (!a || !b) continue;
+                    const dist = distSeg(w, a, b);
+                    if (dist < bestD) {
+                      bestD = dist;
+                      best = i;
+                    }
+                  }
+                  if (best > 0) p.onInsertOnRoute(r.key, best, w.x, w.y);
+                }}
                 onKeyDown={(e) => onItemKey(e as unknown as KeyboardEvent<SVGGElement>, () => p.onSelect(t))}
               />
               <polyline points={pts} className={cls(styles.route, t)} />
@@ -257,6 +319,16 @@ export function LayoutCanvas(p: Props) {
           );
         })}
         {p.routeDraft.length > 0 && <polyline points={polyline(p.routeDraft)} className={styles.routeDraft} aria-hidden="true" />}
+        {p.mode === "route" && hover && pointByKey.get(p.routeDraft[p.routeDraft.length - 1] ?? "") && (
+          <line
+            x1={X(Number(pointByKey.get(p.routeDraft[p.routeDraft.length - 1]!)!.x))}
+            y1={Y(Number(pointByKey.get(p.routeDraft[p.routeDraft.length - 1]!)!.y))}
+            x2={X(hover.x)}
+            y2={Y(hover.y)}
+            className={styles.routeDraft}
+            aria-hidden="true"
+          />
+        )}
 
         {doc.points.map((pt) => {
           const t: Target = `point:${pt.key}`;

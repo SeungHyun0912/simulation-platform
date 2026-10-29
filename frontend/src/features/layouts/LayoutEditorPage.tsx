@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useDataSource } from "../../shared/api/ApiContext";
 import { ApiError, classifyError, toIssues } from "../../shared/api/errors";
@@ -25,11 +25,18 @@ import {
   addPlacement,
   addPoint,
   backgroundOf,
+  insertRoutePoint,
+  mapPort,
+  nearestPoint,
+  pointOfPort,
+  removePoint,
+  upsertRoute,
   extentOf,
   fromVersion,
   patchPlacement,
   patchPoint,
   sameContent,
+  nextRouteKey,
   saveIssueTarget,
   toContentIn,
   validateDoc,
@@ -80,6 +87,9 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   const navigate = useNavigate();
   const [server, setServer] = useState(initial);
   const [doc, setDoc] = useState<LayoutDoc>(() => fromVersion(initial));
+  // 되돌리기·다시 하기(참고 라벨러와 같은 Ctrl+Z / Ctrl+Y). 끌기는 시작할 때 한 번만 기록한다.
+  const [past, setPast] = useState<LayoutDoc[]>([]);
+  const [future, setFuture] = useState<LayoutDoc[]>([]);
   const [header, setHeader] = useState<HeaderDraft>(() => headerOf(initial));
   const [selected, setSelected] = useState<Target | null>(null);
   const [mode, setMode] = useState<CanvasMode>("select");
@@ -105,6 +115,30 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   const extent = extentOf(doc, server.canvas_width_m, server.canvas_height_m, bg);
   const [viewport, setViewport] = useState<Viewport>(() => fitViewport(extent));
   const onViewport = useCallback((next: Viewport) => setViewport(next), []);
+  // 키보드(입력 칸 밖에서만): 경로 그리기 Enter 끝내기·Backspace 마지막 점 빼기·Esc 취소, Ctrl+Z / Ctrl+Y 되돌리기·다시 하기
+  const keyRef = { routeFinish, routeRemoveLast, routeCancel, undo, redo, drawing: !!routeDraft, editable };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      const k = keyRef;
+      if (!k.editable) return;
+      if (k.drawing) {
+        if (e.key === "Enter") k.routeFinish();
+        else if (e.key === "Backspace") k.routeRemoveLast();
+        else if (e.key === "Escape") k.routeCancel();
+        else return;
+        e.preventDefault();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) k.undo();
+      else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) k.redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // 매 렌더 최신 상태로 다시 건다(가벼운 창 이벤트 하나)
 
   const errorTargets = useMemo(() => {
     const s = new Set<string>(issues?.targets ?? []);
@@ -119,10 +153,140 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
     setHeader((h) => (content ? h : headerOf(v)));
   };
   const change = (next: LayoutDoc) => {
+    setPast((p) => [...p.slice(-99), doc]);
+    setFuture([]);
     setDoc(next);
     setNotice(null);
     setValidation(null);
   };
+  /** 끌기 중 이동: 기록 없이 바꾼다(시작할 때 onEditStart가 한 번 기록) */
+  const moveSilently = (next: LayoutDoc) => {
+    setDoc(next);
+    setValidation(null);
+  };
+  function undo() {
+    const prev = past[past.length - 1];
+    if (!prev || routeDraft) return;
+    setPast(past.slice(0, -1));
+    setFuture([doc, ...future]);
+    setDoc(prev);
+  }
+  function redo() {
+    const next = future[0];
+    if (!next || routeDraft) return;
+    setFuture(future.slice(1));
+    setPast([...past, doc]);
+    setDoc(next);
+  }
+
+  /* ---- 경로 그리기: 점은 클릭한 자리에 자동으로 만들고, 가까운 기존 점·설비의 포트 점을 쓴다 ---- */
+  const snapTol = 12 / (PX_PER_M * viewport.zoom); // 화면 12px 안의 기존 점은 그 점을 쓴다
+  const portFor = (assetId: string, start: boolean) => {
+    const ports = assets.byId.get(assetId)?.ports ?? [];
+    const order = start ? ["OUT", "ACCESS"] : ["IN", "ACCESS"];
+    for (const role of order) {
+      const hit = ports.find((pt) => pt.role === role);
+      if (hit) return hit;
+    }
+    return ports[0] ?? null;
+  };
+  function routeClick(x: number, y: number, placementId: string | null) {
+    const d = routeDraft;
+    if (!d) return;
+    let next = doc;
+    let key: string | null = null;
+    const created = [...d.created];
+    let { fromPortId, toPortId } = d;
+    if (placementId) {
+      const start = d.points.length === 0;
+      const port = portFor(placementId, start);
+      if (port) {
+        key = pointOfPort(next, port.id) || null;
+        if (!key) {
+          const r = addPoint(next, x, y);
+          next = mapPort(r.doc, port.id, r.key);
+          key = r.key;
+          created.push(r.key);
+        }
+        if (start) fromPortId = fromPortId || port.id;
+        else toPortId = port.id;
+      }
+    }
+    key ??= nearestPoint(next, x, y, snapTol);
+    if (!key) {
+      const r = addPoint(next, x, y);
+      next = r.doc;
+      key = r.key;
+      created.push(r.key);
+    }
+    if (d.points[d.points.length - 1] === key) return;
+    if (next !== doc) moveSilently(next);
+    setRouteDraft({ ...d, points: [...d.points, key], fromPortId, toPortId, created, message: null });
+  }
+  function routeAppend(key: string) {
+    const d = routeDraft;
+    if (!d || d.points[d.points.length - 1] === key) return;
+    setRouteDraft({ ...d, points: [...d.points, key], message: null });
+  }
+  /** 마지막 점 빼기: 이 그리기에서 자동으로 만든 점이면 점(과 그때 만든 포트 연결)도 지운다 */
+  function routeRemoveLast() {
+    const d = routeDraft;
+    if (!d || d.points.length === 0) return;
+    const last = d.points[d.points.length - 1]!;
+    const points = d.points.slice(0, -1);
+    if (d.created.includes(last) && !points.includes(last)) moveSilently(removePoint(doc, last));
+    setRouteDraft({ ...d, points, created: d.created.filter((k) => k !== last || points.includes(last)), message: null });
+  }
+  function routeCancel() {
+    if (routeDraft?.base) setDoc(routeDraft.base);
+    setRouteDraft(null);
+    setMode("select");
+  }
+  /** 끝내기: 출발·도착 포트를 고르지 않았으면 첫·끝 점에 연결된 포트로 채운다. 그래도 없으면 안내하고 계속 그린다. */
+  function routeFinish() {
+    const d = routeDraft;
+    if (!d) return;
+    const pick = (pointKey: string | undefined, roles: string[]) => {
+      const here = doc.portPoints.filter((m) => m.pointKey === pointKey).map((m) => assets.portById.get(m.portId)).filter((x): x is NonNullable<typeof x> => !!x);
+      for (const role of roles) {
+        const hit = here.find((h) => h.port.role === role);
+        if (hit) return hit.port.id;
+      }
+      return here[0]?.port.id ?? "";
+    };
+    const fromPortId = d.fromPortId || pick(d.points[0], ["OUT", "ACCESS"]);
+    const toPortId = d.toPortId || pick(d.points[d.points.length - 1], ["IN", "ACCESS"]);
+    const key = d.key.trim() || (d.editingKey ?? nextRouteKey(doc));
+    const msg =
+      d.points.length < 2
+        ? "점을 2개 이상 찍어야 경로가 됩니다."
+        : !fromPortId || !toPortId
+          ? "출발·도착 포트를 고르세요(설비·공간을 누르면 자동으로 정해집니다)."
+          : key !== d.editingKey && doc.routes.some((r) => r.key === key)
+            ? "같은 이름의 경로가 있습니다."
+            : null;
+    if (msg) return setRouteDraft({ ...d, fromPortId, toPortId, message: msg });
+    const old = d.editingKey ? doc.routes.find((r) => r.key === d.editingKey) : undefined;
+    const next = upsertRoute(doc, { key, fromPortId, toPortId, mode: d.mode, points: d.points, attributes: old?.attributes ?? {} }, d.editingKey ?? undefined);
+    setPast((p) => [...p.slice(-99), d.base ?? doc]); // 경로 하나를 되돌리기 한 번으로
+    setFuture([]);
+    setDoc(next);
+    setValidation(null);
+    setSelected(`route:${key}`);
+    setRouteDraft(null);
+    setMode("select");
+  }
+  function insertOnRoute(routeKey: string, index: number, x: number, y: number) {
+    let next = doc;
+    let key = nearestPoint(next, x, y, snapTol);
+    if (!key) {
+      const r = addPoint(next, x, y);
+      next = r.doc;
+      key = r.key;
+    }
+    change(insertRoutePoint(next, routeKey, index, key));
+    setSelected(`point:${key}`);
+  }
 
   async function save() {
     setShowErrors(true);
@@ -227,7 +391,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   const startRoute = () => {
     setMode("route");
     setSelected(null);
-    setRouteDraft((d) => d ?? { editingKey: null, key: "", fromPortId: "", toPortId: "", mode: "", points: [] });
+    setRouteDraft((d) => d ?? { editingKey: null, key: "", fromPortId: "", toPortId: "", mode: "", points: [], base: doc, created: [], message: null });
   };
   const centerPlace = (assetId: string) => {
     change(addPlacement(doc, assetId, extent.w / 2, extent.h / 2));
@@ -287,12 +451,12 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
 
       <Section id="sec-layout-canvas" title="도면">
         <FilterBar>
-          <Button aria-pressed={mode === "select"} onClick={() => { setMode("select"); setRouteDraft(null); }}>
+          <Button aria-pressed={mode === "select"} onClick={() => (routeDraft ? routeCancel() : setMode("select"))}>
             선택·이동
           </Button>
           {editable && (
             <>
-              <Button aria-pressed={mode === "point"} onClick={() => { setMode("point"); setRouteDraft(null); }}>
+              <Button aria-pressed={mode === "point"} onClick={() => { if (routeDraft) routeCancel(); setMode("point"); }}>
                 점 추가
               </Button>
               <Button aria-pressed={mode === "route"} onClick={startRoute}>
@@ -307,6 +471,16 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
             −
           </Button>
           <Button onClick={() => setViewport(fitViewport(extent))}>전체 보기</Button>
+          {editable && (
+            <>
+              <Button onClick={undo} disabled={past.length === 0 || !!routeDraft} title="Ctrl+Z">
+                ↺ 되돌리기
+              </Button>
+              <Button onClick={redo} disabled={future.length === 0 || !!routeDraft} title="Ctrl+Y">
+                다시 하기
+              </Button>
+            </>
+          )}
         </FilterBar>
         {bgReason && <Note>{bgReason}</Note>}
         <Note>
@@ -331,9 +505,16 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
             change(r.doc);
             setSelected(`point:${r.key}`);
           }}
-          onRoutePoint={(key) => setRouteDraft((d) => (d && d.points[d.points.length - 1] !== key ? { ...d, points: [...d.points, key] } : d))}
-          onMovePoint={(key, x, y) => change(patchPoint(doc, key, { x, y }))}
-          onMovePlacement={(assetId, x, y) => change(patchPlacement(doc, assetId, { x, y }))}
+          onRoutePoint={routeAppend}
+          onRouteClick={routeClick}
+          onRouteFinish={routeFinish}
+          onInsertOnRoute={insertOnRoute}
+          onEditStart={() => {
+            setPast((p) => [...p.slice(-99), doc]);
+            setFuture([]);
+          }}
+          onMovePoint={(key, x, y) => moveSilently(patchPoint(doc, key, { x, y }))}
+          onMovePlacement={(assetId, x, y) => moveSilently(patchPlacement(doc, assetId, { x, y }))}
         />
         {mode === "route" && routeDraft && editable && (
           <RouteDraftPanel
@@ -341,16 +522,10 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
             draft={routeDraft}
             assets={assets}
             onChange={setRouteDraft}
-            onDone={(next) => {
-              change(next.doc);
-              setSelected(`route:${next.key}`);
-              setRouteDraft(null);
-              setMode("select");
-            }}
-            onCancel={() => {
-              setRouteDraft(null);
-              setMode("select");
-            }}
+            onAppend={routeAppend}
+            onRemoveLast={routeRemoveLast}
+            onFinish={routeFinish}
+            onCancel={routeCancel}
           />
         )}
         {selected && mode !== "route" && (
@@ -365,7 +540,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
             onSelect={setSelected}
             onRedrawRoute={(r) => {
               setMode("route");
-              setRouteDraft({ editingKey: r.key, key: r.key, fromPortId: r.fromPortId, toPortId: r.toPortId, mode: r.mode, points: [] });
+              setRouteDraft({ editingKey: r.key, key: r.key, fromPortId: r.fromPortId, toPortId: r.toPortId, mode: r.mode, points: [], base: doc, created: [], message: null });
             }}
           />
         )}
