@@ -75,6 +75,30 @@ describe.skipIf(!LIVE)("실데이터 배치판(DEMO-WIRE v1 승인본, 설비 96
   });
 });
 
+describe.skipIf(!LIVE)("실데이터 배치판 v2(DEMO-WIRE, 설비 96 + 저장공간 22) 읽기", () => {
+  // Backend 안내(2026-10-29): v2 = c9eeef72…, 공간을 먼저·설비를 위에, 설비 46대에 inside_space(위치로 계산한 소속 공간 코드)
+  const VID = "c9eeef72-ed6c-40d1-b2a5-4459138285c3";
+  it("118개 배치를 그리고 공간이 설비보다 먼저(아래) 그려지며, 소속 공간을 inside_space로 보인다", { timeout: 60_000 }, async (ctx) => {
+    const me = await json<{ projects: { id: string; code: string }[] }>("/me");
+    const wire = me.projects.find((p) => p.code === "DEMO-WIRE")?.id;
+    if (!wire) return ctx.skip();
+    const r = await realFetch()(`/api/v1/projects/${wire}/layout-versions/${VID}`);
+    if (r.status === 404) return ctx.skip();
+    const v = ((await r.json()) as { data: { placements: { asset_code: string; asset_name: string; asset_kind: string; attributes: Record<string, unknown> }[] } }).data;
+    const user = userEvent.setup();
+    renderApp(`/projects/${wire}/layouts/${VID}`, { source: "api", fetchImpl: realFetch() });
+    expect(await screen.findByText(new RegExp(`배치 ${v.placements.length} · 경로 0`), {}, slow)).toBeInTheDocument();
+    const buttons = within(screen.getByRole("group", { name: /배치판 도면/ })).getAllByRole("button", { name: /^배치 / });
+    const firstEq = buttons.findIndex((b) => /^배치 EQ-/.test(b.getAttribute("aria-label") ?? ""));
+    const lastSpace = buttons.map((b) => /^배치 (ST|DK)-/.test(b.getAttribute("aria-label") ?? "")).lastIndexOf(true);
+    expect(lastSpace).toBeLessThan(firstEq);
+    const eq = v.placements.find((p) => typeof p.attributes.inside_space === "string")!;
+    await user.click(screen.getByRole("button", { name: `배치 ${eq.asset_code} 선택` }));
+    const panel = screen.getByRole("region", { name: `배치 ${eq.asset_code} ${eq.asset_name} 속성` });
+    expect(within(panel).getByLabelText("소속 공간")).toHaveTextContent(`소속 공간: ${String(eq.attributes.inside_space)}`);
+  });
+});
+
 describe.skipIf(!LIVE || !WRITE)("배치판 실서버 쓰기 (DEMO-A 초안 하나)", () => {
   it("초안을 만들거나 이어 쓰고, 점·배치·포트 매핑·경로를 저장한 뒤 서버 반올림 값과 경로 길이를 보고 검증한다", { timeout: 120_000 }, async (ctx) => {
     if (!demoA) return ctx.skip();

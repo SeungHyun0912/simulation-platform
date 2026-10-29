@@ -389,3 +389,25 @@ describe("경로 그리기 고도화(참고 라벨러 방식: 점 자동 생성�
     expect(screen.getByRole("table", { name: "경로 목록" })).toHaveTextContent("R2");
   });
 });
+
+describe("저장공간이 있는 배치판(실데이터 v2 모양)", () => {
+  it("공간을 먼저·설비를 위에 그리고, 소속 공간(inside_space)을 보여 주며 그 공간을 고를 수 있다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    const v2 = server.state.layouts.versions.find((v) => v.id === layoutVersionId(2))!;
+    // 설비를 공간 안에 둔다(정렬은 응답 순서 = 자산 코드 순: EQ가 ST보다 앞)
+    v2.placements[0]!.attributes = { inside: "ST42", inside_space: "ST-041" };
+    v2.placements[1] = { ...v2.placements[1]!, x_m: "8.0", y_m: "5.0", width_m: "10.0", height_m: "6.0" };
+    open(editor(2), server);
+    await ready();
+    const space = screen.getByRole("button", { name: /^배치 ST-041 서버 공간 41/ });
+    const eq = screen.getByRole("button", { name: /^배치 EQ-001 서버 설비 1/ });
+    expect(space.compareDocumentPosition(eq) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // 설비가 나중(위)에 그려짐
+    expect(within(screen.getByRole("table", { name: "배치 목록" })).getByText("ST-041")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "배치 EQ-001 선택" }));
+    const panel = screen.getByRole("region", { name: /배치 EQ-001 .* 속성/ });
+    expect(within(panel).getByLabelText("소속 공간")).toHaveTextContent("소속 공간: ST-041 서버 공간 41");
+    await user.click(within(panel).getByRole("button", { name: "소속 공간 선택" }));
+    expect(screen.getByRole("region", { name: /배치 ST-041 .* 속성/ })).toBeInTheDocument();
+  });
+});

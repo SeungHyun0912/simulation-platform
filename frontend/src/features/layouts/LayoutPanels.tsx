@@ -6,6 +6,7 @@ import { SelectField, TextAreaField, TextField } from "../../shared/components/F
 import { FieldGrid, FilterBar, Note } from "../../shared/components/Layout";
 import { StateNotice } from "../../shared/components/StateNotice";
 import {
+  insideSpaceOf,
   mapPort,
   nextRouteKey,
   removePoints,
@@ -324,6 +325,14 @@ export function SelectionPanel({
           <TextField label="세로(m)" value={pl.height} disabled={!editable} error={err("height")} hint={pl.height.trim() ? "y 방향, 회전 전" : "모름(비움)"} onChange={(e) => set({ height: e.target.value })} />
           <TextField label="회전(도)" value={pl.rotation} disabled={!editable} error={err("rotation")} hint={pl.rotation.trim() ? "중심 기준 시계 방향 +" : "모름(비움) — 도면에는 0도로 그립니다"} onChange={(e) => set({ rotation: e.target.value })} />
         </FieldGrid>
+        {insideSpaceOf(pl) && (
+          <p aria-label="소속 공간">
+            소속 공간: {insideSpaceOf(pl)} {assets.byId.get(assets.idByCode.get(insideSpaceOf(pl)!) ?? "")?.name ?? ""}{" "}
+            {assets.idByCode.get(insideSpaceOf(pl)!) && doc.placements.some((x) => x.assetId === assets.idByCode.get(insideSpaceOf(pl)!)) && (
+              <Button onClick={() => onSelect(`placement:${assets.idByCode.get(insideSpaceOf(pl)!)!}`)}>소속 공간 선택</Button>
+            )}
+          </p>
+        )}
         {Object.keys(pl.attributes).length > 0 && (
           <details>
             <summary>원본 값(attributes)</summary>
@@ -482,6 +491,7 @@ export function LayoutTables({
     { key: "w", header: "가로", align: "end", render: (p) => unknownText(p.width, " m") },
     { key: "h", header: "세로", align: "end", render: (p) => unknownText(p.height, " m") },
     { key: "r", header: "회전", align: "end", render: (p) => unknownText(p.rotation, "°") },
+    ...(doc.placements.some((p) => insideSpaceOf(p)) ? [{ key: "inside", header: "소속 공간", render: (p: LayoutDoc["placements"][number]) => insideSpaceOf(p) ?? "" }] : []),
     { key: "pick", header: "", render: (p) => pick(`placement:${p.assetId}`, `배치 ${assets.byId.get(p.assetId)?.code ?? p.assetId.slice(0, 8)}`) },
   ];
   const routeCols: Column<LayoutDoc["routes"][number]>[] = [

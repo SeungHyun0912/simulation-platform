@@ -378,3 +378,9 @@ export function extentOf(d: LayoutDoc, canvasW: string | null | undefined, canva
   }
   return { w: Math.max(w, 10), h: Math.max(h, 10) };
 }
+
+/**
+ * 소속 공간: Backend가 위치로 계산한 공간 코드(`attributes.inside_space`, 예 "ST-013"). 원본 `inside`("ST14" 등)는 번호가 어긋나 있어 원문으로만 보인다
+ * (Backend 안내 2026-10-29). 없으면 null.
+ */
+export const insideSpaceOf = (p: LayoutPlacement): string | null => (typeof p.attributes.inside_space === "string" && p.attributes.inside_space ? p.attributes.inside_space : null);

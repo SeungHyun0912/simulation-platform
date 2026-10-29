@@ -221,7 +221,10 @@ export function LayoutCanvas(p: Props) {
           (0, 0) · 격자 {step} m
         </text>
 
-        {doc.placements.map((pl) => {
+        {/* 공간을 먼저, 설비를 위에 그린다(설비가 대기 공간 안에 놓인 실데이터: 예 CU 편조기 40대가 ST-013 안). 클릭도 위의 설비가 받는다. */}
+        {[...doc.placements]
+          .sort((a, b) => Number(p.assetById.get(a.assetId)?.kind === "equipment") - Number(p.assetById.get(b.assetId)?.kind === "equipment"))
+          .map((pl) => {
           const a = p.assetById.get(pl.assetId);
           const unknown = !(Number(pl.width) > 0) || !(Number(pl.height) > 0);
           const w = (Number(pl.width) > 0 ? Number(pl.width) : UNKNOWN_SIZE_M) * k;
