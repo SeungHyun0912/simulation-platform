@@ -1,7 +1,7 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.16.2, openapi_sha256 4b35e3db69865b6741eec94afce69af10ba0855c0a4af12782cafb09d84d367f
-// 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs
+// 기준 계약: version 0.17.0, openapi_sha256 71906840a4b8deafdc76bc45763e3051e5241c3c388fe72ac9c9155e6fca9fc7
+// 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs, layouts
 
 export interface paths {
     "/api/v1/health": {
@@ -291,6 +291,117 @@ export interface paths {
         get: operations["list_asset_uses_api_v1_projects__project_id__assets__asset_id__uses_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/layout-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Layout Versions
+         * @description 배치판 목록(최신 version_no부터).
+         */
+        get: operations["list_layout_versions_api_v1_projects__project_id__layout_versions_get"];
+        put?: never;
+        /**
+         * Create Layout Version
+         * @description 새 초안. `from_version_id`(모든 상태) 또는 가장 최근 승인본의 내용(점·배치·포트 매핑·경로)을 복사하고, 둘 다 없으면
+         *     빈 초안이다. 프로젝트당 초안은 하나뿐이다(409 LAYOUT_DRAFT_EXISTS).
+         */
+        post: operations["create_layout_version_api_v1_projects__project_id__layout_versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Layout Version
+         * @description 배치판 전체: 좌표계, 점, 설비·공간 배치, 포트 → 점 매핑, 경로(점 key 순서와 계산한 길이).
+         */
+        get: operations["get_layout_version_api_v1_projects__project_id__layout_versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Layout Version
+         * @description 초안의 이름·메모·도면 크기·확장 속성 수정(보낸 필드만). 승인본은 409 VERSION_IMMUTABLE.
+         */
+        patch: operations["patch_layout_version_api_v1_projects__project_id__layout_versions__version_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Layout Version
+         * @description draft → approved(project admin). 검증 오류가 있으면 422 LAYOUT_VALIDATION_FAILED. 승인 후 내용은 바꿀 수 없다.
+         */
+        post: operations["approve_layout_version_api_v1_projects__project_id__layout_versions__version_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Layout Content
+         * @description 초안의 점·배치·포트 매핑·경로를 통째로 교체한다. 좌표·크기는 소수 첫째 자리로 반올림해 저장한다. 구조 오류(중복 key,
+         *     없는 점·자산·포트, 점 2개 미만 경로 등)는 422이고, 승인 가능 여부는 `validate`가 따로 판정한다.
+         */
+        put: operations["put_layout_content_api_v1_projects__project_id__layout_versions__version_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Layout Version
+         * @description 승인 전 검증(저장하지 않음). 경로의 첫·끝 점이 출발·도착 포트의 점인지(오류), 배치되지 않은 자산의 포트·도면 밖·
+         *     크기 모름(경고). 오류가 있어도 검증이 정상 수행되면 200이다.
+         */
+        post: operations["validate_layout_version_api_v1_projects__project_id__layout_versions__version_id__validate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1574,6 +1685,49 @@ export interface components {
             /** Rule Id */
             rule_id: string;
         };
+        /** CoordinateSystemOut */
+        CoordinateSystemOut: {
+            /**
+             * Anchor
+             * @description 설비·공간의 x·y는 중심
+             * @default center
+             * @constant
+             */
+            anchor: "center";
+            /**
+             * Origin
+             * @description 도면 왼쪽 위(11시 방향)
+             * @default top_left
+             * @constant
+             */
+            origin: "top_left";
+            /**
+             * Precision
+             * @description 소수 첫째 자리까지, 그 아래는 반올림
+             * @default 0.1
+             * @constant
+             */
+            precision: "0.1";
+            /**
+             * Unit
+             * @default m
+             * @constant
+             */
+            unit: "m";
+            /**
+             * X Axis
+             * @default right
+             * @constant
+             */
+            x_axis: "right";
+            /**
+             * Y Axis
+             * @description y는 아래쪽으로 커진다(이미지 좌표)
+             * @default down
+             * @constant
+             */
+            y_axis: "down";
+        };
         /**
          * CountMeasure
          * @description 단위 수·가닥 수. known만 값(1 이상 정수, JSON integer)을 가진다.
@@ -2100,6 +2254,199 @@ export interface components {
             severity: "error" | "warning";
         };
         JsonValue: unknown;
+        /**
+         * LayoutContentIn
+         * @description 배치판 내용 전체(보낸 내용으로 통째로 교체).
+         */
+        LayoutContentIn: {
+            /** Placements */
+            placements?: components["schemas"]["PlacementIn"][];
+            /** Points */
+            points?: components["schemas"]["LayoutPointIn"][];
+            /** Port Points */
+            port_points?: components["schemas"]["PortPointIn"][];
+            /** Routes */
+            routes?: components["schemas"]["RouteIn"][];
+        };
+        /** LayoutIssueOut */
+        LayoutIssueOut: {
+            /** Field Path */
+            field_path: string;
+            /** Message */
+            message: string;
+            /** Rule Id */
+            rule_id: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+        };
+        /** LayoutPointIn */
+        LayoutPointIn: {
+            /** Attributes */
+            attributes?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Point Key
+             * @description 배치판 안에서 유일한 점 이름(예: P1)
+             */
+            point_key: string;
+            /** X M */
+            x_m: string;
+            /** Y M */
+            y_m: string;
+        };
+        /** LayoutPointOut */
+        LayoutPointOut: {
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Point Key */
+            point_key: string;
+            /** X M */
+            x_m: string;
+            /** Y M */
+            y_m: string;
+        };
+        /** LayoutValidationOut */
+        LayoutValidationOut: {
+            /**
+             * Approvable
+             * @description 오류가 0이면 승인할 수 있다(경고는 막지 않는다)
+             */
+            approvable: boolean;
+            /** Error Count */
+            error_count: number;
+            /** Issues */
+            issues: components["schemas"]["LayoutIssueOut"][];
+            /**
+             * Layout Version Id
+             * Format: uuid
+             */
+            layout_version_id: string;
+            /** Warning Count */
+            warning_count: number;
+        };
+        /** LayoutVersionCreate */
+        LayoutVersionCreate: {
+            /**
+             * From Version Id
+             * @description 복사할 배치판(모든 상태). 없으면 가장 최근 승인본, 그것도 없으면 빈 초안
+             */
+            from_version_id?: string | null;
+        };
+        /** LayoutVersionListItem */
+        LayoutVersionListItem: {
+            /** Approved At */
+            approved_at?: string | null;
+            /** Base Version Id */
+            base_version_id?: string | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Row Version */
+            row_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved";
+            /** Updated At */
+            updated_at?: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /** LayoutVersionOut */
+        LayoutVersionOut: {
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Base Version Id */
+            base_version_id?: string | null;
+            /** Canvas Height M */
+            canvas_height_m?: string | null;
+            /** Canvas Width M */
+            canvas_width_m?: string | null;
+            coordinate_system?: components["schemas"]["CoordinateSystemOut"];
+            /** Created At */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Placements */
+            placements: components["schemas"]["PlacementOut"][];
+            /** Points */
+            points: components["schemas"]["LayoutPointOut"][];
+            /** Port Points */
+            port_points: components["schemas"]["PortPointOut"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Routes */
+            routes: components["schemas"]["RouteOut"][];
+            /** Row Version */
+            row_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved";
+            /** Updated At */
+            updated_at?: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /** LayoutVersionPatch */
+        LayoutVersionPatch: {
+            /**
+             * Attributes
+             * @description 확장 속성. 통째로 교체. 약속 키 `background` = {url, width_px, height_px, m_per_px}(선택, 서버는 검사하지 않음)
+             */
+            attributes?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+            /**
+             * Canvas Height M
+             * @description 도면 세로(m). 모르면 null
+             */
+            canvas_height_m?: string | null;
+            /**
+             * Canvas Width M
+             * @description 도면 가로(m). 모르면 null
+             */
+            canvas_width_m?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
         /** LineageLinkOut */
         LineageLinkOut: {
             /**
@@ -2206,6 +2553,12 @@ export interface components {
         ListOut_EventOut_: {
             /** Data */
             data: components["schemas"]["EventOut"][];
+            page: components["schemas"]["Page"];
+        };
+        /** ListOut[LayoutVersionListItem] */
+        ListOut_LayoutVersionListItem_: {
+            /** Data */
+            data: components["schemas"]["LayoutVersionListItem"][];
             page: components["schemas"]["Page"];
         };
         /** ListOut[MaterialOut] */
@@ -2671,6 +3024,71 @@ export interface components {
              */
             scaling: "unknown" | "linear";
         };
+        /** PlacementIn */
+        PlacementIn: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Attributes */
+            attributes?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Height M
+             * @description 회전 전 세로(y 방향). 모르면 null
+             */
+            height_m?: string | null;
+            /**
+             * Rotation Deg
+             * @description 중심 기준 회전(도, 0 이상 360 미만). y가 아래쪽인 화면에서 시계 방향이 +. 모르면 null(0으로 그림)
+             */
+            rotation_deg?: string | null;
+            /**
+             * Width M
+             * @description 회전 전 가로(x 방향). 모르면 null
+             */
+            width_m?: string | null;
+            /**
+             * X M
+             * @description 중심 x
+             */
+            x_m: string;
+            /**
+             * Y M
+             * @description 중심 y
+             */
+            y_m: string;
+        };
+        /** PlacementOut */
+        PlacementOut: {
+            /** Asset Code */
+            asset_code: string;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Asset Kind */
+            asset_kind: string;
+            /** Asset Name */
+            asset_name: string;
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Height M */
+            height_m?: string | null;
+            /** Rotation Deg */
+            rotation_deg?: string | null;
+            /** Width M */
+            width_m?: string | null;
+            /** X M */
+            x_m: string;
+            /** Y M */
+            y_m: string;
+        };
         /** PortOut */
         PortOut: {
             /**
@@ -2687,6 +3105,41 @@ export interface components {
              * @enum {string}
              */
             role: "IN" | "OUT" | "ACCESS";
+        };
+        /** PortPointIn */
+        PortPointIn: {
+            /** Point Key */
+            point_key: string;
+            /**
+             * Port Id
+             * Format: uuid
+             * @description 설비 IN/OUT 또는 공간 ACCESS 포트
+             */
+            port_id: string;
+        };
+        /** PortPointOut */
+        PortPointOut: {
+            /** Asset Code */
+            asset_code: string;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Point Key */
+            point_key: string;
+            /**
+             * Port Id
+             * Format: uuid
+             */
+            port_id: string;
+            /** Port Key */
+            port_key: string;
+            /**
+             * Role
+             * @description IN·OUT(설비) 또는 ACCESS(공간)
+             */
+            role: string;
         };
         /** PortPolicyOut */
         PortPolicyOut: {
@@ -3508,6 +3961,73 @@ export interface components {
              */
             utilization?: string | null;
         };
+        /** RouteIn */
+        RouteIn: {
+            /** Attributes */
+            attributes?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * From Port Id
+             * Format: uuid
+             */
+            from_port_id: string;
+            /**
+             * Mode
+             * @description 이동 수단(열린 목록, 예: forklift·amr·manual). 정하지 않으면 null
+             */
+            mode?: string | null;
+            /**
+             * Points
+             * @description 지나는 점 key 순서(직선 구간의 이음). 첫 점 = 출발 포트의 점, 끝 점 = 도착 포트의 점
+             */
+            points: string[];
+            /** Route Key */
+            route_key: string;
+            /**
+             * To Port Id
+             * Format: uuid
+             */
+            to_port_id: string;
+        };
+        /** RouteOut */
+        RouteOut: {
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * From Asset Id
+             * Format: uuid
+             */
+            from_asset_id: string;
+            /**
+             * From Port Id
+             * Format: uuid
+             */
+            from_port_id: string;
+            /**
+             * Length M
+             * @description 연속한 점 사이 직선 거리의 합(소수 첫째 자리, 계산값)
+             */
+            length_m: string;
+            /** Mode */
+            mode?: string | null;
+            /** Points */
+            points: string[];
+            /** Route Key */
+            route_key: string;
+            /**
+             * To Asset Id
+             * Format: uuid
+             */
+            to_asset_id: string;
+            /**
+             * To Port Id
+             * Format: uuid
+             */
+            to_port_id: string;
+        };
         /** RunComparisonOut */
         RunComparisonOut: {
             base_end_time?: components["schemas"]["MinutesOut"] | null;
@@ -4023,6 +4543,14 @@ export interface components {
         /** Single[GraphOut] */
         Single_GraphOut_: {
             data: components["schemas"]["GraphOut"];
+        };
+        /** Single[LayoutValidationOut] */
+        Single_LayoutValidationOut_: {
+            data: components["schemas"]["LayoutValidationOut"];
+        };
+        /** Single[LayoutVersionOut] */
+        Single_LayoutVersionOut_: {
+            data: components["schemas"]["LayoutVersionOut"];
         };
         /** Single[LineageOut] */
         Single_LineageOut_: {
@@ -5548,6 +6076,506 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListOut_AssetUseOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_layout_versions_api_v1_projects__project_id__layout_versions_get: {
+        parameters: {
+            query?: {
+                /** @description 기본 50, 최대 200 */
+                limit?: number | null;
+                /** @description 서버가 발급한 불투명 cursor */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOut_LayoutVersionListItem_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_layout_version_api_v1_projects__project_id__layout_versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LayoutVersionCreate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LayoutVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_layout_version_api_v1_projects__project_id__layout_versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LayoutVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_layout_version_api_v1_projects__project_id__layout_versions__version_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LayoutVersionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LayoutVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approve_layout_version_api_v1_projects__project_id__layout_versions__version_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LayoutVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_layout_content_api_v1_projects__project_id__layout_versions__version_id__content_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag 값. 예: "17" */
+                "if-match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LayoutContentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LayoutVersionOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    validate_layout_version_api_v1_projects__project_id__layout_versions__version_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_LayoutValidationOut_"];
                 };
             };
             /** @description Unauthorized */

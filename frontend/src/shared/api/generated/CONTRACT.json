@@ -1,13 +1,14 @@
 {
-  "contract_version": "0.16.2",
-  "openapi_sha256": "4b35e3db69865b6741eec94afce69af10ba0855c0a4af12782cafb09d84d367f",
+  "contract_version": "0.17.0",
+  "openapi_sha256": "71906840a4b8deafdc76bc45763e3051e5241c3c388fe72ac9c9155e6fca9fc7",
   "approved_scopes": [
     "project-assets-ports",
     "asset-revisions",
     "products-materials",
     "process-versions",
     "scenario-versions",
-    "runs"
+    "runs",
+    "layouts"
   ],
   "generated_by": "openapi-typescript"
 }

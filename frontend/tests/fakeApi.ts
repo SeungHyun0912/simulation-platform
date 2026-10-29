@@ -1,6 +1,7 @@
 import type { Schemas } from "../src/shared/api/types";
 import { materialRoute, seedMaterials } from "./fakeMaterials";
 import { scenarioRoute, seedScenarios, type ScenarioState } from "./fakeScenarios";
+import { layoutRoute, seedLayouts, type LayoutState } from "./fakeLayouts";
 import { processProductId, processRoute, processSummaries, processVersionId, seedProcesses, type ProcessState } from "./fakeProcess";
 
 /**
@@ -221,18 +222,25 @@ export type FakeState = {
   processes: ProcessState;
   /** 시나리오·실행(fakeScenarios). 테스트에서 직접 바꿀 수 있다. */
   scenarios: ScenarioState;
+  /** 배치판(fakeLayouts). 테스트에서 직접 바꿀 수 있다. */
+  layouts: LayoutState;
   /** 현재 요청자의 프로젝트 역할. editor/viewer는 승인·반려(admin 전용)나 쓰기에서 403을 받는다. */
   role: "admin" | "editor" | "viewer";
 };
-export const freshState = (): FakeState => ({
-  assets: structuredClone(ASSETS),
-  products: structuredClone(PRODUCTS),
-  materials: seedMaterials(),
-  processes: seedProcesses(),
-  scenarios: seedScenarios(),
-  revisions: structuredClone(REVISIONS_OF_ASSET_1),
-  role: "admin",
-});
+export const freshState = (): FakeState => {
+  const state: FakeState = {
+    assets: structuredClone(ASSETS),
+    products: structuredClone(PRODUCTS),
+    materials: seedMaterials(),
+    processes: seedProcesses(),
+    scenarios: seedScenarios(),
+    layouts: { versions: [] },
+    revisions: structuredClone(REVISIONS_OF_ASSET_1),
+    role: "admin",
+  };
+  state.layouts = seedLayouts(state, P1);
+  return state;
+};
 
 export const errorBody = (status: number, code: string, message: string, details: unknown[] = []): FakeResponse => ({
   status,
@@ -667,6 +675,8 @@ export function standardHandler(req: FakeRequest, state: FakeState = freshState(
   if (pr) return pr;
   const sr = scenarioRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
   if (sr) return sr;
+  const lr = layoutRoute(req, state, { errorBody, etag, notFound, forbidden, missingIfMatch, staleVersion, invalid, project: P1 });
+  if (lr) return lr;
   return notFound();
 }
 
