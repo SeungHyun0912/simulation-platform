@@ -1,0 +1,430 @@
+import { useCallback, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import { useDataSource } from "../../shared/api/ApiContext";
+import { ApiError, classifyError, toIssues } from "../../shared/api/errors";
+import type { Schemas } from "../../shared/api/types";
+import { ApiOnlyNotice } from "../../shared/components/ApiOnlyNotice";
+import { Button } from "../../shared/components/Button";
+import { ConfirmDialog } from "../../shared/components/ConfirmDialog";
+import { ConflictNotice } from "../../shared/components/ConflictNotice";
+import { TextAreaField, TextField } from "../../shared/components/Fields";
+import { DirtyIndicator, FieldGrid, FilterBar, Note, Section } from "../../shared/components/Layout";
+import { PageHeader } from "../../shared/components/PageHeader";
+import { QueryErrorNotice } from "../../shared/components/QueryErrorNotice";
+import { SaveErrorNotice } from "../../shared/components/SaveErrorNotice";
+import { StateNotice } from "../../shared/components/StateNotice";
+import { ValidationPanel, type ValidationIssue } from "../../shared/components/ValidationPanel";
+import { VersionStatusBadge } from "../../shared/components/VersionStatusBadge";
+import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
+import { clampZoom, type Viewport } from "../processes/flowLayout";
+import { canApprove, canEdit } from "../projects/projectView";
+import { useCurrentProject } from "../projects/useCurrentProject";
+import { LayoutCanvas, PX_PER_M, type CanvasMode } from "./LayoutCanvas";
+import { LayoutTables, RouteDraftPanel, SelectionPanel, type RouteDraft } from "./LayoutPanels";
+import {
+  addPlacement,
+  addPoint,
+  backgroundOf,
+  extentOf,
+  fromVersion,
+  patchPlacement,
+  patchPoint,
+  sameContent,
+  saveIssueTarget,
+  toContentIn,
+  validateDoc,
+  validationIssueTarget,
+  type LayoutDoc,
+  type Target,
+} from "./layoutDoc";
+import { headerOf, headerPatch, validateHeader, type HeaderDraft } from "./layoutView";
+import { useLayoutAssets, useLayoutVersion, type LayoutAssets } from "./queries";
+import { useLayoutWriter } from "./writer";
+
+/** 배치판 버전 화면(계약 0.17.0): 초안은 도면·표로 편집해 통째로 저장(PUT /content)하고 검증·승인한다. 승인본은 읽기 전용이다. */
+export function LayoutEditorPage() {
+  const { versionId = "" } = useParams();
+  const { projectId, label, project } = useCurrentProject();
+  const source = useDataSource();
+  const version = useLayoutVersion(projectId, versionId);
+  const assets = useLayoutAssets(projectId);
+  const v = version.status === "success" ? version.data : null;
+
+  const head = (
+    <PageHeader
+      title={v ? `배치판 v${v.version_no}${v.name ? ` ${v.name}` : ""}` : "배치판"}
+      breadcrumbs={[{ label: "프로젝트", to: "/" }, { label }, { label: "배치판", to: `/projects/${projectId}/layouts` }, { label: v ? `v${v.version_no}` : "버전" }]}
+      renderLink={(c) => <Link to={c.to!}>{c.label}</Link>}
+      actions={v ? <VersionStatusBadge status={v.status} /> : undefined}
+    />
+  );
+  if (source === "static") return <>{head}<ApiOnlyNotice subject="배치판" /></>;
+  if (version.status === "pending" || assets.status === "pending") return <>{head}<StateNotice kind="loading" /></>;
+  if (version.status === "error") return <>{head}<QueryErrorNotice error={version.error} subject="배치판" onRetry={version.retry} /></>;
+  if (assets.status === "error") return <>{head}<QueryErrorNotice error={assets.error} subject="설비·공간 목록" onRetry={assets.retry} /></>;
+  return (
+    <>
+      {head}
+      <LayoutEditor key={version.data.id} projectId={projectId} initial={version.data} assets={assets.data} role={project?.role} />
+    </>
+  );
+}
+
+function fitViewport(extent: { w: number; h: number }): Viewport {
+  const zoom = clampZoom(Math.min(860 / (extent.w * PX_PER_M), 500 / (extent.h * PX_PER_M)));
+  return { zoom, x: 24, y: 28 };
+}
+
+function LayoutEditor({ projectId, initial, assets, role }: { projectId: string; initial: Schemas["LayoutVersionOut"]; assets: LayoutAssets; role: string | undefined }) {
+  const writer = useLayoutWriter(projectId);
+  const navigate = useNavigate();
+  const [server, setServer] = useState(initial);
+  const [doc, setDoc] = useState<LayoutDoc>(() => fromVersion(initial));
+  const [header, setHeader] = useState<HeaderDraft>(() => headerOf(initial));
+  const [selected, setSelected] = useState<Target | null>(null);
+  const [mode, setMode] = useState<CanvasMode>("select");
+  const [routeDraft, setRouteDraft] = useState<RouteDraft | null>(null);
+  const [busy, setBusy] = useState<null | "saving" | "header" | "validating" | "approving" | "copying">(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [conflict, setConflict] = useState(false);
+  const [issues, setIssues] = useState<{ list: ValidationIssue[]; targets: Target[]; from: "save" | "validate" } | null>(null);
+  const [validation, setValidation] = useState<Schemas["LayoutValidationOut"] | null>(null);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+
+  const draft = server.status === "draft";
+  const editable = draft && canEdit(role);
+  const savedDoc = useMemo(() => fromVersion(server), [server]);
+  const contentDirty = !sameContent(doc, savedDoc);
+  const headerDirty = Object.keys(headerPatch(server, header)).length > 0;
+  const guard = useUnsavedChangesGuard(contentDirty || headerDirty);
+  const docErrors = useMemo(() => validateDoc(doc), [doc]);
+  const headerErrors = validateHeader(header);
+  const { bg, reason: bgReason } = backgroundOf(server.attributes, server.canvas_width_m);
+  const extent = extentOf(doc, server.canvas_width_m, server.canvas_height_m, bg);
+  const [viewport, setViewport] = useState<Viewport>(() => fitViewport(extent));
+  const onViewport = useCallback((next: Viewport) => setViewport(next), []);
+
+  const errorTargets = useMemo(() => {
+    const s = new Set<string>(issues?.targets ?? []);
+    if (showErrors) for (const k of Object.keys(docErrors)) s.add(k.split(".")[0]!);
+    return s;
+  }, [issues, docErrors, showErrors]);
+
+  /** 서버 응답(반올림된 값)으로 다시 그린다. 내용 저장 뒤에만 doc을 바꾸고, 머리 저장은 편집 중인 doc을 건드리지 않는다. */
+  const applyServer = (v: Schemas["LayoutVersionOut"], content: boolean) => {
+    setServer(v);
+    if (content) setDoc(fromVersion(v));
+    setHeader((h) => (content ? h : headerOf(v)));
+  };
+  const change = (next: LayoutDoc) => {
+    setDoc(next);
+    setNotice(null);
+    setValidation(null);
+  };
+
+  async function save() {
+    setShowErrors(true);
+    if (Object.keys(docErrors).length) return;
+    const body = toContentIn(doc);
+    setBusy("saving");
+    setError(null);
+    setIssues(null);
+    try {
+      const v = await writer.putContent(server.id, body, server.row_version);
+      applyServer(v, true);
+      setShowErrors(false);
+      setNotice("배치판 내용을 저장했습니다. 좌표·크기는 서버가 소수 첫째 자리로 맞춘 값입니다.");
+    } catch (e) {
+      const kind = classifyError(e);
+      if (kind === "conflict") setConflict(true);
+      else if (kind === "validation" && e instanceof ApiError) {
+        const list = toIssues(e);
+        setIssues({ list, targets: list.map((i) => saveIssueTarget(i.field_path, body)).filter((t): t is Target => !!t), from: "save" });
+      } else setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveHeader() {
+    if (Object.keys(headerErrors).length) return;
+    setBusy("header");
+    setError(null);
+    try {
+      const v = await writer.patchHeader(server.id, headerPatch(server, header), server.row_version);
+      applyServer(v, false);
+      setNotice("배치판 정보를 저장했습니다.");
+    } catch (e) {
+      if (classifyError(e) === "conflict") setConflict(true);
+      else setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function validate() {
+    setBusy("validating");
+    setError(null);
+    try {
+      const r = await writer.validate(server.id);
+      setValidation(r);
+      const list: ValidationIssue[] = r.issues.map((i) => ({ severity: i.severity === "warning" ? "warning" : "error", rule_id: i.rule_id, message: i.message, field_path: i.field_path }));
+      setIssues({ list, targets: r.issues.map((i) => validationIssueTarget(i.field_path)).filter((t): t is Target => !!t), from: "validate" });
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approve() {
+    setApproveOpen(false);
+    setBusy("approving");
+    setError(null);
+    try {
+      const v = await writer.approve(server.id, server.row_version);
+      applyServer(v, true);
+      setMode("select");
+      setIssues(null);
+      setNotice("배치판을 승인했습니다. 승인본은 바꿀 수 없으며 고치려면 새 초안을 만듭니다.");
+    } catch (e) {
+      const kind = classifyError(e);
+      if (kind === "conflict") setConflict(true);
+      else if (kind === "validation" && e instanceof ApiError) {
+        const list = toIssues(e);
+        setIssues({ list, targets: list.map((i) => validationIssueTarget(i.field_path)).filter((t): t is Target => !!t), from: "validate" });
+      } else setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyToDraft() {
+    setBusy("copying");
+    setError(null);
+    try {
+      const v = await writer.createDraft(server.id);
+      navigate(`/projects/${projectId}/layouts/${v.id}`);
+    } catch (e) {
+      if (classifyError(e) === "state") setNotice("이미 열린 초안이 있습니다. 배치판 목록에서 초안을 여세요(프로젝트에 초안은 하나).");
+      else setError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reload() {
+    setConflict(false);
+    const v = await writer.reload(server.id);
+    setServer(v);
+    setDoc(fromVersion(v));
+    setHeader(headerOf(v));
+    setIssues(null);
+  }
+
+  const startRoute = () => {
+    setMode("route");
+    setSelected(null);
+    setRouteDraft((d) => d ?? { editingKey: null, key: "", fromPortId: "", toPortId: "", mode: "", points: [] });
+  };
+  const centerPlace = (assetId: string) => {
+    change(addPlacement(doc, assetId, extent.w / 2, extent.h / 2));
+    setSelected(`placement:${assetId}`);
+  };
+
+  const saveBlocked = showErrors && Object.keys(docErrors).length > 0;
+
+  return (
+    <>
+      {guard}
+      {!draft && (
+        <StateNotice kind="empty" title="승인된 배치판은 바꿀 수 없습니다">
+          고치려면 이 버전을 복사해 새 초안을 만드세요.{" "}
+          {canEdit(role) && (
+            <Button onClick={() => void copyToDraft()} disabled={busy !== null}>
+              {busy === "copying" ? "만드는 중…" : "이 버전으로 새 초안 만들기"}
+            </Button>
+          )}
+        </StateNotice>
+      )}
+      {draft && !canEdit(role) && <Note>이 역할은 배치판을 고칠 수 없습니다(편집자·관리자만). 읽기 전용으로 보입니다.</Note>}
+      {notice && (
+        <StateNotice kind="empty" title="알림">
+          {notice}
+        </StateNotice>
+      )}
+      {conflict && <ConflictNotice resource="배치판" onReload={() => void reload()} onKeepEditing={() => setConflict(false)} />}
+      {error !== null && <SaveErrorNotice error={error} />}
+
+      <Section id="sec-layout-info" title="배치판 정보">
+        <FieldGrid>
+          <TextField label="이름" value={header.name} disabled={!editable} onChange={(e) => setHeader({ ...header, name: e.target.value })} hint="비우면 이름 없음" />
+          <TextField label="도면 가로(m)" value={header.canvasW} disabled={!editable} error={headerErrors.canvasW} hint="비우면 모름(점·배치를 담는 범위로 그립니다)" onChange={(e) => setHeader({ ...header, canvasW: e.target.value })} />
+          <TextField label="도면 세로(m)" value={header.canvasH} disabled={!editable} error={headerErrors.canvasH} hint="비우면 모름" onChange={(e) => setHeader({ ...header, canvasH: e.target.value })} />
+        </FieldGrid>
+        <TextAreaField label="메모" value={header.notes} disabled={!editable} onChange={(e) => setHeader({ ...header, notes: e.target.value })} />
+        <details>
+          <summary>배경 도면 이미지(선택)</summary>
+          <Note>이미지를 이 화면에 올리는 기능은 아직 없습니다(후속). 이미 올려 둔 이미지 주소와 축척을 적으면 도면 아래에 깝니다. 없으면 격자만 그립니다.</Note>
+          <FieldGrid>
+            <TextField label="이미지 주소" value={header.bgUrl} disabled={!editable} error={headerErrors.bgUrl} hint="http(s) 주소" onChange={(e) => setHeader({ ...header, bgUrl: e.target.value })} />
+            <TextField label="이미지 가로(px)" value={header.bgWpx} disabled={!editable} error={headerErrors.bgWpx} onChange={(e) => setHeader({ ...header, bgWpx: e.target.value })} />
+            <TextField label="이미지 세로(px)" value={header.bgHpx} disabled={!editable} error={headerErrors.bgHpx} onChange={(e) => setHeader({ ...header, bgHpx: e.target.value })} />
+            <TextField label="픽셀당 m" value={header.bgMpp} disabled={!editable} error={headerErrors.bgMpp} hint="비우면 도면 가로 ÷ 이미지 가로로 맞춥니다" onChange={(e) => setHeader({ ...header, bgMpp: e.target.value })} />
+          </FieldGrid>
+        </details>
+        {editable && (
+          <p>
+            <Button onClick={() => void saveHeader()} disabled={!headerDirty || busy !== null || Object.keys(headerErrors).length > 0}>
+              {busy === "header" ? "저장 중…" : "배치판 정보 저장"}
+            </Button>
+            {headerDirty && <DirtyIndicator />}
+          </p>
+        )}
+      </Section>
+
+      <Section id="sec-layout-canvas" title="도면">
+        <FilterBar>
+          <Button aria-pressed={mode === "select"} onClick={() => { setMode("select"); setRouteDraft(null); }}>
+            선택·이동
+          </Button>
+          {editable && (
+            <>
+              <Button aria-pressed={mode === "point"} onClick={() => { setMode("point"); setRouteDraft(null); }}>
+                점 추가
+              </Button>
+              <Button aria-pressed={mode === "route"} onClick={startRoute}>
+                경로 그리기
+              </Button>
+            </>
+          )}
+          <Button aria-label="확대" onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom * 1.25) }))}>
+            ＋
+          </Button>
+          <Button aria-label="축소" onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom / 1.25) }))}>
+            −
+          </Button>
+          <Button onClick={() => setViewport(fitViewport(extent))}>전체 보기</Button>
+        </FilterBar>
+        {bgReason && <Note>{bgReason}</Note>}
+        <Note>
+          범위 {extent.w.toFixed(1)} × {extent.h.toFixed(1)} m{server.canvas_width_m && server.canvas_height_m ? "(도면 크기)" : "(도면 크기를 몰라 점·배치를 담는 범위)"} · 점 {doc.points.length} · 배치 {doc.placements.length} · 경로 {doc.routes.length}
+        </Note>
+        <LayoutCanvas
+          doc={doc}
+          assetById={assets.byId}
+          portById={assets.portById}
+          extent={extent}
+          background={bg}
+          viewport={viewport}
+          onViewportChange={onViewport}
+          mode={mode}
+          readOnly={!editable}
+          selected={selected}
+          errorTargets={errorTargets}
+          routeDraft={routeDraft?.points ?? []}
+          onSelect={setSelected}
+          onAddPoint={(x, y) => {
+            const r = addPoint(doc, x, y);
+            change(r.doc);
+            setSelected(`point:${r.key}`);
+          }}
+          onRoutePoint={(key) => setRouteDraft((d) => (d && d.points[d.points.length - 1] !== key ? { ...d, points: [...d.points, key] } : d))}
+          onMovePoint={(key, x, y) => change(patchPoint(doc, key, { x, y }))}
+          onMovePlacement={(assetId, x, y) => change(patchPlacement(doc, assetId, { x, y }))}
+        />
+        {mode === "route" && routeDraft && editable && (
+          <RouteDraftPanel
+            doc={doc}
+            draft={routeDraft}
+            assets={assets}
+            onChange={setRouteDraft}
+            onDone={(next) => {
+              change(next.doc);
+              setSelected(`route:${next.key}`);
+              setRouteDraft(null);
+              setMode("select");
+            }}
+            onCancel={() => {
+              setRouteDraft(null);
+              setMode("select");
+            }}
+          />
+        )}
+        {selected && mode !== "route" && (
+          <SelectionPanel
+            doc={doc}
+            saved={server}
+            target={selected}
+            assets={assets}
+            editable={editable}
+            errors={showErrors ? docErrors : {}}
+            onChange={change}
+            onSelect={setSelected}
+            onRedrawRoute={(r) => {
+              setMode("route");
+              setRouteDraft({ editingKey: r.key, key: r.key, fromPortId: r.fromPortId, toPortId: r.toPortId, mode: r.mode, points: [] });
+            }}
+          />
+        )}
+      </Section>
+
+      <Section id="sec-layout-tables" title="표로 보기·붙여 넣기">
+        <LayoutTables doc={doc} saved={server} assets={assets} editable={editable} selected={selected} onSelect={(t) => { setMode("select"); setSelected(t); }} onChange={change} onPlace={centerPlace} />
+      </Section>
+
+      <Section id="sec-layout-actions" title="저장·검증·승인">
+        {issues && issues.list.length > 0 && (
+          <>
+            <Note>{issues.from === "save" ? "저장하지 못했습니다(서버 구조 검사). 문제 있는 점·배치·경로를 도면에 굵은 빨간 테두리로 표시했습니다." : "문제 있는 점·배치·포트·경로를 도면에 굵은 빨간 테두리로 표시했습니다."}</Note>
+            <ValidationPanel issues={issues.list} />
+          </>
+        )}
+        {validation && validation.issues.length === 0 && (
+          <StateNotice kind="empty" title="승인할 수 있습니다">
+            오류 0건 · 경고 0건
+          </StateNotice>
+        )}
+        {validation && validation.issues.length > 0 && (
+          <Note>
+            {validation.approvable ? "경고만 있어 승인할 수 있습니다." : "오류가 있어 승인할 수 없습니다."} 오류 {validation.error_count}건 · 경고 {validation.warning_count}건
+          </Note>
+        )}
+        {saveBlocked && (
+          <StateNotice kind="error" title="입력을 확인하세요">
+            저장하기 전에 고칠 입력이 {Object.keys(docErrors).length}건 있습니다(도면에 빨간 테두리, 선택하면 항목별 안내).
+          </StateNotice>
+        )}
+        {editable && (
+          <FilterBar>
+            <Button variant="primary" onClick={() => void save()} disabled={!contentDirty || busy !== null}>
+              {busy === "saving" ? "저장 중…" : "내용 저장"}
+            </Button>
+            <Button onClick={() => { setDoc(savedDoc); setShowErrors(false); setIssues(null); }} disabled={!contentDirty || busy !== null}>
+              ↺ 저장한 내용으로 되돌리기
+            </Button>
+            {contentDirty && <DirtyIndicator />}
+          </FilterBar>
+        )}
+        {draft && (
+          <FilterBar>
+            <Button onClick={() => void validate()} disabled={busy !== null || contentDirty} title={contentDirty ? "먼저 저장하세요(검증은 서버에 저장된 내용을 봅니다)" : undefined}>
+              {busy === "validating" ? "검증 중…" : "검증"}
+            </Button>
+            {canApprove(role) && (
+              <Button onClick={() => setApproveOpen(true)} disabled={busy !== null || contentDirty || headerDirty} title={contentDirty || headerDirty ? "먼저 저장하세요" : undefined}>
+                {busy === "approving" ? "승인 중…" : "승인"}
+              </Button>
+            )}
+          </FilterBar>
+        )}
+        {draft && !canApprove(role) && <Note>승인은 관리자만 할 수 있습니다.</Note>}
+      </Section>
+      <ConfirmDialog open={approveOpen} title="이 배치판을 승인할까요?" confirmLabel="승인" onConfirm={() => void approve()} onCancel={() => setApproveOpen(false)}>
+        승인하면 이 버전의 점·배치·포트 매핑·경로는 바꿀 수 없습니다. 검증 오류가 있으면 서버가 승인을 거부합니다.
+      </ConfirmDialog>
+    </>
+  );
+}

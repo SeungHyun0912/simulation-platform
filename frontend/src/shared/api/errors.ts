@@ -76,6 +76,7 @@ export function classifyError(e: unknown): ErrorKind {
     case "PROCESS_DRAFT_EXISTS":
     case "INVALID_STATE_TRANSITION":
     case "SCENARIO_DRAFT_EXISTS":
+    case "LAYOUT_DRAFT_EXISTS":
     case "JOB_CANCEL_TOO_LATE":
     case "RUN_RESULT_NOT_AVAILABLE":
       return "state";
@@ -87,6 +88,7 @@ export function classifyError(e: unknown): ErrorKind {
       return "duplicate";
     case "VALIDATION_ERROR":
     case "SCENARIO_NOT_RUNNABLE":
+    case "LAYOUT_VALIDATION_FAILED":
     case "RUN_NOT_RUNNABLE":
     case "INVALID_CURSOR":
       return "validation";
