@@ -1,5 +1,9 @@
 import {
   addPoint,
+  insertRoutePoint,
+  nearestPoint,
+  removeRoutePointAt,
+  unusedPoints,
   backgroundOf,
   coord,
   extentOf,
@@ -128,5 +132,35 @@ describe("배치판 편집 모델", () => {
     expect(round1("9.05")).toBe("9.1");
     expect(round1("9.04")).toBe("9.0");
     expect(round1("12")).toBe("12.0");
+  });
+});
+
+describe("경로 점 편집(참고 라벨러 방식)", () => {
+  it("구간에 점을 끼워 넣되 양옆과 같은 점이면 넣지 않는다", () => {
+    expect(insertRoutePoint(doc(), "R1", 1, "P9").routes[0]!.points).toEqual(["P1", "P9", "P2", "P3"]);
+    expect(insertRoutePoint(doc(), "R1", 1, "P2").routes[0]!.points).toEqual(["P1", "P2", "P3"]);
+  });
+  it("경로에서 점을 빼면 연달아 같은 점을 합치고 점 자체는 남긴다", () => {
+    const d = { ...doc(), routes: [{ ...doc().routes[0]!, points: ["P1", "P2", "P1", "P3"] }] };
+    const next = removeRoutePointAt(d, "R1", 1);
+    expect(next.routes[0]!.points).toEqual(["P1", "P3"]);
+    expect(next.points).toHaveLength(3);
+  });
+  it("쓰이지 않는 점과 가장 가까운 점(허용 거리 안)을 찾는다", () => {
+    const d = { ...doc(), routes: [{ ...doc().routes[0]!, points: ["P1", "P2"] }] };
+    expect(unusedPoints(d)).toEqual(["P3"]);
+    expect(nearestPoint(doc(), 5.2, 1.1, 0.5)).toBe("P2");
+    expect(nearestPoint(doc(), 9, 9, 0.5)).toBeNull();
+  });
+});
+
+describe("key 규칙(Backend 안내: 1~64자, 배치판 안에서 유일)", () => {
+  it("64자를 넘는 점·경로 이름은 저장 전에 막는다", () => {
+    const long = "P".repeat(65);
+    const d = { ...doc(), points: [...doc().points, { key: long, x: "1", y: "1", attributes: {} }], routes: [{ ...doc().routes[0]!, key: "R".repeat(65) }] };
+    const e = validateDoc(d);
+    expect(e[`point:${long}.key`]).toMatch(/64자 이하/);
+    expect(e[`route:${"R".repeat(65)}.key`]).toMatch(/64자 이하/);
+    expect(validateDoc({ ...doc(), points: [{ key: "P".repeat(64), x: "1", y: "1", attributes: {} }] })[`point:${"P".repeat(64)}.key`]).toBeUndefined();
   });
 });

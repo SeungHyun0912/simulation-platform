@@ -6,8 +6,12 @@ import { SelectField, TextAreaField, TextField } from "../../shared/components/F
 import { FieldGrid, FilterBar, Note } from "../../shared/components/Layout";
 import { StateNotice } from "../../shared/components/StateNotice";
 import {
+  insideSpaceOf,
   mapPort,
   nextRouteKey,
+  removePoints,
+  removeRoutePointAt,
+  unusedPoints,
   pastePlacements,
   pastePoints,
   patchPlacement,
@@ -27,7 +31,20 @@ import {
 import { MODE_SUGGESTIONS, modeText, portText, roleText, unknownText } from "./layoutView";
 import type { LayoutAssets } from "./queries";
 
-export type RouteDraft = { editingKey: string | null; key: string; fromPortId: string; toPortId: string; mode: string; points: string[] };
+export type RouteDraft = {
+  editingKey: string | null;
+  key: string;
+  fromPortId: string;
+  toPortId: string;
+  mode: string;
+  points: string[];
+  /** 그리기를 시작할 때의 내용(취소하면 되돌린다 — 자동으로 만든 점·포트 연결도 사라진다) */
+  base: LayoutDoc | null;
+  /** 이 그리기에서 자동으로 만든 점 */
+  created: string[];
+  /** 끝내지 못한 이유 */
+  message: string | null;
+};
 
 /** 포트 선택지: 자산 코드 순, "EQ-001 OUT(산출)" */
 function PortOptions({ assets }: { assets: LayoutAssets }) {
@@ -75,57 +92,100 @@ function ModeField({ value, onChange, disabled }: { value: string; onChange: (v:
   );
 }
 
+/** 점 순서 목록: 점마다 "빼기" 버튼(경로 그리기·경로 속성 공용) */
+function PointChain({ points, created, onRemove, label }: { points: string[]; created?: string[]; onRemove?: (index: number) => void; label: string }) {
+  if (points.length === 0) return <p aria-label={label}>점 순서: (아직 없음)</p>;
+  return (
+    <ol aria-label={label}>
+      {points.map((k, i) => (
+        <li key={`${k}-${i}`}>
+          {k}
+          {created?.includes(k) ? " (새 점)" : ""}{" "}
+          {onRemove && (
+            <Button onClick={() => onRemove(i)} aria-label={`${i + 1}번째 점 ${k} 빼기`}>
+              빼기
+            </Button>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** 기존 점 고르기(경로에 이어 붙이기) */
+function ExistingPointField({ doc, onPick, label = "기존 점 추가" }: { doc: LayoutDoc; onPick: (key: string) => void; label?: string }) {
+  return (
+    <SelectField label={label} value="" onChange={(e) => e.target.value && onPick(e.target.value)} hint="도면에서 점을 눌러도 됩니다">
+      <option value="">(점 고르기)</option>
+      {doc.points.map((p) => (
+        <option key={p.key} value={p.key}>
+          {p.key} ({p.x}, {p.y})
+        </option>
+      ))}
+    </SelectField>
+  );
+}
+
 /**
- * 경로 그리기: 출발·도착 포트를 고르고 도면에서 점을 순서대로 누른다. 출발 포트가 점에 매핑돼 있으면 그 점에서 시작한다.
- * 첫 점 = 출발 포트의 점, 끝 점 = 도착 포트의 점이어야 승인할 수 있다(LAY-001·002) — 여기서는 안내만 하고 판정은 서버가 한다.
+ * 경로 그리기(참고: frontend/references/factory-labeler.html 경로 도구). 도면 빈 곳을 누르면 그 자리에 점(P{n})이 자동으로 생기고,
+ * 가까운 기존 점이나 "기존 점 추가"로 이미 있는 점을 쓴다. 설비·공간을 누르면 첫 점은 산출(OUT)·끝 점은 투입(IN·ACCESS) 포트에 자동 연결한다.
+ * 더블클릭·Enter 끝내기, Backspace 마지막 점 빼기, Esc 취소(자동으로 만든 점도 지움). 첫·끝 점 = 출발·도착 포트의 점이어야 승인된다(LAY-001·002).
  */
 export function RouteDraftPanel({
   doc,
   draft,
   assets,
   onChange,
-  onDone,
+  onAppend,
+  onRemoveLast,
+  onFinish,
   onCancel,
 }: {
   doc: LayoutDoc;
   draft: RouteDraft;
   assets: LayoutAssets;
   onChange: (d: RouteDraft) => void;
-  onDone: (r: { doc: LayoutDoc; key: string }) => void;
+  onAppend: (key: string) => void;
+  onRemoveLast: () => void;
+  onFinish: () => void;
   onCancel: () => void;
 }) {
   const fromPoint = draft.fromPortId ? pointOfPort(doc, draft.fromPortId) : "";
   const toPoint = draft.toPortId ? pointOfPort(doc, draft.toPortId) : "";
   const key = draft.key.trim() || (draft.editingKey ?? nextRouteKey(doc));
-  const dupKey = key !== draft.editingKey && doc.routes.some((r) => r.key === key);
   const hints: string[] = [];
   if (draft.fromPortId && !fromPoint) hints.push("출발 포트가 아직 점에 연결되지 않았습니다(승인 전 연결 필요).");
   if (draft.toPortId && !toPoint) hints.push("도착 포트가 아직 점에 연결되지 않았습니다(승인 전 연결 필요).");
   if (fromPoint && draft.points.length > 0 && draft.points[0] !== fromPoint) hints.push(`첫 점이 출발 포트의 점(${fromPoint})이 아닙니다.`);
   if (toPoint && draft.points.length > 1 && draft.points[draft.points.length - 1] !== toPoint) hints.push(`끝 점이 도착 포트의 점(${toPoint})이 아닙니다.`);
-  const ready = draft.fromPortId && draft.toPortId && draft.points.length >= 2 && !dupKey;
   return (
     <section aria-label="경로 그리기">
       <h3>{draft.editingKey ? `경로 ${draft.editingKey} 점 순서 다시 그리기` : "새 경로"}</h3>
-      <Note>도면에서 점을 순서대로 누르세요. 연속한 점 사이는 직선이며 길이는 저장하면 서버가 계산합니다.</Note>
+      <Note>
+        도면 빈 곳을 누르면 그 자리에 점이 생기고, 기존 점 가까이를 누르면 그 점을 씁니다. 설비·공간을 누르면 그 포트의 점으로 잇습니다. 더블클릭이나 Enter로 끝내고,
+        Backspace는 마지막 점 빼기, Esc는 취소입니다.
+      </Note>
       <FieldGrid>
-        <TextField label="경로 이름" value={draft.key} placeholder={key} error={dupKey ? "같은 이름의 경로가 있습니다." : undefined} onChange={(e) => onChange({ ...draft, key: e.target.value })} />
+        <TextField label="경로 이름" value={draft.key} placeholder={key} onChange={(e) => onChange({ ...draft, key: e.target.value })} />
         <SelectField
           label="출발 포트"
           value={draft.fromPortId}
+          hint="비우면 첫 점에 연결된 포트로 정합니다"
           onChange={(e) => {
-            const p = pointOfPort(doc, e.target.value);
-            onChange({ ...draft, fromPortId: e.target.value, points: draft.points.length === 0 && p ? [p] : draft.points });
+            const pt = pointOfPort(doc, e.target.value);
+            onChange({ ...draft, fromPortId: e.target.value, points: draft.points.length === 0 && pt ? [pt] : draft.points });
           }}
         >
           <PortOptions assets={assets} />
         </SelectField>
-        <SelectField label="도착 포트" value={draft.toPortId} onChange={(e) => onChange({ ...draft, toPortId: e.target.value })}>
+        <SelectField label="도착 포트" value={draft.toPortId} hint="비우면 끝 점에 연결된 포트로 정합니다" onChange={(e) => onChange({ ...draft, toPortId: e.target.value })}>
           <PortOptions assets={assets} />
         </SelectField>
         <ModeField value={draft.mode} onChange={(m) => onChange({ ...draft, mode: m })} />
+        <ExistingPointField doc={doc} onPick={onAppend} />
       </FieldGrid>
-      <p aria-label="고른 점 순서">점 순서: {draft.points.length ? draft.points.join(" → ") : "(아직 없음)"}</p>
+      <PointChain points={draft.points} created={draft.created} label="고른 점 순서" />
+      {draft.message && <p role="alert">⚠ {draft.message}</p>}
       {hints.length > 0 && (
         <ul>
           {hints.map((h) => (
@@ -134,24 +194,16 @@ export function RouteDraftPanel({
         </ul>
       )}
       <FilterBar>
-        <Button onClick={() => onChange({ ...draft, points: draft.points.slice(0, -1) })} disabled={draft.points.length === 0}>
+        <Button onClick={onRemoveLast} disabled={draft.points.length === 0} title="Backspace">
           마지막 점 빼기
         </Button>
-        {toPoint && draft.points.length > 0 && draft.points[draft.points.length - 1] !== toPoint && (
-          <Button onClick={() => onChange({ ...draft, points: [...draft.points, toPoint] })}>도착 포트의 점({toPoint})으로 끝내기</Button>
-        )}
-        <Button
-          variant="primary"
-          disabled={!ready}
-          onClick={() => {
-            const old = draft.editingKey ? doc.routes.find((r) => r.key === draft.editingKey) : undefined;
-            const route: LayoutRoute = { key, fromPortId: draft.fromPortId, toPortId: draft.toPortId, mode: draft.mode, points: draft.points, attributes: old?.attributes ?? {} };
-            onDone({ doc: upsertRoute(doc, route, draft.editingKey ?? undefined), key });
-          }}
-        >
+        {toPoint && draft.points.length > 0 && draft.points[draft.points.length - 1] !== toPoint && <Button onClick={() => onAppend(toPoint)}>도착 포트의 점({toPoint})으로 끝내기</Button>}
+        <Button variant="primary" disabled={draft.points.length < 2} onClick={onFinish} title="Enter 또는 더블클릭">
           {draft.editingKey ? "점 순서 바꾸기" : "경로 만들기"}
         </Button>
-        <Button onClick={onCancel}>취소</Button>
+        <Button onClick={onCancel} title="Esc">
+          취소
+        </Button>
       </FilterBar>
     </section>
   );
@@ -273,6 +325,14 @@ export function SelectionPanel({
           <TextField label="세로(m)" value={pl.height} disabled={!editable} error={err("height")} hint={pl.height.trim() ? "y 방향, 회전 전" : "모름(비움)"} onChange={(e) => set({ height: e.target.value })} />
           <TextField label="회전(도)" value={pl.rotation} disabled={!editable} error={err("rotation")} hint={pl.rotation.trim() ? "중심 기준 시계 방향 +" : "모름(비움) — 도면에는 0도로 그립니다"} onChange={(e) => set({ rotation: e.target.value })} />
         </FieldGrid>
+        {insideSpaceOf(pl) && (
+          <p aria-label="소속 공간">
+            소속 공간: {insideSpaceOf(pl)} {assets.byId.get(assets.idByCode.get(insideSpaceOf(pl)!) ?? "")?.name ?? ""}{" "}
+            {assets.idByCode.get(insideSpaceOf(pl)!) && doc.placements.some((x) => x.assetId === assets.idByCode.get(insideSpaceOf(pl)!)) && (
+              <Button onClick={() => onSelect(`placement:${assets.idByCode.get(insideSpaceOf(pl)!)!}`)}>소속 공간 선택</Button>
+            )}
+          </p>
+        )}
         {Object.keys(pl.attributes).length > 0 && (
           <details>
             <summary>원본 값(attributes)</summary>
@@ -338,7 +398,9 @@ export function SelectionPanel({
           </SelectField>
           <ModeField value={r.mode} disabled={!editable} onChange={(m) => upd({ mode: m })} />
         </FieldGrid>
-        <p>점 순서: {r.points.join(" → ")}</p>
+        <PointChain points={r.points} label="경로 점 순서" onRemove={editable ? (i) => onChange(removeRoutePointAt(doc, r.key, i)) : undefined} />
+        {editable && <ExistingPointField doc={doc} label="끝에 기존 점 추가" onPick={(k) => r.points[r.points.length - 1] !== k && upd({ points: [...r.points, k] })} />}
+        <Note>도면에서 이 경로 선을 더블클릭하면 그 자리에 점을 끼워 넣습니다.</Note>
         {errors[`route:${r.key}.points`] && <p role="alert">{errors[`route:${r.key}.points`]}</p>}
         <p>길이: {unchanged ? `${savedRoute.length_m} m(서버 계산)` : "저장하면 서버가 계산합니다"}</p>
         <FilterBar>
@@ -429,6 +491,7 @@ export function LayoutTables({
     { key: "w", header: "가로", align: "end", render: (p) => unknownText(p.width, " m") },
     { key: "h", header: "세로", align: "end", render: (p) => unknownText(p.height, " m") },
     { key: "r", header: "회전", align: "end", render: (p) => unknownText(p.rotation, "°") },
+    ...(doc.placements.some((p) => insideSpaceOf(p)) ? [{ key: "inside", header: "소속 공간", render: (p: LayoutDoc["placements"][number]) => insideSpaceOf(p) ?? "" }] : []),
     { key: "pick", header: "", render: (p) => pick(`placement:${p.assetId}`, `배치 ${assets.byId.get(p.assetId)?.code ?? p.assetId.slice(0, 8)}`) },
   ];
   const routeCols: Column<LayoutDoc["routes"][number]>[] = [
@@ -452,6 +515,12 @@ export function LayoutTables({
   return (
     <>
       <h3>점</h3>
+      {editable && unusedPoints(doc).length > 0 && (
+        <FilterBar>
+          <Note>어디에도 쓰이지 않는 점(포트 연결·경로 없음): {unusedPoints(doc).join(", ")}</Note>
+          <Button onClick={() => onChange(removePoints(doc, unusedPoints(doc)))}>쓰지 않는 점 {unusedPoints(doc).length}개 지우기</Button>
+        </FilterBar>
+      )}
       {doc.points.length === 0 ? <Note>점이 없습니다. 도면의 "점 추가"나 아래 붙여 넣기로 만듭니다.</Note> : <DataTable caption="점 목록" columns={pointCols} rows={doc.points} getRowKey={(p) => p.key} currentRowKey={selected?.startsWith("point:") ? selected.slice(6) : undefined} />}
       <h3>배치</h3>
       {doc.placements.length === 0 ? <Note>배치한 설비·공간이 없습니다.</Note> : <DataTable caption="배치 목록" columns={placeCols} rows={doc.placements} getRowKey={(p) => p.assetId} wrapCells />}

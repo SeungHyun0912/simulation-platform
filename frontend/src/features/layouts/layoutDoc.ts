@@ -166,9 +166,52 @@ export function removeRoute(d: LayoutDoc, key: string): LayoutDoc {
   return { ...d, routes: d.routes.filter((r) => r.key !== key) };
 }
 
+/* ---------------- 경로 점 편집(참고: frontend/references/factory-labeler.html의 경로 도구) ---------------- */
+
+/** 경로의 i번째 자리 앞에 점을 끼워 넣는다(구간 더블클릭). 연달아 같은 점이 되면 넣지 않는다. */
+export function insertRoutePoint(d: LayoutDoc, routeKey: string, index: number, pointKey: string): LayoutDoc {
+  return {
+    ...d,
+    routes: d.routes.map((r) => {
+      if (r.key !== routeKey || r.points[index - 1] === pointKey || r.points[index] === pointKey) return r;
+      return { ...r, points: [...r.points.slice(0, index), pointKey, ...r.points.slice(index)] };
+    }),
+  };
+}
+
+/** 경로에서 i번째 점을 뺀다(점 자체는 남는다). 빠져서 연달아 같은 점이 되면 합친다. */
+export function removeRoutePointAt(d: LayoutDoc, routeKey: string, index: number): LayoutDoc {
+  return { ...d, routes: d.routes.map((r) => (r.key === routeKey ? { ...r, points: collapse(r.points.filter((_, i) => i !== index)) } : r)) };
+}
+
+/** 어디에도 쓰이지 않는 점(포트 연결도 경로도 없음) */
+export const unusedPoints = (d: LayoutDoc) => d.points.filter((p) => pointUsage(d, p.key).ports === 0 && pointUsage(d, p.key).routes.length === 0).map((p) => p.key);
+
+export function removePoints(d: LayoutDoc, keys: Iterable<string>): LayoutDoc {
+  let next = d;
+  for (const k of keys) next = removePoint(next, k);
+  return next;
+}
+
+/** (x, y)에서 maxDist(m) 안에 있는 가장 가까운 점 */
+export function nearestPoint(d: LayoutDoc, x: number, y: number, maxDist: number): string | null {
+  let best: string | null = null;
+  let bestD = maxDist;
+  for (const p of d.points) {
+    const dist = Math.hypot(Number(p.x) - x, Number(p.y) - y);
+    if (dist <= bestD) {
+      best = p.key;
+      bestD = dist;
+    }
+  }
+  return best;
+}
+
 /* ---------------- 화면 쪽 입력 검사(서버 검사 전에 막을 것만) ---------------- */
 
 const NUM = /^\d+(\.\d+)?$/;
+/** 점·경로 key 길이(Backend 안내 2026-10-29: 1~64자, 배치판 안에서 유일) */
+const KEY_MAX = 64;
 export type DocErrors = Record<string, string>;
 
 /**
@@ -181,6 +224,7 @@ export function validateDoc(d: LayoutDoc): DocErrors {
   for (const p of d.points) {
     const t = `point:${p.key}`;
     if (!p.key.trim()) e[`${t}.key`] = "점 이름이 비었습니다.";
+    else if (p.key.trim().length > KEY_MAX) e[`${t}.key`] = `점 이름은 ${KEY_MAX}자 이하입니다.`;
     else if (seen.has(p.key.trim())) e[`${t}.key`] = "같은 이름의 점이 있습니다.";
     seen.add(p.key.trim());
     if (!NUM.test(p.x.trim())) e[`${t}.x`] = "x는 0 이상의 숫자(m)입니다.";
@@ -198,6 +242,7 @@ export function validateDoc(d: LayoutDoc): DocErrors {
   for (const r of d.routes) {
     const t = `route:${r.key}`;
     if (!r.key.trim()) e[`${t}.key`] = "경로 이름이 비었습니다.";
+    else if (r.key.trim().length > KEY_MAX) e[`${t}.key`] = `경로 이름은 ${KEY_MAX}자 이하입니다.`;
     else if (routeKeys.has(r.key.trim())) e[`${t}.key`] = "같은 이름의 경로가 있습니다.";
     routeKeys.add(r.key.trim());
     if (r.points.length < 2) e[`${t}.points`] = "경로에는 점이 2개 이상 있어야 합니다.";
@@ -333,3 +378,9 @@ export function extentOf(d: LayoutDoc, canvasW: string | null | undefined, canva
   }
   return { w: Math.max(w, 10), h: Math.max(h, 10) };
 }
+
+/**
+ * 소속 공간: Backend가 위치로 계산한 공간 코드(`attributes.inside_space`, 예 "ST-013"). 원본 `inside`("ST14" 등)는 번호가 어긋나 있어 원문으로만 보인다
+ * (Backend 안내 2026-10-29). 없으면 null.
+ */
+export const insideSpaceOf = (p: LayoutPlacement): string | null => (typeof p.attributes.inside_space === "string" && p.attributes.inside_space ? p.attributes.inside_space : null);
