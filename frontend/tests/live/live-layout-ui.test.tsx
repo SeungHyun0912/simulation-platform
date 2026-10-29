@@ -102,6 +102,12 @@ describe.skipIf(!LIVE || !WRITE)("배치판 실서버 쓰기 (DEMO-A 초안 하�
     await user.click(screen.getByRole("button", { name: "배치 EQ-002 선택" }));
     const p2 = screen.getByRole("region", { name: /배치 EQ-002 .* 속성/ });
     await user.selectOptions(within(p2).getByLabelText(/^IN .* 점$/), "FE3");
+    // 다시 돌릴 때: 이전 실행이 남긴 경로 FE-R1을 지우고 새로 그린다(같은 초안을 이어 씀)
+    const old = screen.queryByRole("button", { name: "경로 FE-R1 선택" });
+    if (old) {
+      await user.click(old);
+      await user.click(screen.getByRole("button", { name: "경로 삭제" }));
+    }
     await user.click(screen.getByRole("button", { name: "경로 그리기" }));
     const panel = screen.getByRole("region", { name: "경로 그리기" });
     await user.type(within(panel).getByLabelText("경로 이름"), "FE-R1");
