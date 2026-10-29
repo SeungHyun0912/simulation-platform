@@ -411,3 +411,37 @@ describe("저장공간이 있는 배치판(실데이터 v2 모양)", () => {
     expect(screen.getByRole("region", { name: /배치 ST-041 .* 속성/ })).toBeInTheDocument();
   });
 });
+
+describe("경로 끝내기(사용자 보고: 계속 점만 추가됨)", () => {
+  it("도면 위 상태 줄에 점 수·출발·도착 포트를 보이고, 끝내지 못하면 그 이유를 도면 위에 보인다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(2) });
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(2) });
+    const bar = screen.getByRole("region", { name: "경로 그리기 상태" });
+    expect(bar).toHaveTextContent("점 2개 · 출발 미정 · 도착 미정");
+    await user.click(within(bar).getByRole("button", { name: "경로 끝내기" }));
+    expect(within(bar).getByText("경로를 끝내지 못했습니다")).toBeInTheDocument();
+    expect(bar).toHaveTextContent("출발·도착 포트를 고르세요");
+  });
+
+  it("출발·도착 포트를 선택 상자로 고른 직후에도 Enter로 끝낸다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "경로 그리기" }));
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(2) });
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(2) });
+    const panel = screen.getByRole("region", { name: "경로 그리기" });
+    const from = within(panel).getByLabelText("출발 포트");
+    await user.selectOptions(from, within(from).getByRole("option", { name: "EQ-001 OUT(산출)" }));
+    const to = within(panel).getByLabelText("도착 포트");
+    await user.selectOptions(to, within(to).getByRole("option", { name: "ST-041 ACCESS-01(접근)" }));
+    expect(document.activeElement).toBe(to);
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("region", { name: "경로 그리기" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "경로 목록" })).toHaveTextContent("R2");
+  });
+});

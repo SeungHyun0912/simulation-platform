@@ -44,7 +44,7 @@ import {
   type LayoutDoc,
   type Target,
 } from "./layoutDoc";
-import { headerOf, headerPatch, validateHeader, type HeaderDraft } from "./layoutView";
+import { headerOf, headerPatch, portText, validateHeader, type HeaderDraft } from "./layoutView";
 import { useLayoutAssets, useLayoutVersion, type LayoutAssets } from "./queries";
 import { useLayoutWriter } from "./writer";
 
@@ -76,6 +76,9 @@ export function LayoutEditorPage() {
     </>
   );
 }
+
+/** 경로 그리기 패널·상태 줄의 버튼은 Enter가 그 버튼을 누른다(끝내기 단축키를 가로채지 않음) */
+const DRAW_CONTROLS = `[aria-label="경로 그리기"], [aria-label="경로 그리기 상태"]`;
 
 function fitViewport(extent: { w: number; h: number }): Viewport {
   const zoom = clampZoom(Math.min(860 / (extent.w * PX_PER_M), 500 / (extent.h * PX_PER_M)));
@@ -120,8 +123,12 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
       const k = keyRef;
+      // 경로 그리기 중에는 출발·도착 포트 같은 선택 상자를 고른 직후에도 Enter·Esc가 먹게 한다(사용자 보고: 끝내기가 안 됨).
+      // 글자 입력 칸·버튼(Enter = 그 버튼 누르기)은 제외한다.
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+      const selectInDraw = t?.tagName === "SELECT" && k.drawing && (e.key === "Enter" || e.key === "Escape");
+      if (typing || (t?.tagName === "SELECT" && !selectInDraw) || (t?.tagName === "BUTTON" && e.key === "Enter" && !!t.closest(DRAW_CONTROLS))) return;
       if (!k.editable) return;
       if (k.drawing) {
         if (e.key === "Enter") k.routeFinish();
@@ -483,6 +490,35 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
           )}
         </FilterBar>
         {bgReason && <Note>{bgReason}</Note>}
+        {mode === "route" && routeDraft && editable && (
+          // 그리는 중 상태와 끝내기를 도면 바로 위에 둔다(패널이 도면 아래라 끝내지 못한 이유가 안 보였다)
+          <section aria-label="경로 그리기 상태">
+            <FilterBar>
+              <span>
+                경로 그리기 중 · 점 {routeDraft.points.length}개 · 출발 {routeDraft.fromPortId ? portText(assets.portById.get(routeDraft.fromPortId), routeDraft.fromPortId) : "미정"} · 도착{" "}
+                {routeDraft.toPortId ? portText(assets.portById.get(routeDraft.toPortId), routeDraft.toPortId) : "미정"}
+              </span>
+              <Button variant="primary" onClick={routeFinish} disabled={routeDraft.points.length < 2} title="Enter 또는 더블클릭">
+                경로 끝내기
+              </Button>
+              <Button onClick={routeRemoveLast} disabled={routeDraft.points.length === 0} title="Backspace">
+                마지막 점 빼기
+              </Button>
+              <Button onClick={routeCancel} title="Esc">
+                취소
+              </Button>
+            </FilterBar>
+            {routeDraft.message ? (
+              <StateNotice kind="error" title="경로를 끝내지 못했습니다">
+                {routeDraft.message}
+              </StateNotice>
+            ) : (
+              <Note>
+                끝내기: 더블클릭 · Enter · "경로 끝내기". 도착할 설비·공간을 누르면 도착 포트가 정해집니다(빈 곳만 누르면 출발·도착 포트를 아래 패널에서 고르세요).
+              </Note>
+            )}
+          </section>
+        )}
         <Note>
           범위 {extent.w.toFixed(1)} × {extent.h.toFixed(1)} m{server.canvas_width_m && server.canvas_height_m ? "(도면 크기)" : "(도면 크기를 몰라 점·배치를 담는 범위)"} · 점 {doc.points.length} · 배치 {doc.placements.length} · 경로 {doc.routes.length}
         </Note>
