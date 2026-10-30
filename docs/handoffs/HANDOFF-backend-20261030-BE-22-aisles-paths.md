@@ -4,7 +4,7 @@
 - 역할 / workspace 버전: Backend(API 담당) / 1.1.0
 - branch / 기준 commit: worktree-backend-core-be35 / main `dfbdb26`(0.17.0) / 구현 `4e96a1b`
 - 승인 근거: 사용자 지시(2026-10-30) — 점(P)·통로(W) 저장, 경로(R)는 P·W 조합으로 서버가 계산(고정 경로 우선), 교차는 가운데 점 공유(방법 1), "일방통행은 없어", "운반 시간은 나중에 별도로 두고 변경할 때마다 계산이 자동으로 될 수 있게만". CR `docs/change-requests/CR-backend-20261030-be19-aisles-paths.md`.
-- 계약 버전: **0.17.0 → 0.18.0**(scope `layouts` 확장, 추가만, OpenAPI sha `3b54b5df…3dee`), migration head **0011 → 0012**, 엔진 c0.3 그대로(결과 불변).
+- 계약 버전: **0.17.0 → 0.18.0**(scope `layouts` 확장, 추가만, OpenAPI sha `78905102…2dde`(FE 검토로 `reason_code` 추가 후, 커밋 `4566710`)), migration head **0011 → 0012**, 엔진 c0.3 그대로(결과 불변).
 
 ## 구현
 | 항목 | 내용 |

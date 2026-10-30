@@ -5079,8 +5079,24 @@
                 "type": "null"
               }
             ],
-            "description": "갈 수 없는 이유(포트가 점에 매핑되지 않음·길이 없음 등)",
+            "description": "갈 수 없는 이유(한국어 문장, 표시용)",
             "title": "Reason"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PORT_NOT_MAPPED",
+                  "NO_CONNECTION"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "갈 수 없는 이유 코드: PORT_NOT_MAPPED(출발·도착 포트가 점에 매핑되지 않음), NO_CONNECTION(이어진 길 없음)",
+            "title": "Reason Code"
           },
           "route_key": {
             "anyOf": [
