@@ -15,7 +15,8 @@ cd backend; python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r r
 # 2) 프런트엔드
 cd ..\frontend; pnpm install --frozen-lockfile
 # 3) 전용 DB 생성(PostgreSQL 127.0.0.1:5432): CREATE DATABASE simulation_platform_int_test;
-# 4) migration + 시드(멱등, 전용 DB에만)
+# 4) migration + 시드(멱등, 전용 DB에만). seed_wire_factory.py 는 저장소에서 제외된 비공개 파일이라
+#    data/local/README.md 대로 data/local/private 에서 복원해야 한다(없으면 T8의 DEMO-WIRE P05 기준 데이터가 없다).
 cd ..\backend
 $env:DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/simulation_platform_int_test"
 .\.venv\Scripts\python.exe -m alembic upgrade head
