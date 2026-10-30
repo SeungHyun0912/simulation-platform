@@ -84,7 +84,12 @@
         },
         "assumption_reason": "[시험] 대기 공간 용량 확인 전 임시 가정",
         "notes": null,
-        "approved_by": null
+        "approved_by": null,
+        "layout_version_id": null,
+        "travel_rule": {
+          "speeds_kmh": {},
+          "carrier_handling_minutes": null
+        }
       }
     }
   }

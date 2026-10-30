@@ -5,6 +5,11 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.19.0 — 2026-10-30 · scope `layouts`·`scenario-versions`(확장, BE-23) · sha256 `346a84e2…fc20` · 기준 commit `9103d03`
+- **호환성: 0.18.0과 호환(추가만).** operation +1 `GET /layout-versions/{v}/process-links`(공정 ↔ 배치판 연결). 시나리오 버전에 `layout_version_id`·`travel_rule` 필드, 갱신 본문에 `layout`, 응답에 `layout_change`. 새 사전 참조 오류 `SCN-REF-005`·`006`. migration 0013. **엔진 결과는 바뀌지 않는다**(이동 시간 반영은 다음 버전).
+- 근거: CR be20(사용자 지시 2026-10-30: 속도 기본 4 km/h, 나중에 변경 가능, 공정 연결·시나리오 배치판 선택·엔진 반영 모두 진행). 상세는 04 §5.1·§7.1.
+- **프런트가 해야 할 일:** 타입 재생성. 배치판 화면에 "공정 이동 보기"(공정 선택 → 이동 구간 목록·도면 강조, 운반/사람 구분, 후보 설비별 길이·시간, 갈 수 없는 쌍 표시). 시나리오 편집에 배치판 선택(승인본 목록)과 이동 설정(사람·운반 자원 종류별 속도 km/h, 상하차 분 — 비우면 기본값 4 km/h·1분 표시), 갱신 결과의 `layout_change` 표시.
+
 ## 0.18.0 — 2026-10-30 · scope `layouts`(확장, BE-22) · sha256 `78905102…2dde` · 기준 commit `4566710`
 - **호환성: 0.17.0과 호환(추가만).** 배치판 내용(`LayoutContentIn`·`LayoutVersionOut`)에 `aisles[]`(통로) 추가, operation +1 `POST /layout-versions/{v}/paths`(포트 → 포트 경로 계산). migration 0012. **주의:** PUT `/content`는 통째로 교체라 `aisles`를 보내지 않으면 통로가 지워진다 — 응답의 `aisles`를 그대로 다시 보낼 것.
 - 근거: CR be19(사용자 지시 2026-10-30: P·W 저장, R은 계산·고정 경로 우선, 교차는 가운데 점 공유, 일방통행 없음, 시간은 후속이되 자동 계산). 상세는 04 §7.1.

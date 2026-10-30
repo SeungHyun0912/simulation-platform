@@ -1,6 +1,7 @@
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from simulation_platform.api.deps import (
@@ -23,6 +24,7 @@ from simulation_platform.schemas.layout import (
     LayoutVersionPatch,
     PathOut,
     PathsIn,
+    ProcessLinksOut,
 )
 from simulation_platform.services import layouts as service
 
@@ -154,3 +156,20 @@ def layout_paths(
     없으면 통로·고정 경로의 선분(양방향)으로 만든 길 그물의 최단 경로를 계산한다(`source=computed`). 점·통로를 고치면 다음
     조회부터 자동으로 바뀐다. 갈 수 없으면 `reachable=false`와 이유."""
     return {"data": service.paths(session, principal, project_id, version_id, body)}
+
+
+@router.get("/layout-versions/{version_id}/process-links", response_model=Single[list[ProcessLinksOut]],
+            responses=READ_ERRORS)
+def layout_process_links(
+    project_id: uuid.UUID,
+    version_id: uuid.UUID,
+    process_version_id: Annotated[list[uuid.UUID] | None, Query(max_length=50, description="공정 버전(반복). 생략하면 제품마다 현재 승인본")] = None,
+    scenario_version_id: Annotated[uuid.UUID | None, Query(description="이 시나리오의 이동 설정(속도·상하차)을 쓴다. 생략하면 기본값")] = None,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """공정 ↔ 배치판 연결(저장 안 함). 공정의 이동 구간마다(공간 ↔ 설비 사람 이동, 운반 단계) 출발·도착 위치의 포트 쌍과
+    배치판 경로(`/paths`와 같은 계산)·길이·이동 시간(길이 ÷ 속도, 운반은 + 상하차)을 준다. 속도 기본값 4 km/h(사람·운반 자원),
+    상하차 1분. 공정·배치판·이동 설정을 고치면 다음 조회부터 자동으로 바뀐다."""
+    return {"data": service.process_links(session, principal, project_id, version_id,
+                                          process_version_ids=process_version_id, scenario_version_id=scenario_version_id)}
