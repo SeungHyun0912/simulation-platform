@@ -21,7 +21,7 @@
 | 명령 | 결과 |
 |---|---|
 | `pnpm typecheck` / `pnpm lint` / `pnpm build` | 0 / 0 / 0 |
-| `pnpm check:api` | 0(0.18.0, PR #72 계약으로 생성 — 머지 후 다시 확인) |
+| `pnpm check:api` | 0(0.18.0). **PR #72 머지(`3a9813a`) 후 main 병합·재생성 — 생성물 변화 없음**, check:api·typecheck·lint·build 0, test 755 통과 |
 | `pnpm test` | 0, **755 통과**·83 건너뜀(라이브). 배치판 화면 34 + 단위 20 |
 | 실서버 읽기(`LIVE_API`) `live-layout-ui` | **4 통과**(DEMO-A 목록·초안, DEMO-WIRE v1·v2) |
 | 실서버 쓰기(`LIVE_WRITE=1 LIVE_LAYOUT=1`, DEMO-A 초안 하나·승인 안 함, 사용자 허락 범위) | **통과**: 통로 FE-W1(FE2 → FE4 → FE3) 저장·길이 **22.2 m**, 경로 계산 EQ-001 OUT → EQ-002 IN = **고정 경로 FE-R1**, 반대 방향 = **통로로 계산** |
