@@ -1,6 +1,77 @@
 {
   "components": {
     "schemas": {
+      "AisleIn": {
+        "additionalProperties": false,
+        "description": "통로(W): 포트에 묶이지 않은 다닐 수 있는 선(양방향). 꺾임은 점을 더 넣고, 갈림길·교차로는 같은 점을 공유해 잇는다.",
+        "properties": {
+          "aisle_key": {
+            "description": "배치판 안에서 유일한 통로 이름(예: W1)",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Aisle Key",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "points": {
+            "description": "지나는 점 key 순서(2개 이상, 연속한 점 사이는 직선)",
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "aisle_key",
+          "points"
+        ],
+        "title": "AisleIn",
+        "type": "object"
+      },
+      "AisleOut": {
+        "properties": {
+          "aisle_key": {
+            "title": "Aisle Key",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "length_m": {
+            "description": "연속한 점 사이 직선 거리의 합(소수 첫째 자리, 계산값)",
+            "title": "Length M",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "aisle_key",
+          "points",
+          "length_m",
+          "attributes"
+        ],
+        "title": "AisleOut",
+        "type": "object"
+      },
       "AllocationRule": {
         "additionalProperties": false,
         "properties": {
@@ -2919,8 +2990,16 @@
       "JsonValue": {},
       "LayoutContentIn": {
         "additionalProperties": false,
-        "description": "배치판 내용 전체(보낸 내용으로 통째로 교체).",
+        "description": "배치판 내용 전체(보낸 내용으로 통째로 교체). 보내지 않은 목록은 빈 목록으로 저장된다.",
         "properties": {
+          "aisles": {
+            "description": "통로(0.18.0). 응답의 aisles를 그대로 다시 보내야 지워지지 않는다",
+            "items": {
+              "$ref": "#/components/schemas/AisleIn"
+            },
+            "title": "Aisles",
+            "type": "array"
+          },
           "placements": {
             "items": {
               "$ref": "#/components/schemas/PlacementIn"
@@ -3199,6 +3278,13 @@
       },
       "LayoutVersionOut": {
         "properties": {
+          "aisles": {
+            "items": {
+              "$ref": "#/components/schemas/AisleOut"
+            },
+            "title": "Aisles",
+            "type": "array"
+          },
           "approved_at": {
             "anyOf": [
               {
@@ -4951,6 +5037,132 @@
           "next_cursor"
         ],
         "title": "Page",
+        "type": "object"
+      },
+      "PathOut": {
+        "properties": {
+          "from_port_id": {
+            "format": "uuid",
+            "title": "From Port Id",
+            "type": "string"
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "길이(m, 소수 첫째 자리). 갈 수 없으면 null",
+            "title": "Length M"
+          },
+          "points": {
+            "description": "지나는 점 key 순서(출발 포트의 점 → 도착 포트의 점)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "갈 수 없는 이유(포트가 점에 매핑되지 않음·길이 없음 등)",
+            "title": "Reason"
+          },
+          "route_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "고정 경로면 그 key",
+            "title": "Route Key"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fixed",
+                  "computed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "fixed: 저장된 고정 경로(우선), computed: 통로·고정 경로의 선분으로 계산한 최단 경로",
+            "title": "Source"
+          },
+          "to_port_id": {
+            "format": "uuid",
+            "title": "To Port Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_port_id",
+          "to_port_id",
+          "reachable"
+        ],
+        "title": "PathOut",
+        "type": "object"
+      },
+      "PathPairIn": {
+        "additionalProperties": false,
+        "properties": {
+          "from_port_id": {
+            "format": "uuid",
+            "title": "From Port Id",
+            "type": "string"
+          },
+          "to_port_id": {
+            "format": "uuid",
+            "title": "To Port Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_port_id",
+          "to_port_id"
+        ],
+        "title": "PathPairIn",
+        "type": "object"
+      },
+      "PathsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "pairs": {
+            "description": "출발 포트 → 도착 포트 쌍(최대 500)",
+            "items": {
+              "$ref": "#/components/schemas/PathPairIn"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Pairs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pairs"
+        ],
+        "title": "PathsIn",
         "type": "object"
       },
       "PerOutputUnit": {
@@ -9367,6 +9579,22 @@
         "title": "Single[VersionDiffOut]",
         "type": "object"
       },
+      "Single_list_PathOut__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/PathOut"
+            },
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[list[PathOut]]",
+        "type": "object"
+      },
       "Single_list_PortOut__": {
         "properties": {
           "data": {
@@ -12713,6 +12941,90 @@
           }
         },
         "summary": "Put Layout Content",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/paths": {
+      "post": {
+        "description": "포트 → 포트 경로(저장하지 않음, 최대 500쌍). 같은 출발·도착 포트로 저장된 고정 경로가 있으면 그것을(`source=fixed`),\n없으면 통로·고정 경로의 선분(양방향)으로 만든 길 그물의 최단 경로를 계산한다(`source=computed`). 점·통로를 고치면 다음\n조회부터 자동으로 바뀐다. 갈 수 없으면 `reachable=false`와 이유.",
+        "operationId": "layout_paths_api_v1_projects__project_id__layout_versions__version_id__paths_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_list_PathOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Layout Paths",
         "tags": [
           "layouts"
         ]

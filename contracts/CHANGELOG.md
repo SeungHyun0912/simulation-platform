@@ -5,6 +5,11 @@ generated client를 재생성한다. 각 항목은 호환성, 변경 요약, 프
 계약을 바꿀 때는 CR 승인 → 코드 → `export_openapi` → `contracts/openapi.json`·해시·이 파일 갱신 순서를 지킨다
 (백엔드 계약 테스트가 스냅샷·해시 불일치를 실패로 처리한다).
 
+## 0.18.0 — 2026-10-30 · scope `layouts`(확장, BE-22) · sha256 `3b54b5df…3dee` · 기준 commit `4e96a1b`
+- **호환성: 0.17.0과 호환(추가만).** 배치판 내용(`LayoutContentIn`·`LayoutVersionOut`)에 `aisles[]`(통로) 추가, operation +1 `POST /layout-versions/{v}/paths`(포트 → 포트 경로 계산). migration 0012. **주의:** PUT `/content`는 통째로 교체라 `aisles`를 보내지 않으면 통로가 지워진다 — 응답의 `aisles`를 그대로 다시 보낼 것.
+- 근거: CR be19(사용자 지시 2026-10-30: P·W 저장, R은 계산·고정 경로 우선, 교차는 가운데 점 공유, 일방통행 없음, 시간은 후속이되 자동 계산). 상세는 04 §7.1.
+- **프런트가 해야 할 일:** 타입 재생성. 통로 그리기(포트 없이 점 순서, 꺾임은 점 추가, 갈림길·교차는 기존 점을 눌러 공유)·통로 표·저장 시 aisles 포함. "A → B 경로 보기"는 `POST …/paths`(후보 설비 여러 대면 쌍을 여러 개 보내 비교). 검증 경고 `LAY-008`(이어지지 않은 교차)·`LAY-009`(길에 닿지 않는 포트) 강조.
+
 ## 0.17.0 — 2026-10-28 · scope `layouts`(신규, BE-21) · sha256 `71906840…9fc7` · 기준 commit `c145a97`
 - **호환성: 0.16.2와 호환(추가만).** 새 operation 7개(`/layout-versions` 목록·생성, 단건 조회·수정, `/content` 교체, `/validate`, `/approve`), 새 오류 `LAYOUT_DRAFT_EXISTS`(409)·`LAYOUT_VALIDATION_FAILED`(422). migration 0011(배치판 테이블 6개).
 - 근거: CR be18(사용자 결정 2026-10-28: m 소수 첫째 자리 반올림, 원점 도면 왼쪽 위, x·y 중심, 점 + 포트 매핑 + 점 순서 경로, 배치판 버전 관리 유지). 상세는 04 §7.1.
