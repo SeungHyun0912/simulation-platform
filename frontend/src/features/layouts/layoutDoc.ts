@@ -26,9 +26,11 @@ export type LayoutRoute = {
   points: string[];
   attributes: Record<string, unknown>;
 };
-export type LayoutDoc = { points: LayoutPoint[]; placements: LayoutPlacement[]; portPoints: LayoutPortPoint[]; routes: LayoutRoute[] };
+/** 통로(0.18.0): 포트에 묶이지 않은 양방향 선. 갈림길·교차로는 같은 점을 공유해 잇는다. */
+export type LayoutAisle = { key: string; points: string[]; attributes: Record<string, unknown> };
+export type LayoutDoc = { points: LayoutPoint[]; placements: LayoutPlacement[]; portPoints: LayoutPortPoint[]; routes: LayoutRoute[]; aisles: LayoutAisle[] };
 
-export const EMPTY_DOC: LayoutDoc = { points: [], placements: [], portPoints: [], routes: [] };
+export const EMPTY_DOC: LayoutDoc = { points: [], placements: [], portPoints: [], routes: [], aisles: [] };
 
 const s = (v: string | null | undefined) => (v === null || v === undefined ? "" : v);
 const orNull = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -54,10 +56,11 @@ export function fromVersion(v: Schemas["LayoutVersionOut"]): LayoutDoc {
       points: [...r.points],
       attributes: r.attributes ?? {},
     })),
+    aisles: (v.aisles ?? []).map((a) => ({ key: a.aisle_key, points: [...a.points], attributes: a.attributes ?? {} })),
   };
 }
 
-/** PUT /content 본문. 순서는 화면 목록 순서 그대로다(422 field_path가 이 순번을 가리킨다). */
+/** PUT /content 본문. 순서는 화면 목록 순서 그대로다(422 field_path가 이 순번을 가리킨다). 통째 교체라 통로도 항상 보낸다(빼면 서버에서 지워진다). */
 export function toContentIn(d: LayoutDoc): Schemas["LayoutContentIn"] {
   return {
     points: d.points.map((p) => ({ point_key: p.key.trim(), x_m: p.x.trim(), y_m: p.y.trim(), attributes: p.attributes })),
@@ -79,6 +82,7 @@ export function toContentIn(d: LayoutDoc): Schemas["LayoutContentIn"] {
       points: r.points,
       attributes: r.attributes,
     })),
+    aisles: d.aisles.map((a) => ({ aisle_key: a.key.trim(), points: a.points, attributes: a.attributes })),
   };
 }
 
@@ -96,6 +100,7 @@ const nextKey = (prefix: string, used: Iterable<string>) => {
 };
 export const nextPointKey = (d: LayoutDoc) => nextKey("P", d.points.map((p) => p.key));
 export const nextRouteKey = (d: LayoutDoc) => nextKey("R", d.routes.map((r) => r.key));
+export const nextAisleKey = (d: LayoutDoc) => nextKey("W", d.aisles.map((a) => a.key));
 
 /** 끌기·화살표 이동 값: 0 이상, 소수 첫째 자리(서버 정밀도와 같다). 사람이 입력한 값은 반올림하지 않고 서버에 맡긴다. */
 export const coord = (n: number) => (Math.round(Math.max(0, n) * 10) / 10).toFixed(1);
@@ -120,12 +125,17 @@ export function renamePoint(d: LayoutDoc, from: string, to: string): LayoutDoc |
     placements: d.placements,
     portPoints: d.portPoints.map((m) => ({ ...m, pointKey: ren(m.pointKey) })),
     routes: d.routes.map((r) => ({ ...r, points: r.points.map(ren) })),
+    aisles: d.aisles.map((a) => ({ ...a, points: a.points.map(ren) })),
   };
 }
 
 /** 이 점을 쓰는 곳(삭제 전 확인용) */
-export function pointUsage(d: LayoutDoc, key: string): { ports: number; routes: string[] } {
-  return { ports: d.portPoints.filter((m) => m.pointKey === key).length, routes: d.routes.filter((r) => r.points.includes(key)).map((r) => r.key) };
+export function pointUsage(d: LayoutDoc, key: string): { ports: number; routes: string[]; aisles: string[] } {
+  return {
+    ports: d.portPoints.filter((m) => m.pointKey === key).length,
+    routes: d.routes.filter((r) => r.points.includes(key)).map((r) => r.key),
+    aisles: d.aisles.filter((a) => a.points.includes(key)).map((a) => a.key),
+  };
 }
 
 /** 점 삭제: 그 점의 포트 매핑을 풀고 경로에서 빼며, 빠져서 연달아 같은 점이 되면 하나로 합친다. 점이 2개 미만이 된 경로는 검증에서 드러난다. */
@@ -135,6 +145,7 @@ export function removePoint(d: LayoutDoc, key: string): LayoutDoc {
     placements: d.placements,
     portPoints: d.portPoints.filter((m) => m.pointKey !== key),
     routes: d.routes.map((r) => ({ ...r, points: collapse(r.points.filter((k) => k !== key)) })),
+    aisles: d.aisles.map((a) => ({ ...a, points: collapse(a.points.filter((k) => k !== key)) })),
   };
 }
 const collapse = (ks: string[]) => ks.filter((k, i) => i === 0 || ks[i - 1] !== k);
@@ -168,15 +179,11 @@ export function removeRoute(d: LayoutDoc, key: string): LayoutDoc {
 
 /* ---------------- 경로 점 편집(참고: frontend/references/factory-labeler.html의 경로 도구) ---------------- */
 
+const insertAt = (pts: string[], index: number, key: string) => (pts[index - 1] === key || pts[index] === key ? pts : [...pts.slice(0, index), key, ...pts.slice(index)]);
+
 /** 경로의 i번째 자리 앞에 점을 끼워 넣는다(구간 더블클릭). 연달아 같은 점이 되면 넣지 않는다. */
 export function insertRoutePoint(d: LayoutDoc, routeKey: string, index: number, pointKey: string): LayoutDoc {
-  return {
-    ...d,
-    routes: d.routes.map((r) => {
-      if (r.key !== routeKey || r.points[index - 1] === pointKey || r.points[index] === pointKey) return r;
-      return { ...r, points: [...r.points.slice(0, index), pointKey, ...r.points.slice(index)] };
-    }),
-  };
+  return { ...d, routes: d.routes.map((r) => (r.key === routeKey ? { ...r, points: insertAt(r.points, index, pointKey) } : r)) };
 }
 
 /** 경로에서 i번째 점을 뺀다(점 자체는 남는다). 빠져서 연달아 같은 점이 되면 합친다. */
@@ -184,8 +191,28 @@ export function removeRoutePointAt(d: LayoutDoc, routeKey: string, index: number
   return { ...d, routes: d.routes.map((r) => (r.key === routeKey ? { ...r, points: collapse(r.points.filter((_, i) => i !== index)) } : r)) };
 }
 
-/** 어디에도 쓰이지 않는 점(포트 연결도 경로도 없음) */
-export const unusedPoints = (d: LayoutDoc) => d.points.filter((p) => pointUsage(d, p.key).ports === 0 && pointUsage(d, p.key).routes.length === 0).map((p) => p.key);
+/** 통로의 i번째 자리 앞에 점을 끼워 넣는다(구간 더블클릭 — 그 점을 다른 통로와 공유하면 갈림길이 된다). */
+export function insertAislePoint(d: LayoutDoc, aisleKey: string, index: number, pointKey: string): LayoutDoc {
+  return { ...d, aisles: d.aisles.map((a) => (a.key === aisleKey ? { ...a, points: insertAt(a.points, index, pointKey) } : a)) };
+}
+export function removeAislePointAt(d: LayoutDoc, aisleKey: string, index: number): LayoutDoc {
+  return { ...d, aisles: d.aisles.map((a) => (a.key === aisleKey ? { ...a, points: collapse(a.points.filter((_, i) => i !== index)) } : a)) };
+}
+export function upsertAisle(d: LayoutDoc, aisle: LayoutAisle, replaceKey?: string): LayoutDoc {
+  const at = d.aisles.findIndex((a) => a.key === (replaceKey ?? aisle.key));
+  if (at < 0) return { ...d, aisles: [...d.aisles, aisle] };
+  return { ...d, aisles: d.aisles.map((a, i) => (i === at ? aisle : a)) };
+}
+export const removeAisle = (d: LayoutDoc, key: string): LayoutDoc => ({ ...d, aisles: d.aisles.filter((a) => a.key !== key) });
+
+/** 어디에도 쓰이지 않는 점(포트 연결·경로·통로 모두 없음) */
+export const unusedPoints = (d: LayoutDoc) =>
+  d.points
+    .filter((p) => {
+      const u = pointUsage(d, p.key);
+      return u.ports === 0 && u.routes.length === 0 && u.aisles.length === 0;
+    })
+    .map((p) => p.key);
 
 export function removePoints(d: LayoutDoc, keys: Iterable<string>): LayoutDoc {
   let next = d;
@@ -247,18 +274,28 @@ export function validateDoc(d: LayoutDoc): DocErrors {
     routeKeys.add(r.key.trim());
     if (r.points.length < 2) e[`${t}.points`] = "경로에는 점이 2개 이상 있어야 합니다.";
   }
+  const aisleKeys = new Set<string>();
+  for (const a of d.aisles) {
+    const t = `aisle:${a.key}`;
+    if (!a.key.trim()) e[`${t}.key`] = "통로 이름이 비었습니다.";
+    else if (a.key.trim().length > KEY_MAX) e[`${t}.key`] = `통로 이름은 ${KEY_MAX}자 이하입니다.`;
+    else if (aisleKeys.has(a.key.trim())) e[`${t}.key`] = "같은 이름의 통로가 있습니다.";
+    aisleKeys.add(a.key.trim());
+    if (a.points.length < 2) e[`${t}.points`] = "통로에는 점이 2개 이상 있어야 합니다.";
+  }
   return e;
 }
 
 /* ---------------- 오류 위치 → 대상 ---------------- */
 
-export type Target = `point:${string}` | `placement:${string}` | `port:${string}` | `route:${string}`;
+export type Target = `point:${string}` | `placement:${string}` | `port:${string}` | `route:${string}` | `aisle:${string}`;
 
 /** 저장(PUT) 422의 field_path는 보낸 본문의 순번(JSON Pointer, 예: /routes/3/points/1)이다. 보낸 본문으로 대상을 찾는다. */
 export function saveIssueTarget(path: string | undefined, sent: Schemas["LayoutContentIn"]): Target | null {
-  const m = /^\/(points|placements|port_points|routes)\/(\d+)/.exec(path ?? "");
+  const m = /^\/(points|placements|port_points|routes|aisles)\/(\d+)/.exec(path ?? "");
   if (!m) return null;
   const i = Number(m[2]);
+  if (m[1] === "aisles") return sent.aisles?.[i] ? `aisle:${sent.aisles[i]!.aisle_key}` : null;
   if (m[1] === "points") return sent.points?.[i] ? `point:${sent.points[i]!.point_key}` : null;
   if (m[1] === "placements") return sent.placements?.[i] ? `placement:${sent.placements[i]!.asset_id}` : null;
   if (m[1] === "port_points") return sent.port_points?.[i] ? `port:${sent.port_points[i]!.port_id}` : null;
@@ -267,10 +304,10 @@ export function saveIssueTarget(path: string | undefined, sent: Schemas["LayoutC
 
 /** 검증(validate·approve)의 field_path는 key 경로다: /points/{key}, /placements/{asset_id}, /port_points/{port_id}, /routes/{key}. */
 export function validationIssueTarget(path: string | undefined): Target | null {
-  const m = /^\/(points|placements|port_points|routes)\/([^/]+)/.exec(path ?? "");
+  const m = /^\/(points|placements|port_points|routes|aisles)\/([^/]+)/.exec(path ?? "");
   if (!m) return null;
   const key = decodeURIComponent(m[2]!);
-  const kind = { points: "point", placements: "placement", port_points: "port", routes: "route" }[m[1] as "points"];
+  const kind = { points: "point", placements: "placement", port_points: "port", routes: "route", aisles: "aisle" }[m[1] as "points"];
   return `${kind}:${key}` as Target;
 }
 
@@ -332,6 +369,35 @@ export function pastePlacements(d: LayoutDoc, text: string, assetIdByCode: Reado
       added++;
     }
   });
+  return { doc, added, updated, errors };
+}
+
+/**
+ * 통로 붙여 넣기: 한 줄 = 통로 이름 + 점 이름들(탭·쉼표·공백으로 구분, 예 "W1  P1 P2 P5"). 같은 이름이 있으면 점 순서를 바꾸고 없으면 추가한다.
+ * 없는 점 이름은 그 줄을 건너뛰고 알린다(점은 먼저 점 붙여 넣기로 만든다).
+ */
+export function pasteAisles(d: LayoutDoc, text: string): PasteResult {
+  const keys = new Set(d.points.map((p) => p.key));
+  let doc = d;
+  let added = 0;
+  let updated = 0;
+  const errors: string[] = [];
+  text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .forEach((line, i) => {
+      const cells = line.split(/[\t, ]+/).filter(Boolean);
+      const [key = "", ...pts] = cells;
+      if (i === 0 && /통로|aisle/i.test(key)) return; // 제목 줄
+      const missing = pts.filter((k) => !keys.has(k));
+      if (!key || pts.length < 2) return errors.push(`${i + 1}번째 줄: "통로 이름, 점 2개 이상"이 아닙니다.`);
+      if (missing.length) return errors.push(`${i + 1}번째 줄(${key}): 없는 점 ${missing.join(", ")}`);
+      const aisle = { key, points: collapse(pts), attributes: doc.aisles.find((a) => a.key === key)?.attributes ?? {} };
+      if (doc.aisles.some((a) => a.key === key)) updated++;
+      else added++;
+      doc = upsertAisle(doc, aisle);
+    });
   return { doc, added, updated, errors };
 }
 

@@ -85,6 +85,59 @@
   stroke-width: 2.5;
 }
 
+/* 통로(0.18.0): 다닐 수 있는 양방향 선 — 경로보다 굵고 옅게, 화살표 없음 */
+.aisle {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.routeHit:focus-visible + .aisle,
+.routeHit:hover + .aisle {
+  stroke: var(--color-focus);
+  opacity: 0.7;
+}
+
+.aisle.selected {
+  stroke: var(--color-primary);
+  opacity: 0.8;
+}
+
+.aisle.error {
+  stroke: var(--status-danger-fg);
+  opacity: 0.8;
+}
+
+.aisleText {
+  font-size: var(--text-2xs);
+  fill: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.aisleDraft {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 6;
+  stroke-dasharray: 8 6;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 계산 경로 강조(/paths 결과) */
+.pathHighlight {
+  fill: none;
+  stroke: var(--status-success-fg);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
 /* 경로 */
 .route {
   fill: none;

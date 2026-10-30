@@ -47,7 +47,7 @@ describe.skipIf(!LIVE)("배치판 화면 (실서버 읽기)", () => {
     if (!latest) return ctx.skip();
     const v = await json<{ points: unknown[]; placements: unknown[]; routes: unknown[] }>(`/projects/${demoA}/layout-versions/${latest.id}`);
     renderApp(`/projects/${demoA}/layouts/${latest.id}`, { source: "api", fetchImpl: realFetch() });
-    expect(await screen.findByText(new RegExp(`점 ${v.points.length} · 배치 ${v.placements.length} · 경로 ${v.routes.length}`), {}, slow)).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`점 ${v.points.length} · 배치 ${v.placements.length} · 통로 \\d+ · 경로 ${v.routes.length}`), {}, slow)).toBeInTheDocument();
   });
 });
 
@@ -63,7 +63,7 @@ describe.skipIf(!LIVE)("실데이터 배치판(DEMO-WIRE v1 승인본, 설비 96
     const v = ((await r.json()) as { data: { placements: { asset_code: string; asset_name: string; attributes: Record<string, unknown> }[] } }).data;
     const user = userEvent.setup();
     renderApp(`/projects/${wire}/layouts/${VID}`, { source: "api", fetchImpl: realFetch() });
-    expect(await screen.findByText(new RegExp(`범위 269\\.9 × 215\\.9 m\\(도면 크기\\) · 점 0 · 배치 ${v.placements.length} · 경로 0`), {}, slow)).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`범위 269\\.9 × 215\\.9 m\\(도면 크기\\) · 점 0 · 배치 ${v.placements.length} · 통로 \\d+ · 경로 0`), {}, slow)).toBeInTheDocument();
     expect(screen.getByText("승인된 배치판은 바꿀 수 없습니다")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "점 추가" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: "배치 목록" })).getAllByRole("row")).toHaveLength(v.placements.length + 1);
@@ -87,7 +87,7 @@ describe.skipIf(!LIVE)("실데이터 배치판 v2(DEMO-WIRE, 설비 96 + 저장�
     const v = ((await r.json()) as { data: { placements: { asset_code: string; asset_name: string; asset_kind: string; attributes: Record<string, unknown> }[] } }).data;
     const user = userEvent.setup();
     renderApp(`/projects/${wire}/layouts/${VID}`, { source: "api", fetchImpl: realFetch() });
-    expect(await screen.findByText(new RegExp(`배치 ${v.placements.length} · 경로 0`), {}, slow)).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`배치 ${v.placements.length} · 통로 \\d+ · 경로 0`), {}, slow)).toBeInTheDocument();
     const buttons = within(screen.getByRole("group", { name: /배치판 도면/ })).getAllByRole("button", { name: /^배치 / });
     const firstEq = buttons.findIndex((b) => /^배치 EQ-/.test(b.getAttribute("aria-label") ?? ""));
     const lastSpace = buttons.map((b) => /^배치 (ST|DK)-/.test(b.getAttribute("aria-label") ?? "")).lastIndexOf(true);
@@ -149,5 +149,33 @@ describe.skipIf(!LIVE || !WRITE)("배치판 실서버 쓰기 (DEMO-A 초안 하�
     expect(screen.getByRole("table", { name: "경로 목록" })).toHaveTextContent("16.9");
     await user.click(screen.getByRole("button", { name: "검증" }));
     await waitFor(() => expect(screen.queryByText(/승인할 수 있습니다|경고만 있어|오류가 있어/)).not.toBeNull(), slow);
+
+    // 0.18.0 통로: FE2를 지나는 통로 FE-W1(FE2 → FE4 → FE3)을 붙여 넣고 저장 → 응답 aisles·length_m
+    fireEvent.change(screen.getByLabelText("점 붙여 넣기(이름, x, y)"), { target: { value: "FE4\t25\t5" } });
+    await user.click(screen.getByRole("button", { name: "점 반영" }));
+    fireEvent.change(screen.getByLabelText(/통로 붙여 넣기/), { target: { value: "FE-W1\tFE2 FE4 FE3" } });
+    await user.click(screen.getByRole("button", { name: "통로 반영" }));
+    await user.click(screen.getByRole("button", { name: "내용 저장" }));
+    await screen.findByText(/배치판 내용을 저장했습니다/, {}, slow);
+    // FE2(15,5)→FE4(25,5) 10 + FE4→FE3(15,12) √149≈12.2 = 22.2
+    expect(within(screen.getByRole("table", { name: "통로 목록" })).getByText("22.2")).toBeInTheDocument();
+
+    // 경로 계산: EQ-001 OUT → EQ-002 IN은 고정 경로 FE-R1(fixed), 반대 방향은 그물에서 계산(computed)
+    const sec = screen.getByRole("region", { name: "경로 보기(계산)" });
+    const pick = async (label: RegExp | string, name: RegExp) => {
+      const el = within(sec).getByLabelText(label);
+      await user.selectOptions(el, within(el).getByRole("option", { name }));
+    };
+    await pick("출발 포트", /^EQ-001 OUT/);
+    await pick(/도착 포트/, /^EQ-002 IN/);
+    await user.click(within(sec).getByRole("button", { name: "경로 계산(1쌍)" }));
+    const t1 = await within(sec).findByRole("table", { name: "경로 계산 결과" }, slow);
+    expect(t1).toHaveTextContent("고정 경로 FE-R1");
+    await pick("출발 포트", /^EQ-002 IN/);
+    const toSel = within(sec).getByLabelText(/도착 포트/) as HTMLSelectElement;
+    await user.deselectOptions(toSel, within(toSel).getByRole("option", { name: /^EQ-002 IN/ }));
+    await pick(/도착 포트/, /^EQ-001 OUT/);
+    await user.click(within(sec).getByRole("button", { name: "경로 계산(1쌍)" }));
+    await waitFor(() => expect(within(sec).getByRole("table", { name: "경로 계산 결과" })).toHaveTextContent("통로로 계산"), slow);
   });
 });

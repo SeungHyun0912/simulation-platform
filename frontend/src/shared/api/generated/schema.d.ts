@@ -1,6 +1,6 @@
 // 자동 생성 파일입니다. 직접 수정하지 마세요(수정하면 pnpm check:api가 실패합니다).
 // 생성 명령: pnpm gen:api   도구: openapi-typescript
-// 기준 계약: version 0.17.0, openapi_sha256 71906840a4b8deafdc76bc45763e3051e5241c3c388fe72ac9c9155e6fca9fc7
+// 기준 계약: version 0.18.0, openapi_sha256 78905102896674298473dedcac1ce408c4c47e69555433ddce2a87543dcf2dde
 // 승인 scope: project-assets-ports, asset-revisions, products-materials, process-versions, scenario-versions, runs, layouts
 
 export interface paths {
@@ -381,6 +381,28 @@ export interface paths {
          */
         put: operations["put_layout_content_api_v1_projects__project_id__layout_versions__version_id__content_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Layout Paths
+         * @description 포트 → 포트 경로(저장하지 않음, 최대 500쌍). 같은 출발·도착 포트로 저장된 고정 경로가 있으면 그것을(`source=fixed`),
+         *     없으면 통로·고정 경로의 선분(양방향)으로 만든 길 그물의 최단 경로를 계산한다(`source=computed`). 점·통로를 고치면 다음
+         *     조회부터 자동으로 바뀐다. 갈 수 없으면 `reachable=false`와 이유.
+         */
+        post: operations["layout_paths_api_v1_projects__project_id__layout_versions__version_id__paths_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1166,6 +1188,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AisleIn
+         * @description 통로(W): 포트에 묶이지 않은 다닐 수 있는 선(양방향). 꺾임은 점을 더 넣고, 갈림길·교차로는 같은 점을 공유해 잇는다.
+         */
+        AisleIn: {
+            /**
+             * Aisle Key
+             * @description 배치판 안에서 유일한 통로 이름(예: W1)
+             */
+            aisle_key: string;
+            /** Attributes */
+            attributes?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Points
+             * @description 지나는 점 key 순서(2개 이상, 연속한 점 사이는 직선)
+             */
+            points: string[];
+        };
+        /** AisleOut */
+        AisleOut: {
+            /** Aisle Key */
+            aisle_key: string;
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Length M
+             * @description 연속한 점 사이 직선 거리의 합(소수 첫째 자리, 계산값)
+             */
+            length_m: string;
+            /** Points */
+            points: string[];
+        };
         /** AllocationRule */
         AllocationRule: {
             /**
@@ -2256,9 +2314,14 @@ export interface components {
         JsonValue: unknown;
         /**
          * LayoutContentIn
-         * @description 배치판 내용 전체(보낸 내용으로 통째로 교체).
+         * @description 배치판 내용 전체(보낸 내용으로 통째로 교체). 보내지 않은 목록은 빈 목록으로 저장된다.
          */
         LayoutContentIn: {
+            /**
+             * Aisles
+             * @description 통로(0.18.0). 응답의 aisles를 그대로 다시 보내야 지워지지 않는다
+             */
+            aisles?: components["schemas"]["AisleIn"][];
             /** Placements */
             placements?: components["schemas"]["PlacementIn"][];
             /** Points */
@@ -2372,6 +2435,8 @@ export interface components {
         };
         /** LayoutVersionOut */
         LayoutVersionOut: {
+            /** Aisles */
+            aisles?: components["schemas"]["AisleOut"][];
             /** Approved At */
             approved_at?: string | null;
             /** Approved By */
@@ -2983,6 +3048,72 @@ export interface components {
             limit: number;
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** PathOut */
+        PathOut: {
+            /**
+             * From Port Id
+             * Format: uuid
+             */
+            from_port_id: string;
+            /**
+             * Length M
+             * @description 길이(m, 소수 첫째 자리). 갈 수 없으면 null
+             */
+            length_m?: string | null;
+            /**
+             * Points
+             * @description 지나는 점 key 순서(출발 포트의 점 → 도착 포트의 점)
+             */
+            points?: string[];
+            /** Reachable */
+            reachable: boolean;
+            /**
+             * Reason
+             * @description 갈 수 없는 이유(한국어 문장, 표시용)
+             */
+            reason?: string | null;
+            /**
+             * Reason Code
+             * @description 갈 수 없는 이유 코드: PORT_NOT_MAPPED(출발·도착 포트가 점에 매핑되지 않음), NO_CONNECTION(이어진 길 없음)
+             */
+            reason_code?: ("PORT_NOT_MAPPED" | "NO_CONNECTION") | null;
+            /**
+             * Route Key
+             * @description 고정 경로면 그 key
+             */
+            route_key?: string | null;
+            /**
+             * Source
+             * @description fixed: 저장된 고정 경로(우선), computed: 통로·고정 경로의 선분으로 계산한 최단 경로
+             */
+            source?: ("fixed" | "computed") | null;
+            /**
+             * To Port Id
+             * Format: uuid
+             */
+            to_port_id: string;
+        };
+        /** PathPairIn */
+        PathPairIn: {
+            /**
+             * From Port Id
+             * Format: uuid
+             */
+            from_port_id: string;
+            /**
+             * To Port Id
+             * Format: uuid
+             */
+            to_port_id: string;
+        };
+        /** PathsIn */
+        PathsIn: {
+            /**
+             * Pairs
+             * @description 출발 포트 → 도착 포트 쌍(최대 500)
+             */
+            pairs: components["schemas"]["PathPairIn"][];
         };
         /** PerOutputUnit */
         PerOutputUnit: {
@@ -4619,6 +4750,11 @@ export interface components {
         /** Single[VersionDiffOut] */
         Single_VersionDiffOut_: {
             data: components["schemas"]["VersionDiffOut"];
+        };
+        /** Single[list[PathOut]] */
+        Single_list_PathOut__: {
+            /** Data */
+            data: components["schemas"]["PathOut"][];
         };
         /** Single[list[PortOut]] */
         Single_list_PortOut__: {
@@ -6548,6 +6684,60 @@ export interface operations {
             };
             /** @description Precondition Required */
             428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    layout_paths_api_v1_projects__project_id__layout_versions__version_id__paths_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Single_list_PathOut__"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

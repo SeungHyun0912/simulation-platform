@@ -8,7 +8,12 @@ import { StateNotice } from "../../shared/components/StateNotice";
 import {
   insideSpaceOf,
   mapPort,
+  nextAisleKey,
   nextRouteKey,
+  pasteAisles,
+  removeAisle,
+  removeAislePointAt,
+  upsertAisle,
   removePoints,
   removeRoutePointAt,
   unusedPoints,
@@ -25,6 +30,7 @@ import {
   upsertRoute,
   type DocErrors,
   type LayoutDoc,
+  type LayoutAisle,
   type LayoutRoute,
   type Target,
 } from "./layoutDoc";
@@ -32,6 +38,8 @@ import { MODE_SUGGESTIONS, modeText, portText, roleText, unknownText } from "./l
 import type { LayoutAssets } from "./queries";
 
 export type RouteDraft = {
+  /** 그리는 선: 고정 경로(포트 → 포트) 또는 통로(포트 없는 양방향 선, 0.18.0) */
+  kind: "route" | "aisle";
   editingKey: string | null;
   key: string;
   fromPortId: string;
@@ -150,6 +158,32 @@ export function RouteDraftPanel({
   onFinish: () => void;
   onCancel: () => void;
 }) {
+  if (draft.kind === "aisle")
+    return (
+      <section aria-label="통로 그리기">
+        <h3>{draft.editingKey ? `통로 ${draft.editingKey} 점 순서 다시 그리기` : "새 통로"}</h3>
+        <Note>
+          통로는 포트에 묶이지 않는 양방향 선입니다. 빈 곳을 누르면 점이 생기고, 기존 점을 누르면 그 점을 함께 지나 갈림길·교차로가 됩니다. 겹쳐 보여도 같은 점을 지나지 않으면 이어지지 않습니다.
+        </Note>
+        <FieldGrid>
+          <TextField label="통로 이름" value={draft.key} placeholder={draft.editingKey ?? nextAisleKey(doc)} onChange={(e) => onChange({ ...draft, key: e.target.value })} />
+          <ExistingPointField doc={doc} onPick={onAppend} />
+        </FieldGrid>
+        <PointChain points={draft.points} created={draft.created} label="고른 점 순서" />
+        {draft.message && <p role="alert">⚠ {draft.message}</p>}
+        <FilterBar>
+          <Button onClick={onRemoveLast} disabled={draft.points.length === 0} title="Backspace">
+            마지막 점 빼기
+          </Button>
+          <Button variant="primary" disabled={draft.points.length < 2} onClick={onFinish} title="Enter 또는 더블클릭">
+            {draft.editingKey ? "점 순서 바꾸기" : "통로 만들기"}
+          </Button>
+          <Button onClick={onCancel} title="Esc">
+            취소
+          </Button>
+        </FilterBar>
+      </section>
+    );
   const fromPoint = draft.fromPortId ? pointOfPort(doc, draft.fromPortId) : "";
   const toPoint = draft.toPortId ? pointOfPort(doc, draft.toPortId) : "";
   const key = draft.key.trim() || (draft.editingKey ?? nextRouteKey(doc));
@@ -220,6 +254,7 @@ export function SelectionPanel({
   onChange,
   onSelect,
   onRedrawRoute,
+  onRedrawAisle,
 }: {
   doc: LayoutDoc;
   saved: Schemas["LayoutVersionOut"];
@@ -230,6 +265,7 @@ export function SelectionPanel({
   onChange: (d: LayoutDoc) => void;
   onSelect: (t: Target | null) => void;
   onRedrawRoute: (r: LayoutRoute) => void;
+  onRedrawAisle: (a: LayoutAisle) => void;
 }) {
   const [kind, id] = [target.slice(0, target.indexOf(":")), target.slice(target.indexOf(":") + 1)];
   const [rename, setRename] = useState<string | null>(null);
@@ -297,7 +333,10 @@ export function SelectionPanel({
                 onSelect(null);
               }}
             >
-              점 삭제{use.ports || use.routes.length ? `(포트 ${use.ports}개 연결 해제, 경로 ${use.routes.join("·") || "없음"}에서 빠짐)` : ""}
+              점 삭제
+              {use.ports || use.routes.length || use.aisles.length
+                ? `(포트 ${use.ports}개 연결 해제, 경로 ${use.routes.join("·") || "없음"}·통로 ${use.aisles.join("·") || "없음"}에서 빠짐)`
+                : ""}
             </Button>
           )}
           {close}
@@ -421,6 +460,39 @@ export function SelectionPanel({
     );
   }
 
+  if (kind === "aisle") {
+    const a = doc.aisles.find((x) => x.key === id);
+    if (!a) return <StateNotice kind="empty" title={`통로 ${id}이(가) 없습니다`} action={close} />;
+    const savedAisle = (saved.aisles ?? []).find((x) => x.aisle_key === a.key);
+    const unchanged = savedAisle && savedAisle.points.join() === a.points.join();
+    const shared = a.points.filter((k) => doc.aisles.some((o) => o.key !== a.key && o.points.includes(k)) || doc.routes.some((r) => r.points.includes(k)));
+    return (
+      <section aria-label={`통로 ${a.key} 속성`}>
+        <h3>통로 {a.key}</h3>
+        <PointChain points={a.points} label="통로 점 순서" onRemove={editable ? (i) => onChange(removeAislePointAt(doc, a.key, i)) : undefined} />
+        {editable && <ExistingPointField doc={doc} label="끝에 기존 점 추가" onPick={(k) => a.points[a.points.length - 1] !== k && onChange(upsertAisle(doc, { ...a, points: [...a.points, k] }, a.key))} />}
+        {errors[`aisle:${a.key}.points`] && <p role="alert">{errors[`aisle:${a.key}.points`]}</p>}
+        <p>길이: {unchanged ? `${savedAisle.length_m} m(서버 계산)` : "저장하면 서버가 계산합니다"}</p>
+        <p>다른 선과 이어지는 점(공유 점): {shared.length ? shared.join(", ") : "없음 — 다른 통로·경로와 이어지지 않았습니다"}</p>
+        <Note>도면에서 이 통로 선을 더블클릭하면 그 자리에 점을 끼워 넣습니다. 그 점을 다른 통로가 지나면 갈림길이 됩니다.</Note>
+        <FilterBar>
+          {editable && <Button onClick={() => onRedrawAisle(a)}>점 순서 다시 그리기</Button>}
+          {editable && (
+            <Button
+              onClick={() => {
+                onChange(removeAisle(doc, a.key));
+                onSelect(null);
+              }}
+            >
+              통로 삭제
+            </Button>
+          )}
+          {close}
+        </FilterBar>
+      </section>
+    );
+  }
+
   // 포트(검증 오류가 포트를 가리킬 때)
   const info = assets.portById.get(id);
   return (
@@ -461,6 +533,7 @@ export function LayoutTables({
 }) {
   const [pointText, setPointText] = useState("");
   const [placeText, setPlaceText] = useState("");
+  const [aisleText, setAisleText] = useState("");
   const [pasteMsg, setPasteMsg] = useState<{ ok: string; errors: string[] } | null>(null);
   const [toPlace, setToPlace] = useState("");
   const placed = new Set(doc.placements.map((p) => p.assetId));
@@ -545,6 +618,31 @@ export function LayoutTables({
           </Button>
         </FilterBar>
       )}
+      <h3>통로</h3>
+      {doc.aisles.length === 0 ? (
+        <Note>통로가 없습니다. 도면의 "통로 그리기"나 아래 붙여 넣기로 만듭니다. 경로 계산은 통로와 고정 경로의 선을 따라 갑니다.</Note>
+      ) : (
+        <DataTable
+          caption="통로 목록"
+          columns={[
+            { key: "key", header: "통로", render: (a) => a.key },
+            { key: "pts", header: "점 순서", render: (a) => a.points.join(" — ") },
+            {
+              key: "len",
+              header: "길이(m)",
+              align: "end",
+              render: (a) => {
+                const sv = (saved.aisles ?? []).find((x) => x.aisle_key === a.key);
+                return sv && sv.points.join() === a.points.join() ? sv.length_m : "저장 후 계산";
+              },
+            },
+            { key: "pick", header: "", render: (a) => pick(`aisle:${a.key}`, `통로 ${a.key}`) },
+          ]}
+          rows={doc.aisles}
+          getRowKey={(a) => a.key}
+          wrapCells
+        />
+      )}
       <h3>경로</h3>
       {doc.routes.length === 0 ? <Note>경로가 없습니다. 도면의 "경로 그리기"로 만듭니다.</Note> : <DataTable caption="경로 목록" columns={routeCols} rows={doc.routes} getRowKey={(r) => r.key} wrapCells />}
 
@@ -575,6 +673,24 @@ export function LayoutTables({
             }}
           >
             배치 반영
+          </Button>
+          <TextAreaField
+            label="통로 붙여 넣기(통로 이름, 점 이름들 — 탭·쉼표·공백으로 구분)"
+            value={aisleText}
+            rows={3}
+            placeholder={"W1\tP1 P2 P5\nW2\tP3 P2 P4"}
+            onChange={(e) => setAisleText(e.target.value)}
+          />
+          <Button
+            disabled={!aisleText.trim()}
+            onClick={() => {
+              const r = pasteAisles(doc, aisleText);
+              onChange(r.doc);
+              setPasteMsg({ ok: `통로 ${r.added}개 추가, ${r.updated}개 변경`, errors: r.errors });
+              if (r.errors.length === 0) setAisleText("");
+            }}
+          >
+            통로 반영
           </Button>
           {pasteMsg && (
             <div role="status" aria-label="붙여 넣기 결과">

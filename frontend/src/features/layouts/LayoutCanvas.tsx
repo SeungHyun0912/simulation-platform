@@ -11,7 +11,9 @@ const DRAG_THRESHOLD = 4;
 /** 크기를 모르는 배치를 그릴 때 쓰는 표식 크기(m). 값이 아니라 표식이다. */
 const UNKNOWN_SIZE_M = 1;
 
-export type CanvasMode = "select" | "point" | "route";
+export type CanvasMode = "select" | "point" | "route" | "aisle";
+/** 선을 그리는 모드(경로·통로): 클릭이 점을 잇는다 */
+const drawing = (m: CanvasMode) => m === "route" || m === "aisle";
 
 type Props = {
   doc: LayoutDoc;
@@ -34,8 +36,10 @@ type Props = {
   onRouteClick: (x: number, y: number, placementId: string | null) => void;
   /** 경로 모드 더블클릭: 그리기 끝내기 */
   onRouteFinish: () => void;
-  /** 선택 모드에서 경로 구간 더블클릭: index 자리 앞에 (x, y) 점을 끼워 넣는다 */
-  onInsertOnRoute: (routeKey: string, index: number, x: number, y: number) => void;
+  /** 선택 모드에서 경로·통로 구간 더블클릭: index 자리 앞에 (x, y) 점을 끼워 넣는다 */
+  onInsertOnLine: (kind: "route" | "aisle", key: string, index: number, x: number, y: number) => void;
+  /** 강조할 계산 경로(점 key 순서, /paths 결과) */
+  highlight?: string[];
   /** 끌기를 시작할 때 한 번(되돌리기 기록용) */
   onEditStart: () => void;
   onMovePoint: (key: string, x: string, y: string) => void;
@@ -126,7 +130,7 @@ export function LayoutCanvas(p: Props) {
   }
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
     const d = drag.current;
-    if (p.mode === "route" && p.routeDraft.length > 0 && !d) setHover(toWorld(e.clientX, e.clientY));
+    if (drawing(p.mode) && p.routeDraft.length > 0 && !d) setHover(toWorld(e.clientX, e.clientY));
     if (!d) return;
     const dx = e.clientX - d.sx;
     const dy = e.clientY - d.sy;
@@ -151,7 +155,7 @@ export function LayoutCanvas(p: Props) {
     if (p.mode === "point" && !p.readOnly) {
       const w = toWorld(e.clientX, e.clientY);
       p.onAddPoint(w.x, w.y);
-    } else if (p.mode === "route" && !p.readOnly) {
+    } else if (drawing(p.mode) && !p.readOnly) {
       const w = toWorld(e.clientX, e.clientY);
       p.onRouteClick(w.x, w.y, null);
     } else if (p.mode === "select") p.onSelect(null);
@@ -189,22 +193,42 @@ export function LayoutCanvas(p: Props) {
       .filter((pt): pt is NonNullable<typeof pt> => !!pt)
       .map((pt) => `${X(Number(pt.x))},${Y(Number(pt.y))}`)
       .join(" ");
+  /** 선(경로·통로) 더블클릭: 가장 가까운 구간 앞자리에 점을 끼워 넣는다 */
+  function insertOnLine(e: ReactMouseEvent, kind: "route" | "aisle", key: string, keys: string[]) {
+    if (p.mode !== "select" || p.readOnly) return;
+    e.stopPropagation();
+    const w = toWorld(e.clientX, e.clientY);
+    const pts = keys.map((k2) => pointByKey.get(k2)).map((pt) => (pt ? { x: Number(pt.x), y: Number(pt.y) } : null));
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      if (!a || !b) continue;
+      const dist = distSeg(w, a, b);
+      if (dist < bestD) {
+        bestD = dist;
+        best = i;
+      }
+    }
+    if (best > 0) p.onInsertOnLine(kind, key, best, w.x, w.y);
+  }
   const cls = (base: string | undefined, t: Target) => [base, p.selected === t ? styles.selected : "", p.errorTargets.has(t) ? styles.error : ""].join(" ");
 
   return (
     <div className={styles.stage} ref={stageRef}>
       <svg
         ref={svgRef}
-        className={[styles.svg, panning ? styles.panning : "", (p.mode === "point" || p.mode === "route") && !p.readOnly ? styles.crosshair : ""].join(" ")}
+        className={[styles.svg, panning ? styles.panning : "", (p.mode === "point" || drawing(p.mode)) && !p.readOnly ? styles.crosshair : ""].join(" ")}
         role="group"
-        aria-label={`배치판 도면(단위 m, 원점 왼쪽 위). ${p.mode === "point" ? "빈 곳을 누르면 점을 추가합니다." : p.mode === "route" ? "경로 그리기: 빈 곳을 누르면 점이 생기고, 기존 점·설비를 누르면 그곳으로 잇습니다. 더블클릭이나 Enter로 끝냅니다." : "점·배치를 끌거나 선택한 뒤 화살표 키로 옮깁니다."}`}
+        aria-label={`배치판 도면(단위 m, 원점 왼쪽 위). ${p.mode === "point" ? "빈 곳을 누르면 점을 추가합니다." : p.mode === "route" ? "경로 그리기: 빈 곳을 누르면 점이 생기고, 기존 점·설비를 누르면 그곳으로 잇습니다. 더블클릭이나 Enter로 끝냅니다." : p.mode === "aisle" ? "통로 그리기: 빈 곳을 누르면 점이 생기고, 기존 점을 누르면 그 점을 함께 지나 갈림길이 됩니다. 더블클릭이나 Enter로 끝냅니다." : "점·배치를 끌거나 선택한 뒤 화살표 키로 옮깁니다."}`}
         onPointerDown={onBgDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onClick={onBgClick}
         onDoubleClick={(e) => {
-          if (p.mode === "route" && !p.readOnly) {
+          if (drawing(p.mode) && !p.readOnly) {
             e.preventDefault();
             p.onRouteFinish();
           }
@@ -243,15 +267,15 @@ export function LayoutCanvas(p: Props) {
               onPointerDown={(e) => onItemDown(e, "placement", pl.assetId, pl.x, pl.y)}
               onClick={(e) => {
                 if (suppressClick.current) return;
-                if (p.mode === "route" && !p.readOnly) {
+                if (drawing(p.mode) && !p.readOnly) {
                   const w = toWorld(e.clientX, e.clientY);
                   p.onRouteClick(w.x, w.y, pl.assetId);
-                } else if (p.mode !== "route") p.onSelect(t);
+                } else if (!drawing(p.mode)) p.onSelect(t);
               }}
               onKeyDown={(e) =>
                 onItemKey(
                   e,
-                  () => (p.mode === "route" && !p.readOnly ? p.onRouteClick(Number(pl.x), Number(pl.y), pl.assetId) : p.onSelect(t)),
+                  () => (drawing(p.mode) && !p.readOnly ? p.onRouteClick(Number(pl.x), Number(pl.y), pl.assetId) : p.onSelect(t)),
                   (dx, dy) => p.onMovePlacement(pl.assetId, coord(Number(pl.x) + dx), coord(Number(pl.y) + dy)),
                 )
               }
@@ -274,6 +298,33 @@ export function LayoutCanvas(p: Props) {
           );
         })}
 
+        {doc.aisles.map((a) => {
+          const t: Target = `aisle:${a.key}`;
+          const pts = polyline(a.points);
+          const a0 = pointByKey.get(a.points[0] ?? "");
+          const a1 = pointByKey.get(a.points[1] ?? "") ?? a0;
+          const mid = a0 && a1 ? { x: (Number(a0.x) + Number(a1.x)) / 2, y: (Number(a0.y) + Number(a1.y)) / 2 } : null;
+          return (
+            <g key={t}>
+              <polyline
+                points={pts}
+                className={styles.routeHit}
+                role="button"
+                tabIndex={0}
+                aria-label={`통로 ${a.key}: ${a.points.join(" — ")}${p.errorTargets.has(t) ? " (오류 있음)" : ""}`}
+                onClick={clickItem(() => !drawing(p.mode) && p.onSelect(t))}
+                onDoubleClick={(e) => insertOnLine(e, "aisle", a.key, a.points)}
+                onKeyDown={(e) => onItemKey(e as unknown as KeyboardEvent<SVGGElement>, () => p.onSelect(t))}
+              />
+              <polyline points={pts} className={cls(styles.aisle, t)} />
+              {mid && (
+                <text x={X(mid.x) + 6} y={Y(mid.y) + 14} className={styles.aisleText} aria-hidden="true">
+                  {a.key}
+                </text>
+              )}
+            </g>
+          );
+        })}
         {doc.routes.map((r) => {
           const t: Target = `route:${r.key}`;
           const pts = polyline(r.points);
@@ -289,26 +340,8 @@ export function LayoutCanvas(p: Props) {
                 role="button"
                 tabIndex={0}
                 aria-label={`경로 ${r.key}${r.mode ? ` (${r.mode})` : ""}: ${r.points.join(" → ")}${p.errorTargets.has(t) ? " (오류 있음)" : ""}`}
-                onClick={clickItem(() => p.mode !== "route" && p.onSelect(t))}
-                onDoubleClick={(e) => {
-                  if (p.mode !== "select" || p.readOnly) return;
-                  e.stopPropagation();
-                  const w = toWorld(e.clientX, e.clientY);
-                  const pts = r.points.map((key) => pointByKey.get(key)).map((pt) => (pt ? { x: Number(pt.x), y: Number(pt.y) } : null));
-                  let best = -1;
-                  let bestD = Infinity;
-                  for (let i = 1; i < pts.length; i++) {
-                    const a = pts[i - 1];
-                    const b = pts[i];
-                    if (!a || !b) continue;
-                    const dist = distSeg(w, a, b);
-                    if (dist < bestD) {
-                      bestD = dist;
-                      best = i;
-                    }
-                  }
-                  if (best > 0) p.onInsertOnRoute(r.key, best, w.x, w.y);
-                }}
+                onClick={clickItem(() => !drawing(p.mode) && p.onSelect(t))}
+                onDoubleClick={(e) => insertOnLine(e, "route", r.key, r.points)}
                 onKeyDown={(e) => onItemKey(e as unknown as KeyboardEvent<SVGGElement>, () => p.onSelect(t))}
               />
               <polyline points={pts} className={cls(styles.route, t)} />
@@ -321,8 +354,9 @@ export function LayoutCanvas(p: Props) {
             </g>
           );
         })}
-        {p.routeDraft.length > 0 && <polyline points={polyline(p.routeDraft)} className={styles.routeDraft} aria-hidden="true" />}
-        {p.mode === "route" && hover && pointByKey.get(p.routeDraft[p.routeDraft.length - 1] ?? "") && (
+        {p.highlight && p.highlight.length > 1 && <polyline points={polyline(p.highlight)} className={styles.pathHighlight} aria-label={`계산 경로 ${p.highlight.join(" → ")}`} role="img" />}
+        {p.routeDraft.length > 0 && <polyline points={polyline(p.routeDraft)} className={p.mode === "aisle" ? styles.aisleDraft : styles.routeDraft} aria-hidden="true" />}
+        {drawing(p.mode) && hover && pointByKey.get(p.routeDraft[p.routeDraft.length - 1] ?? "") && (
           <line
             x1={X(Number(pointByKey.get(p.routeDraft[p.routeDraft.length - 1]!)!.x))}
             y1={Y(Number(pointByKey.get(p.routeDraft[p.routeDraft.length - 1]!)!.y))}
@@ -347,11 +381,11 @@ export function LayoutCanvas(p: Props) {
               aria-pressed={p.selected === t}
               aria-label={`점 ${pt.key} (${pt.x}, ${pt.y})${ports.length ? ` 포트 ${ports.join(", ")}` : ""}${p.errorTargets.has(t) ? " (오류 있음)" : ""}`}
               onPointerDown={(e) => onItemDown(e, "point", pt.key, pt.x, pt.y)}
-              onClick={clickItem(() => (p.mode === "route" ? p.onRoutePoint(pt.key) : p.onSelect(t)))}
+              onClick={clickItem(() => (drawing(p.mode) ? p.onRoutePoint(pt.key) : p.onSelect(t)))}
               onKeyDown={(e) =>
                 onItemKey(
                   e,
-                  () => (p.mode === "route" ? p.onRoutePoint(pt.key) : p.onSelect(t)),
+                  () => (drawing(p.mode) ? p.onRoutePoint(pt.key) : p.onSelect(t)),
                   (dx, dy) => p.onMovePoint(pt.key, coord(Number(pt.x) + dx), coord(Number(pt.y) + dy)),
                 )
               }
