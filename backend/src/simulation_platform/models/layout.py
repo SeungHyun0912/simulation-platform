@@ -187,3 +187,41 @@ class LayoutRoutePoint(CreatedMixin, Base):
     route_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     seq: Mapped[int] = mapped_column(Integer)
     point_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+
+
+class LayoutAisle(IdMixin, CreatedMixin, Base):
+    """통로(W): 포트에 묶이지 않은 다닐 수 있는 선(양방향, CR be19). 점 순서는 LayoutAislePoint."""
+
+    __tablename__ = "layout_aisle"
+    __table_args__ = (
+        _version_fk("layout_aisle"),
+        UniqueConstraint("layout_version_id", "aisle_key", name="uq_layout_aisle_key"),
+        UniqueConstraint("layout_version_id", "id", name="uq_layout_aisle_version_id"),
+        CheckConstraint("btrim(aisle_key) <> ''", name="ck_layout_aisle_key"),
+        CheckConstraint("jsonb_typeof(attributes) = 'object'", name="ck_layout_aisle_attributes"),
+        Index("ix_layout_aisle_layout_version_id", "layout_version_id"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    layout_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    aisle_key: Mapped[str] = mapped_column(Text)
+    attributes: Mapped[dict] = _attributes()
+
+
+class LayoutAislePoint(CreatedMixin, Base):
+    __tablename__ = "layout_aisle_point"
+    __table_args__ = (
+        PrimaryKeyConstraint("aisle_id", "seq", name="pk_layout_aisle_point"),
+        _version_fk("layout_aisle_point"),
+        ForeignKeyConstraint(["layout_version_id", "aisle_id"], ["layout_aisle.layout_version_id", "layout_aisle.id"],
+                             name="fk_layout_aisle_point_aisle", ondelete="RESTRICT"),
+        _point_fk("layout_aisle_point"),
+        CheckConstraint("seq >= 0", name="ck_layout_aisle_point_seq"),
+        Index("ix_layout_aisle_point_layout_version_id", "layout_version_id"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    layout_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    aisle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    seq: Mapped[int] = mapped_column(Integer)
+    point_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))

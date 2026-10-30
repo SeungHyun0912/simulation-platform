@@ -21,6 +21,8 @@ from simulation_platform.schemas.layout import (
     LayoutVersionListItem,
     LayoutVersionOut,
     LayoutVersionPatch,
+    PathOut,
+    PathsIn,
 )
 from simulation_platform.services import layouts as service
 
@@ -138,3 +140,17 @@ def approve_layout_version(
     version = service.approve_version(session, principal, project_id, version_id, expected, request_id_of(request))
     set_etag(response, version.row_version)
     return {"data": version}
+
+
+@router.post("/layout-versions/{version_id}/paths", response_model=Single[list[PathOut]], responses=READ_ERRORS)
+def layout_paths(
+    project_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: PathsIn,
+    principal: Principal = Depends(get_principal),
+    session: Session = Depends(get_session),
+):
+    """포트 → 포트 경로(저장하지 않음, 최대 500쌍). 같은 출발·도착 포트로 저장된 고정 경로가 있으면 그것을(`source=fixed`),
+    없으면 통로·고정 경로의 선분(양방향)으로 만든 길 그물의 최단 경로를 계산한다(`source=computed`). 점·통로를 고치면 다음
+    조회부터 자동으로 바뀐다. 갈 수 없으면 `reachable=false`와 이유."""
+    return {"data": service.paths(session, principal, project_id, version_id, body)}

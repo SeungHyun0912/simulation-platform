@@ -94,13 +94,22 @@ class RouteIn(StrictIn):
     attributes: Attributes = Field(default_factory=dict)
 
 
+class AisleIn(StrictIn):
+    """통로(W): 포트에 묶이지 않은 다닐 수 있는 선(양방향). 꺾임은 점을 더 넣고, 갈림길·교차로는 같은 점을 공유해 잇는다."""
+
+    aisle_key: Code = Field(description="배치판 안에서 유일한 통로 이름(예: W1)")
+    points: list[Code] = Field(description="지나는 점 key 순서(2개 이상, 연속한 점 사이는 직선)")
+    attributes: Attributes = Field(default_factory=dict)
+
+
 class LayoutContentIn(StrictIn):
-    """배치판 내용 전체(보낸 내용으로 통째로 교체)."""
+    """배치판 내용 전체(보낸 내용으로 통째로 교체). 보내지 않은 목록은 빈 목록으로 저장된다."""
 
     points: list[LayoutPointIn] = Field(default_factory=list)
     placements: list[PlacementIn] = Field(default_factory=list)
     port_points: list[PortPointIn] = Field(default_factory=list)
     routes: list[RouteIn] = Field(default_factory=list)
+    aisles: list[AisleIn] = Field(default_factory=list, description="통로(0.18.0). 응답의 aisles를 그대로 다시 보내야 지워지지 않는다")
 
 
 class LayoutPointOut(Out):
@@ -144,6 +153,13 @@ class RouteOut(Out):
     attributes: Attributes
 
 
+class AisleOut(Out):
+    aisle_key: str
+    points: list[str]
+    length_m: str = Field(description="연속한 점 사이 직선 거리의 합(소수 첫째 자리, 계산값)")
+    attributes: Attributes
+
+
 class LayoutVersionListItem(Out):
     id: uuid.UUID
     project_id: uuid.UUID
@@ -168,6 +184,30 @@ class LayoutVersionOut(LayoutVersionListItem):
     placements: list[PlacementOut]
     port_points: list[PortPointOut]
     routes: list[RouteOut]
+    aisles: list[AisleOut] = Field(default_factory=list)
+
+
+class PathPairIn(StrictIn):
+    from_port_id: uuid.UUID
+    to_port_id: uuid.UUID
+
+
+class PathsIn(StrictIn):
+    pairs: list[PathPairIn] = Field(min_length=1, max_length=500, description="출발 포트 → 도착 포트 쌍(최대 500)")
+
+
+class PathOut(Out):
+    from_port_id: uuid.UUID
+    to_port_id: uuid.UUID
+    reachable: bool
+    source: Literal["fixed", "computed"] | None = Field(
+        default=None, description="fixed: 저장된 고정 경로(우선), computed: 통로·고정 경로의 선분으로 계산한 최단 경로")
+    route_key: str | None = Field(default=None, description="고정 경로면 그 key")
+    points: list[str] = Field(default_factory=list, description="지나는 점 key 순서(출발 포트의 점 → 도착 포트의 점)")
+    length_m: str | None = Field(default=None, description="길이(m, 소수 첫째 자리). 갈 수 없으면 null")
+    reason_code: Literal["PORT_NOT_MAPPED", "NO_CONNECTION"] | None = Field(
+        default=None, description="갈 수 없는 이유 코드: PORT_NOT_MAPPED(출발·도착 포트가 점에 매핑되지 않음), NO_CONNECTION(이어진 길 없음)")
+    reason: str | None = Field(default=None, description="갈 수 없는 이유(한국어 문장, 표시용)")
 
 
 class LayoutIssueOut(Out):

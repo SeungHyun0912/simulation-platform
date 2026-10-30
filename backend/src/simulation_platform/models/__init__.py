@@ -11,6 +11,8 @@ from simulation_platform.models.identity import (
 )
 from simulation_platform.models.layout import (
     AssetPlacement,
+    LayoutAisle,
+    LayoutAislePoint,
     LayoutPoint,
     LayoutPortPoint,
     LayoutRoute,
@@ -57,6 +59,8 @@ __all__ = [
     "FlowEdge",
     "FlowNode",
     "Job",
+    "LayoutAisle",
+    "LayoutAislePoint",
     "LayoutPoint",
     "LayoutPortPoint",
     "LayoutRoute",

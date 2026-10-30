@@ -606,6 +606,7 @@ artifact upload init/complete → import job → candidates → mapping approval
 | PUT | /projects/{p}/layout-versions/{v}/content | editor | 점·배치·포트 매핑·경로를 통째로 교체(`LayoutContentIn`). If-Match, 초안만. 구조 오류 422 `VALIDATION_ERROR`(rule_id `LAY-SAVE-*`) |
 | POST | /projects/{p}/layout-versions/{v}/validate | viewer | 승인 전 검증(저장 안 함): `approvable`·오류·경고(rule_id `LAY-*`) |
 | POST | /projects/{p}/layout-versions/{v}/approve | admin | draft → approved. If-Match. 검증 오류가 있으면 422 `LAYOUT_VALIDATION_FAILED`. 승인 후 내용은 DB가 동결 |
+| POST | /projects/{p}/layout-versions/{v}/paths | viewer | **(0.18.0)** 포트 → 포트 경로 계산(저장 안 함). 본문 `pairs[]`(`from_port_id`·`to_port_id`, 1~500) |
 
 - **좌표계(고정, 응답 `coordinate_system`):** 단위 m, **원점은 도면 왼쪽 위(11시 방향)**, x는 오른쪽·y는 아래쪽으로 커진다(웹 도면 이미지 좌표). 설비·공간의 x·y는 **중심**. 값은 decimal 문자열로 받고 **소수 첫째 자리로 반올림(ROUND_HALF_UP)** 해 저장·응답한다(예: "9.05" → "9.1"). x·y는 0 이상, 가로·세로는 반올림 후 0.1 이상, 회전은 0 이상 360 미만(도). 모르는 크기·회전은 null(0이 아니다).
 - **점(`points[]`):** `point_key`(배치판 안에서 유일, 예: P1)·`x_m`·`y_m`·`attributes`(확장 JSON). 포트 위치와 경로의 꺾이는 곳이 모두 점이다.
@@ -618,6 +619,10 @@ artifact upload init/complete → import job → candidates → mapping approval
 - **배경 도면(약속 키, 선택):** `layout_version.attributes.background` = `{url, width_px, height_px, m_per_px}`. 서버는 저장만 하고 검사·호스팅하지 않는다(업로드 API는 후속). 없으면 화면은 격자만 그린다.
 - **오류 위치(`field_path`):** 저장 오류(PUT 422)는 **요청 본문의 순번**(JSON Pointer, 예: `/routes/3/points/1`). 검증(`validate`·`approve`)은 **key 기준**: `/points/{point_key}`, `/placements/{asset_id}`, `/port_points/{port_id}`, `/routes/{route_key}`. 응답의 목록 순서는 저장 순서와 다르다(점·경로는 key 순, 배치는 자산 코드 순, 포트 매핑은 자산 코드·역할 순).
 - **초안 폐기:** endpoint 없음(시나리오 버전과 같다). 초안은 고치거나 승인한다.
+- **통로(`aisles[]`, 0.18.0, CR be19):** `aisle_key`(유일, 예: W1)·`points`(점 key 순서, 2개 이상, 연달아 같은 점 금지)·`attributes`. 포트에 묶이지 않은 **다닐 수 있는 선**이며 **양방향**이다(일방통행 없음, 사용자 확정). 꺾임은 점을 더 넣어 한 줄로, 갈림길·교차로는 **같은 점을 공유**해 잇는다(십자는 가로·세로 통로가 가운데 점을 함께 지나는 방법 1). 겹쳐 보여도 공유 점이 없으면 이어지지 않은 길이다. 응답에 계산한 `length_m`. PUT `/content`는 통째로 교체이므로 **응답의 `aisles`를 그대로 다시 보내야 지워지지 않는다**(보내지 않으면 빈 목록). 새 초안 복사에 포함된다.
+- **경로 계산(`POST …/paths`, 0.18.0):** 쌍마다 ① 같은 출발·도착 포트로 저장된 고정 경로(`routes[]`)가 있으면 그것(`source=fixed`, `route_key`) ② 없으면 통로와 고정 경로의 이웃한 점 쌍(양방향 선분, 길이 = 직선 거리)으로 만든 길 그물에서 **최단 경로**(`source=computed`, 같은 길이면 점 key 순으로 결정적). 응답 `PathOut`: `reachable`, `source`, `route_key`, `points`(출발 포트의 점 → 도착 포트의 점), `length_m`(소수 첫째 자리), `reason_code`(갈 수 없을 때: `PORT_NOT_MAPPED` 출발·도착 포트가 점에 매핑되지 않음 | `NO_CONNECTION` 이어진 길 없음)·`reason`(한국어 문장, 표시용). 고정 경로의 선분도 그물에서는 **양방향**으로 쓴다(고정 경로 자체를 우선하는 것은 저장된 출발 → 도착 쌍에만). **저장하지 않으므로 점·통로·고정 경로를 고치면 다음 조회부터 자동으로 바뀐다.** 다음 공정 설비가 여러 대(택1)면 후보 설비마다 쌍을 보내 비교한다.
+- **추가 저장 오류·검증(0.18.0):** `LAY-SAVE-011` 통로 key 중복, 통로의 점 오류는 경로와 같은 `LAY-SAVE-003·008·009`(`/aisles/{i}/…`). 경고 `LAY-008` 선분이 만나는데 공유 점이 없음(이어지지 않은 교차, `/points/{point_key}`), `LAY-009` 포트의 점이 어떤 통로·경로에도 닿지 않음(갈 수 없음, `/port_points/{port_id}`). 검증 field_path에 `/aisles/{aisle_key}`가 늘었다.
+- **운반 시간(후속):** 사람·지게차·AMR 속도를 정하면 시간 = 경로 길이 ÷ 속도로 같은 계산에서 자동 산출한다(지금 엔진 운반은 고정 3분 + 싣기·내리기 1분, 결과 불변).
 - **범위 밖(후속):** 시나리오가 배치판을 고르는 것(`scenario_version.layout_version_id`)과 경로 길이로 이동 시간을 계산하는 엔진 반영(지금 엔진 결과는 바뀌지 않는다), CAD 가져오기, zone, 층(z).
 
 ## 8. API 테스트 계약
