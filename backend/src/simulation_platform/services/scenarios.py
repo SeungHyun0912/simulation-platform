@@ -66,6 +66,7 @@ from simulation_platform.schemas.scenario import (
     ScenarioVersionPatch,
     ScenarioVersionSummary,
 )
+from simulation_platform.services.layouts import travel_snapshot
 from simulation_platform.services.projects import require_admin, require_project, require_write
 from simulation_platform.services.unit_of_work import audit, transaction
 
@@ -422,7 +423,9 @@ def collect_inputs(session: Session, version: ScenarioVersion) -> tuple[list[rul
 
 def _run_precheck(session: Session, version: ScenarioVersion) -> rules.PrecheckResult:
     inputs, engine_assets = collect_inputs(session, version)
-    return rules.precheck(inputs, engine_assets, version.assumption_reason)
+    travel = (None if version.layout_version_id is None else
+              travel_snapshot(session, version.project_id, version.layout_version_id, version.travel_rule))
+    return rules.precheck(inputs, engine_assets, version.assumption_reason, travel)
 
 
 def _precheck_out(version: ScenarioVersion, result: rules.PrecheckResult) -> PrecheckOut:

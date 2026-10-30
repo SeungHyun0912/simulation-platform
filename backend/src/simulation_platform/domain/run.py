@@ -33,9 +33,10 @@ def request_fingerprint(scenario_version_id, seed: int, replicate_index: int) ->
 
 
 def build_snapshot(*, project_id, scenario: dict, inputs: list[ProductInput], pinned_assets: dict[str, dict],
-                   seed: int, replicate_index: int, event_limit: int) -> dict:
-    """입력 스냅샷. 제품 순서가 같은 시각 동순위의 처리 순서이므로 시나리오의 제품 순서를 그대로 둔다."""
-    return {
+                   seed: int, replicate_index: int, event_limit: int, travel: dict | None = None) -> dict:
+    """입력 스냅샷. 제품 순서가 같은 시각 동순위의 처리 순서이므로 시나리오의 제품 순서를 그대로 둔다.
+    `travel`(시나리오가 고른 배치판·이동 설정, CR be20)은 있을 때만 넣는다(배치판 없는 실행의 입력 해시는 그대로)."""
+    snapshot = {
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "engine": {"version": ENGINE_VERSION, "simpy": simpy.__version__},
         "project_id": str(project_id),
@@ -53,3 +54,6 @@ def build_snapshot(*, project_id, scenario: dict, inputs: list[ProductInput], pi
         } for item in inputs],
         "assets": pinned_assets,
     }
+    if travel is not None:
+        snapshot["travel"] = travel
+    return snapshot

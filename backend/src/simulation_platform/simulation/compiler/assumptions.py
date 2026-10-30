@@ -6,6 +6,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
+from typing import Any
 
 HOLD_FOR_OPERATION = "hold_for_operation"  # 07 §13: 모든 산출이 끝날 때까지 설비를 점유한다
 SUPPORTED_EQUIPMENT_HOLD = frozenset({HOLD_FOR_OPERATION})
@@ -27,6 +28,8 @@ class ScenarioAssumptions:
     out_release: str | None = None
     # 운반 자원(지게차·AMR)이 일을 받은 곳이 지금 있는 곳과 다를 때 빈 차로 옮겨 가는 시간(분). 운반 단계에 설비 후보가 있으면 필요.
     carrier_empty_move_minutes: Fraction | None = None
+    # 시나리오가 고른 배치판·이동 설정(CR be20, simulation.travel.TravelModel). 있으면 운반·사람 이동 시간을 경로 ÷ 속도로 계산한다.
+    travel: Any = None
 
 
 def assumptions_from_scenario(data: Mapping | None) -> ScenarioAssumptions:

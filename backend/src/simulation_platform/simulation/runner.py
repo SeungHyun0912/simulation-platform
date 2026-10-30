@@ -7,6 +7,7 @@ worker의 자식 프로세스가 이 함수만 부른다. 스냅샷은 실행을
 
 from collections import Counter, defaultdict
 from collections.abc import Callable
+from dataclasses import replace
 from fractions import Fraction
 
 from simulation_platform.simulation import ENGINE_VERSION
@@ -15,6 +16,7 @@ from simulation_platform.simulation.compiler.assumptions import assumptions_from
 from simulation_platform.simulation.metrics import MetricCollector
 from simulation_platform.simulation.numbers import format_decimal, to_fraction
 from simulation_platform.simulation.runtime import Arrival, Lane, run_models
+from simulation_platform.simulation.travel import TravelModel, carrier_gaps
 
 DEFAULT_EVENT_LIMIT = 2_000_000
 BATCH_SIZE = 2000
@@ -30,10 +32,12 @@ def _minutes(value: Fraction) -> dict:
 def compile_products(snapshot: dict):
     """제품마다 컴파일한다. 하나라도 막히면 (None, 이유 목록)을 돌려준다(실행 요청 때 한 번, worker가 한 번 더 한다)."""
     lanes, problems = [], []
+    travel = TravelModel.from_snapshot(snapshot)
     for index, product in enumerate(snapshot["products"]):
         process = ProcessSnapshot.from_api(product["process_version"], product["graph"], snapshot.get("assets"))
         # 스냅샷에 든 공정 버전은 승인됐던(동결된) 버전이라 엔진의 승인 확인은 넘긴다.
-        result = compile_snapshot(process, assumptions_from_scenario(product.get("assumptions")), allow_unapproved=True)
+        assumptions = replace(assumptions_from_scenario(product.get("assumptions")), travel=travel)
+        result = compile_snapshot(process, assumptions, allow_unapproved=True)
         if not result.ok:
             problems.extend({"product_index": index, "rule_id": i.rule_id, "node_key": i.node_key, "message": i.message}
                             for i in result.issues)
@@ -41,6 +45,9 @@ def compile_products(snapshot: dict):
         arrivals = tuple(Arrival(length_m=a.get("length_m"), weight_kg=a.get("weight_kg"), at=a["at_min"],
                                  count=a["count"], lot=a.get("lot")) for a in product["arrivals"])
         lanes.append(Lane(result.require_model(), arrivals))
+    if travel is not None and not problems:  # 운반 자원은 제품을 가로질러 다니므로 모든 공간 조합의 빈 차 경로를 확인한다
+        problems.extend({"product_index": None, "rule_id": "LAYOUT_PATH_UNREACHABLE", "node_key": None, "message": gap}
+                        for gap in carrier_gaps([lane.model for lane in lanes], travel))
     return (None, problems) if problems else (lanes, [])
 
 
@@ -87,7 +94,7 @@ def run_snapshot(snapshot: dict, on_batch: BatchSink | None = None) -> dict:
         if on_batch is not None:
             on_batch("events", [event.to_dict() for event in batch])
 
-    result = run_models(lanes, horizon=horizon, seed=snapshot.get("seed", 0),
+    result = run_models(lanes, horizon=horizon, seed=snapshot.get("seed", 0), travel=TravelModel.from_snapshot(snapshot),
                         event_limit=options.get("event_limit", DEFAULT_EVENT_LIMIT),
                         daily_snapshots=options.get("daily_snapshots", True), event_sink=sink,
                         retain_events=False, batch_size=BATCH_SIZE)

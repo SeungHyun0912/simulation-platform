@@ -520,3 +520,23 @@ def process_links(session: Session, principal: Principal, project_id: uuid.UUID,
                                    product_code=product_codes.get(pv.product_id), process_version_no=pv.version_no,
                                    moves=moves))
     return out
+
+
+# --- 실행 입력의 이동 데이터(CR be20, BE-24) ---------------------------------------------------------------
+def travel_snapshot(session: Session, project_id: uuid.UUID, layout_version_id: uuid.UUID, rule: dict) -> dict:
+    """시나리오가 고른 배치판을 엔진이 읽는 모양으로 고정한다(점·선·고정 경로·포트 매핑·자산 포트·운반 자원 종류·이동 설정)."""
+    version = _version_or_404(session, project_id, layout_version_id)
+    data = _as_dicts(session, version)
+    ports: dict[str, dict[str, list[str]]] = {}
+    for port in session.scalars(select(AssetPort).where(AssetPort.project_id == project_id).order_by(AssetPort.port_key)):
+        ports.setdefault(str(port.asset_id), {}).setdefault(port.role, []).append(str(port.id))
+    kinds = {str(d.asset_id): d.equipment_type for d in session.scalars(select(EquipmentDetail).where(
+        EquipmentDetail.project_id == project_id))}
+    return {
+        "layout_version_id": str(version.id),
+        "points": {p["point_key"]: [str(p["x_m"]), str(p["y_m"])] for p in data["points"]},
+        "lines": [a["points"] for a in data["aisles"]] + [r["points"] for r in data["routes"]],
+        "fixed": [{"from_port_id": str(r["from_port_id"]), "to_port_id": str(r["to_port_id"]), "points": r["points"]}
+                  for r in data["routes"]],
+        "port_points": {str(m["port_id"]): m["point_key"] for m in data["port_points"]},
+        "ports": ports, "kinds": kinds, "rule": dict(rule or {})}
