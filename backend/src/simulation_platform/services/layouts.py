@@ -392,11 +392,11 @@ def paths(session: Session, principal: Principal, project_id: uuid.UUID, version
         start, end = mapped.get(pair.from_port_id), mapped.get(pair.to_port_id)
         if start is None or end is None:
             which = "출발" if start is None else "도착"
-            out.append(PathOut(**base, reachable=False, reason=f"{which} 포트가 이 배치판의 점에 매핑되지 않았습니다."))
+            out.append(PathOut(**base, reachable=False, reason_code="PORT_NOT_MAPPED", reason=f"{which} 포트가 이 배치판의 점에 매핑되지 않았습니다."))
             continue
         found = rules.shortest_path(xy, lines, start, end)
         if found is None:
-            out.append(PathOut(**base, reachable=False,
+            out.append(PathOut(**base, reachable=False, reason_code="NO_CONNECTION",
                                reason=f"점 {start}에서 {end}까지 이어진 통로·경로가 없습니다."))
             continue
         keys, total = found

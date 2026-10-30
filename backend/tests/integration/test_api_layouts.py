@@ -157,8 +157,9 @@ def test_aisles_make_a_network_and_paths_are_computed_to_each_candidate_machine(
     assert [(p["reachable"], p["source"], p["points"], p["length_m"]) for p in got[:3]] == [
         (True, "computed", ["P1", "P2", "P4"], "13.0"), (True, "computed", ["P1", "P2", "P3", "P5"], "23.0"),
         (True, "computed", ["P4", "P2", "P1"], "13.0")]  # 양방향
-    assert (got[3]["reachable"], got[3]["length_m"]) == (False, None) and "이어진" in got[3]["reason"]  # 고립된 점
-    assert got[4]["reachable"] is False and "매핑되지 않았" in got[4]["reason"]
+    assert (got[3]["reachable"], got[3]["length_m"], got[3]["reason_code"]) == (False, None, "NO_CONNECTION")  # 고립된 점
+    assert "이어진" in got[3]["reason"] and got[0]["reason_code"] is None
+    assert (got[4]["reachable"], got[4]["reason_code"]) == (False, "PORT_NOT_MAPPED") and "매핑되지 않았" in got[4]["reason"]
     check = ok(client.post(f"{ctx['base']}/layout-versions/{draft['id']}/validate", headers=ctx["viewer"]))
     assert {(i["rule_id"], i["field_path"]) for i in check["issues"] if i["rule_id"] == "LAY-009"} == {
         ("LAY-009", f"/port_points/{eq1['OUT']}")}

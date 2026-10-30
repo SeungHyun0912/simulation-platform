@@ -205,7 +205,9 @@ class PathOut(Out):
     route_key: str | None = Field(default=None, description="고정 경로면 그 key")
     points: list[str] = Field(default_factory=list, description="지나는 점 key 순서(출발 포트의 점 → 도착 포트의 점)")
     length_m: str | None = Field(default=None, description="길이(m, 소수 첫째 자리). 갈 수 없으면 null")
-    reason: str | None = Field(default=None, description="갈 수 없는 이유(포트가 점에 매핑되지 않음·길이 없음 등)")
+    reason_code: Literal["PORT_NOT_MAPPED", "NO_CONNECTION"] | None = Field(
+        default=None, description="갈 수 없는 이유 코드: PORT_NOT_MAPPED(출발·도착 포트가 점에 매핑되지 않음), NO_CONNECTION(이어진 길 없음)")
+    reason: str | None = Field(default=None, description="갈 수 없는 이유(한국어 문장, 표시용)")
 
 
 class LayoutIssueOut(Out):
