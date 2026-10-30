@@ -87,6 +87,7 @@ from simulation_platform.schemas.run import (
     ShortfallOut,
     WorkItemOut,
 )
+from simulation_platform.services import layouts as layout_service
 from simulation_platform.services.projects import require_project, require_write
 from simulation_platform.services.scenarios import collect_inputs
 from simulation_platform.services.unit_of_work import audit, transaction
@@ -181,9 +182,11 @@ def create_run(session: Session, principal: Principal, project_id: uuid.UUID, bo
         raise _not_runnable(version, result)
 
     scenario = session.get(Scenario, version.scenario_id)
+    travel = (None if version.layout_version_id is None else
+              layout_service.travel_snapshot(session, project_id, version.layout_version_id, version.travel_rule))
     snapshot = rules.build_snapshot(
         project_id=project_id, inputs=inputs, pinned_assets=pinned, seed=body.seed,
-        replicate_index=body.replicate_index, event_limit=get_settings().run_event_limit,
+        replicate_index=body.replicate_index, event_limit=get_settings().run_event_limit, travel=travel,
         scenario={"scenario_id": str(scenario.id), "code": scenario.code, "scenario_version_id": str(version.id),
                   "version_no": version.version_no, "stopping_rule": version.stopping_rule,
                   "assumption_reason": version.assumption_reason})

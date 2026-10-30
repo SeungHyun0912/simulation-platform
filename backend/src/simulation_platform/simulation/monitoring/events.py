@@ -30,6 +30,7 @@ ENTRY_WAITING = "ENTRY_WAITING"  # 설비가 아닌 위치(도착·공간·miles
 RESIDUAL_CREATED = "RESIDUAL_CREATED"
 RESIDUAL_CARRIED = "RESIDUAL_CARRIED"
 RESIDUAL_DISCARDED = "RESIDUAL_DISCARDED"
+PERSON_MOVED = "PERSON_MOVED"  # 사람이 배치판 경로로 옮김(간선 이동 조건 network_route, CR be20)
 CARRIER_MOVED = "CARRIER_MOVED"  # 운반 자원이 일을 받은 곳까지 빈 차로 이동(다음 명령이 없으면 목적지에서 기다린다)
 STATE_SNAPSHOT = "STATE_SNAPSHOT"  # 하루·주·월 경계의 관측용 상태 요약(재개용 체크포인트가 아니다)
 

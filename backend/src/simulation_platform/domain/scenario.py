@@ -4,7 +4,7 @@
 제품마다 엔진 `compile_snapshot`을 돌려 그 결과를 **번역하지 않고** 모은다. 실행은 하지 않는다(CR be08).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from simulation_platform.simulation import ENGINE_VERSION
 from simulation_platform.simulation.compiler import (
@@ -13,6 +13,7 @@ from simulation_platform.simulation.compiler import (
     compile_snapshot,
 )
 from simulation_platform.simulation.compiler.assumptions import assumptions_from_scenario
+from simulation_platform.simulation.travel import TravelModel, carrier_gaps
 
 FROZEN_PROCESS_STATUSES = frozenset({"approved", "superseded"})  # 승인됐던 버전(내용 동결)
 FROZEN_REVISION_STATUSES = frozenset({"approved", "superseded"})
@@ -86,7 +87,7 @@ def assumptions_used(assumptions: dict) -> bool:
 
 
 def precheck(products: list[ProductInput], pinned_assets: dict[str, dict],
-             assumption_reason: str | None) -> PrecheckResult:
+             assumption_reason: str | None, travel: dict | None = None) -> PrecheckResult:
     """pinned_assets: asset id → 엔진이 읽는 자산 버전 data(storage_capacity·ports)."""
     issues: list[Issue] = []
     if not products:
@@ -112,18 +113,25 @@ def precheck(products: list[ProductInput], pinned_assets: dict[str, dict],
                             f"고정한 자산 {len(unused)}개는 이 시나리오의 공정이 쓰지 않습니다."))
 
     results: list[ProductResult] = []
+    model_travel = None if travel is None else TravelModel(travel)
+    models = []
     for item in products:
         version = item.version
         snapshot = ProcessSnapshot.from_api(version, item.graph, pinned_assets)
         # 대체된(superseded) 버전도 승인됐던 동결 내용이라 실행할 수 있다(엔진의 승인 확인만 이 경우에 넘긴다).
-        compiled = compile_snapshot(snapshot, engine_assumptions(item.assumptions),
+        compiled = compile_snapshot(snapshot, replace(engine_assumptions(item.assumptions), travel=model_travel),
                                     allow_unapproved=version["status"] in FROZEN_PROCESS_STATUSES)
+        if compiled.ok:
+            models.append(compiled.model)
         results.append(ProductResult(
             product_id=item.product_id, process_version_id=str(version["id"]), compiled=compiled.ok,
             compile_issues=[_issue_dict(i) for i in compiled.issues],
             assumptions_used=[{"code": a.code, "node_key": a.node_key, "message": a.message}
                               for a in compiled.assumptions],
             waived=[_issue_dict(i) for i in compiled.waived]))
+    if model_travel is not None and len(models) == len(products):  # 운반 자원의 빈 차 경로는 제품을 가로질러 본다
+        issues.extend(Issue("error", "LAYOUT_PATH_UNREACHABLE", "/layout_version_id", gap)
+                      for gap in carrier_gaps(models, model_travel))
     return PrecheckResult(issues, results)
 
 

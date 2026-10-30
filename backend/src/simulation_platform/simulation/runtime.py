@@ -105,14 +105,14 @@ class Lane:
 
 
 def run_model(model: RuntimeModel, arrivals: list[Arrival] | tuple[Arrival, ...], *,
-              horizon=None, seed: int = 0, event_limit: int | None = 200_000) -> RunResult:
-    return run_models([Lane(model, tuple(arrivals))], horizon=horizon, seed=seed, event_limit=event_limit)
+              horizon=None, seed: int = 0, event_limit: int | None = 200_000, travel=None) -> RunResult:
+    return run_models([Lane(model, tuple(arrivals))], horizon=horizon, seed=seed, event_limit=event_limit, travel=travel)
 
 
 def run_models(lanes: list[Lane] | tuple[Lane, ...], *, horizon=None, seed: int = 0,
                event_limit: int | None = 200_000, daily_snapshots: bool = False,
                event_sink: Callable[[tuple[Event, ...]], None] | None = None, retain_events: bool = True,
-               batch_size: int = 2000) -> RunResult:
+               batch_size: int = 2000, travel=None) -> RunResult:
     """여러 공정을 한 가상 시간에서 실행한다. 같은 asset_id는 실행에 한 번만 생성되어 공정끼리 경쟁한다(ADR-015).
 
     같은 시각의 동순위는 `lanes` 순서(그 안에서는 도착 순서)로 결정한다. 설비 교체 시간은 더하지 않는다.
@@ -121,7 +121,7 @@ def run_models(lanes: list[Lane] | tuple[Lane, ...], *, horizon=None, seed: int 
     상태를 읽기만 하므로 실행 결과는 같다). `event_sink`를 주면 이벤트를 `batch_size`개씩 넘기고 `retain_events=False`로 메모리 보관을 끈다.
     """
     return _Run(list(lanes), horizon, seed, event_limit, daily_snapshots, event_sink, retain_events,
-                batch_size).execute()
+                batch_size, travel).execute()
 
 
 def _carries(step: StepModel) -> bool:
@@ -174,7 +174,7 @@ class _Lane:
 class _Run:
     def __init__(self, lanes: list[Lane], horizon, seed: int, event_limit: int | None,
                  daily_snapshots: bool = False, event_sink=None, retain_events: bool = True,
-                 batch_size: int = 2000) -> None:
+                 batch_size: int = 2000, travel=None) -> None:
         self.seed = seed
         self.horizon = None if horizon is None else to_fraction(horizon)
         if self.horizon is not None and self.horizon <= 0:
@@ -196,6 +196,7 @@ class _Run:
         self.log = EventLog(event_limit, sink=event_sink, retain=retain_events, batch_size=batch_size)
         self._next_snapshot = DAY_MIN if daily_snapshots else None
         self._machine: dict[tuple[str, str], _Held] = {}  # (공정 버전, 작업 id) → 설비 안 소비된 부모(작업 id는 공정마다 따로 매김)
+        self.travel = travel  # 배치판 이동 모델(CR be20). None이면 운반은 공정·시나리오 고정 시간
         self.carrier_at: dict[str, str] = {}  # 운반 자원 → 지금 있는 노드(마지막으로 내려놓은 곳). 처음에는 모른다  # 작업 id → 설비 안에서 처리 중인 소비된 부모
         self._completed: dict[str, list] = {}  # 공정 버전 → [완제품 수, 완제품 길이 합]
         self.factory = ItemFactory()
@@ -504,7 +505,7 @@ class _Run:
         space = self._limited_space(lane, following)
         if space is None or self.spaces.try_take(space):
             self._leave_space(lane, item)
-            self._enter(lane, item, following, key)
+            self._walk_then_enter(lane, item, following, key)
             return
         self.emit_for(lane, ev.ENTRY_WAITING, item_key=item.key, source=key, destination=following,
                       asset_key=space)
@@ -513,6 +514,25 @@ class _Run:
     def _wait_and_enter(self, lane: _Lane, item: WorkItem, space: str, following: str, origin: str):
         yield self.spaces.wait(space)
         self._leave_space(lane, item)
+        self._walk_then_enter(lane, item, following, origin)
+
+    def _walk_then_enter(self, lane: _Lane, item: WorkItem, following: str, origin: str,
+                         minutes: Fraction | None = None, step: StepModel | None = None, op_id: str | None = None,
+                         asset: str | None = None) -> None:
+        """사람이 배치판 경로로 옮기는 이동(network_route, CR be20)이면 그 시간 뒤에 들어간다. 자리는 이미 잡았다."""
+        if minutes is None:
+            minutes = lane.model.walks.get((origin, following))
+        if not minutes:
+            self._enter(lane, item, following, origin)
+            return
+        self.env.process(self._walk(lane, item, following, origin, minutes, step, op_id, asset))
+
+    def _walk(self, lane: _Lane, item: WorkItem, following: str, origin: str, minutes: Fraction,
+              step: StepModel | None, op_id: str | None, asset: str | None):
+        self.emit_for(lane, ev.PERSON_MOVED, step_key=None if step is None else step.key, operation_id=op_id,
+                      asset_key=asset, item_key=item.key, source=origin, destination=following,
+                      quantities={"minutes": minutes})
+        yield self.env.timeout(minutes)
         self._enter(lane, item, following, origin)
 
     def _deliver(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, child: WorkItem,
@@ -531,9 +551,10 @@ class _Run:
             self.holding.setdefault((lane.version, op_id), []).append(child)
             self._enter(lane, child, following, step.key)
             return
+        walk = step.walk_out.get(asset) if asset is not None else None
         space = self._limited_space(lane, following)
         if space is None or self.spaces.try_take(space):
-            self._enter(lane, child, following, step.key)
+            self._walk_then_enter(lane, child, following, step.key, walk, step, op_id, asset)
             return
         policy = step.out_policies.get(asset) if asset is not None else None
         if policy is not None and policy.kind == "release_after_out":
@@ -544,10 +565,10 @@ class _Run:
                                          resume)
             self.emit_for(lane, ev.OUT_STORED, step_key=step.key, operation_id=op_id, asset_key=asset,
                           item_key=child.key, destination=out_key)
-            self.env.process(self._out_mover(lane, child, out_key, space, following, step.key))
+            self.env.process(self._out_mover(lane, child, out_key, space, following, step.key, walk))
             return
         yield from self._blocked(lane, step, op_id, asset, child, following, self.spaces.wait(space), resume)
-        self._enter(lane, child, following, step.key)
+        self._walk_then_enter(lane, child, following, step.key, walk, step, op_id, asset)
 
     def _taken(self, items: tuple[WorkItem, ...]) -> None:
         """다음 설비(또는 운반 자원)가 직접 인계 산출을 가져갔다: 모두 가져가면 쥐고 있던 앞 작업을 놓아 준다."""
@@ -595,12 +616,13 @@ class _Run:
         if resume is not None:
             self._asset_state(lane, step, op_id, asset, resume)
 
-    def _out_mover(self, lane: _Lane, child: WorkItem, out_key: str, space: str, following: str, origin: str):
+    def _out_mover(self, lane: _Lane, child: WorkItem, out_key: str, space: str, following: str, origin: str,
+                   walk: Fraction | None = None):
         if not self.spaces.try_take(space):
             yield self.spaces.wait(space)
         self.out_spaces.release(out_key)
         self.emit_for(lane, ev.BUFFER_LEFT, item_key=child.key, source=out_key)
-        self._enter(lane, child, following, origin)
+        self._walk_then_enter(lane, child, following, origin, walk)
 
     # --- 단계 ------------------------------------------------------------------------------
     def _dispatcher(self, lane: _Lane, step: StepModel):
@@ -616,8 +638,10 @@ class _Run:
         lane.op_count[step.key] += 1
         op_id = f"{step.key}#{lane.op_count[step.key]}"
         self.in_progress += 1
+        sources = []
         for reserved in items:
             source = self.came_from.pop(reserved.key, step.key)
+            sources.append(source)
             self.emit_for(lane, ev.INPUT_RESERVED, step_key=step.key, operation_id=op_id, item_key=reserved.key,
                           source=source, quantities=_measures(reserved))
         item = items[0]
@@ -636,6 +660,10 @@ class _Run:
             self._clear_foreign_residual(lane, step, op_id, asset)
             if step.carrier_move_minutes is not None:
                 yield from self._carrier_to_pickup(lane, step, op_id, asset)
+            elif step.carrier_travel is not None:
+                yield from self._carrier_travel(lane, step, op_id, asset)
+            if step.walk_in:
+                yield from self._walk_in(lane, step, op_id, asset, items, sources)
         self._taken(items)  # 직접 인계 산출을 설비(운반 자원)가 가져갔다: 앞 설비가 풀린다
         if delay is not None and delay.occupancy == "occupies_machine":
             yield from self._precondition_delay(lane, step, op_id, asset, delay)  # 설비를 쥔 채 기다린다
@@ -696,6 +724,8 @@ class _Run:
         if asset is not None:
             if step.carrier_move_minutes is not None:  # 다음 명령이 없으면 내려놓은 곳(목적지)에서 기다린다
                 self.carrier_at[asset] = lane.model.nodes[step.key].next_key or step.key
+            elif step.carrier_travel is not None:  # 배치판: 공정이 달라도 같은 공간이면 같은 곳(공간 asset)
+                self.carrier_at[asset] = (step.drop_asset, lane.model.nodes[step.key].next_key or step.key)
             self._asset_state(lane, step, op_id, asset, ev.IDLE)
             self.last_version[asset] = lane.version
             self.allocator.release(asset)
@@ -713,6 +743,32 @@ class _Run:
                       source=where, destination=pickup, quantities={"minutes": step.carrier_move_minutes})
         yield self.env.timeout(step.carrier_move_minutes)
         self.carrier_at[asset] = pickup
+
+    def _carrier_travel(self, lane: _Lane, step: StepModel, op_id: str, asset: str):
+        """배치판(CR be20): 운반 자원이 다른 공간에 있으면 그 공간에서 일을 받는 공간까지 경로 ÷ 속도만큼 빈 차로 간다.
+        처음 쓰는 자원은 그 자리에 있다고 본다. 경로는 실행 전에 확인했다(carrier_gaps)."""
+        where = self.carrier_at.get(asset)
+        if where is None or where[0] == step.pickup_asset:
+            return
+        minutes = self.travel.space_minutes(where[0], step.pickup_asset, step.carrier_travel)
+        if minutes is None:
+            raise RuntimeError(f"운반 자원 {asset}: 공간 {where[0]} → {step.pickup_asset} 경로가 없습니다(실행 전 확인 누락).")
+        pickup = step.inputs[0].pool if step.inputs else None
+        self.emit_for(lane, ev.CARRIER_MOVED, step_key=step.key, operation_id=op_id, asset_key=asset,
+                      source=where[1], destination=pickup, quantities={"minutes": minutes})
+        if minutes:
+            yield self.env.timeout(minutes)
+        self.carrier_at[asset] = (step.pickup_asset, pickup)
+
+    def _walk_in(self, lane: _Lane, step: StepModel, op_id: str, asset: str | None, items, sources):
+        """사람이 앞 공간에서 고른 설비까지 옮겨 오는 시간(network_route, CR be20). 여러 입력은 함께 옮기므로 가장 긴 시간."""
+        walks = [(step.walk_in.get(src, {}).get(asset) or Fraction(0), src, item) for src, item in zip(sources, items, strict=True)]
+        minutes, src, item = max(walks, key=lambda w: w[0])
+        if not minutes:
+            return
+        self.emit_for(lane, ev.PERSON_MOVED, step_key=step.key, operation_id=op_id, asset_key=asset, item_key=item.key,
+                      source=src, destination=step.key, quantities={"minutes": minutes})
+        yield self.env.timeout(minutes)
 
     def _product_changed(self, lane: _Lane, asset: str | None) -> bool:
         """설비의 직전 작업이 다른 제품(공정 버전)이었는가. 첫 작업(직전 작업 없음)은 준비 없이 시작한다."""

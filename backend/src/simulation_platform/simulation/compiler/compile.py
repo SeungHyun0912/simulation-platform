@@ -8,6 +8,7 @@
 from fractions import Fraction
 
 from simulation_platform.domain import process as rules
+from simulation_platform.domain.travel import PERSON
 from simulation_platform.simulation import SUPPORTED_SCHEMA_VERSIONS
 from simulation_platform.simulation.compiler.assumptions import (
     HOLD_FOR_OPERATION,
@@ -35,6 +36,8 @@ from simulation_platform.simulation.handlers.base import HandlerDef
 from simulation_platform.simulation.numbers import to_fraction
 
 TRANSPORT = "transport_manual"
+NETWORK_ROUTE = "network_route"
+SPACE_KINDS = ("source", "buffer", "sink")
 
 
 def compile_snapshot(snapshot: ProcessSnapshot, assumptions: ScenarioAssumptions | None = None,
@@ -52,6 +55,7 @@ class _Compiler:
         self.issues: list[CompileIssue] = []
         self.waived: list[CompileIssue] = []
         self.used: list[AssumptionUse] = []
+        self._reported: set[tuple] = set()  # 같은 가정을 한 번만 보고한다
 
     def issue(self, rule_id: str, message: str, node_key: str | None = None,
               field_path: str | None = None) -> None:
@@ -65,6 +69,7 @@ class _Compiler:
         nodes: dict[str, NodeModel] = {}
         steps: dict[str, StepModel] = {}
         by_key = {n["node_key"]: n for n in self.nodes}
+        self._by_key, self._in_edges, self._walked = by_key, in_edges, set()
         self.spaces = self._check_spaces(route, by_key, succ)
         for key in route:
             node = by_key[key]
@@ -76,6 +81,7 @@ class _Compiler:
                                         in_edges.get(key, []))
                 if step is not None:
                     steps[key] = step
+        walks = self._space_walks(route, succ)
         if self.issues:
             return CompileResult(None, tuple(self.issues), tuple(self.used), tuple(self.waived))
         completion = self.snapshot.completion_node_id
@@ -84,7 +90,7 @@ class _Compiler:
             project_id=self.snapshot.project_id, source_key=route[0],
             completion_key=None if completion is None else self.key_of.get(completion),
             route=tuple(route), nodes=nodes, steps=steps, assumptions=tuple(self.used),
-            spaces=dict(self.spaces))
+            spaces=dict(self.spaces), walks=walks)
         return CompileResult(model, (), tuple(self.used), tuple(self.waived))
 
     # --- 1. 버전·schema ---------------------------------------------------------------------
@@ -298,7 +304,10 @@ class _Compiler:
                 self.issue("ENGINE_HANDLER_NOT_AVAILABLE",
                            f"{key}: handler {name} v{version}은(는) 등록되어 있지만 엔진에는 아직 구현되지 않았습니다.", key)
             return None  # 이름이 없거나 지원 목록 밖이면 도메인 검증(VAL-HANDLER-001·UNSUPPORTED_HANDLER)이 이미 막았다.
-        transport_minutes = self._transport_minutes(key, handler, step)
+        travel = self.assumptions.travel
+        layout_transport = (travel is not None and handler.name == TRANSPORT
+                            and key not in self.assumptions.manual_transport_minutes)
+        transport_minutes = None if layout_transport else self._transport_minutes(key, handler, step)
         timing = TimingModel("none") if handler.name == TRANSPORT else self._timing(key, step, handler)
         setup_rule = (Fraction(0), "per_operation") if handler.name == TRANSPORT else self._setup(key, step)
         setup, setup_trigger = (None, "per_operation") if setup_rule is None else setup_rule
@@ -317,8 +326,17 @@ class _Compiler:
         self._check_hold_policy(key, handler, output, candidates)
         residual = self._residual(key, step, handler, candidates)
         out_policies = self._out_policies(key, candidates, (by_key or {}).get(next_key) if next_key else None)
-        carrier_move = None
-        if handler.name == TRANSPORT and candidates:  # 운반 자원이 정해진 운반: 자원의 위치를 따진다
+        carrier_move, carrier_travel, pickup, drop = None, None, None, None
+        walk_in, walk_out = {}, {}
+        if handler.name == TRANSPORT and travel is not None:  # 배치판이 있으면 경로 ÷ 속도(CR be20)
+            pickup = self._space_of((in_edges or [(None, None)])[0][0])
+            drop = self._space_of(next_key)
+            speed_key = travel.speed_key(candidates)
+            if layout_transport:
+                transport_minutes = self._layout_transport(key, travel, pickup, drop, speed_key)
+            if candidates:
+                carrier_travel = speed_key
+        elif handler.name == TRANSPORT and candidates:  # 운반 자원이 정해진 운반: 자원의 위치를 따진다
             carrier_move = self.assumptions.carrier_empty_move_minutes
             if carrier_move is None:
                 self.issue("CARRIER_EMPTY_MOVE_UNKNOWN",
@@ -328,6 +346,8 @@ class _Compiler:
                 self.used.append(AssumptionUse(
                     "CARRIER_EMPTY_MOVE", f"{key}: 운반 자원은 다음 명령이 없으면 목적지에서 기다리고, 다른 곳에서 일을 받으면 "
                     f"빈 차로 {carrier_move}분 이동", key))
+        if travel is not None and handler.name != TRANSPORT and candidates:
+            walk_in, walk_out = self._step_walks(key, travel, candidates, in_edges or [], next_key)
         handoff = step["handoff_rule"]["mode"]
         if handoff not in ("per_output_unit", "total_batch"):
             handoff = "per_output_unit"  # 미정이면 도메인 검증이 이미 막았다(수동 운반은 한 개 산출)
@@ -340,7 +360,104 @@ class _Compiler:
             handoff=handoff, residual_mode=step["residual_rule"]["mode"],
             transport_minutes=transport_minutes, residual=residual, out_policies=out_policies,
             inputs=inputs, consume_policy=consume_policy, delay=delay, setup_trigger=setup_trigger,
-            carrier_move_minutes=carrier_move)
+            carrier_move_minutes=carrier_move, carrier_travel=carrier_travel, pickup_asset=pickup, drop_asset=drop,
+            walk_in=walk_in, walk_out=walk_out)
+
+    # --- 배치판 이동(CR be20) ------------------------------------------------------------------------
+    def _space_of(self, key: str | None) -> str | None:
+        node = self._by_key.get(key) if key else None
+        return node["asset_id"] if node is not None and node["kind"] in SPACE_KINDS else None
+
+    def _report_travel_defaults(self, travel, speed_key: str, handling: bool, key: str) -> None:
+        kmh, speed_default = travel.speed(speed_key)
+        if speed_default and ("speed", speed_key) not in self._reported:
+            self._reported.add(("speed", speed_key))
+            self.used.append(AssumptionUse("TRAVEL_SPEED_DEFAULT",
+                                           f"이동 속도 {speed_key}: 시나리오가 정하지 않아 기본값 {kmh} km/h", key))
+        if handling and travel.handling()[1] and ("handling",) not in self._reported:
+            self._reported.add(("handling",))
+            self.used.append(AssumptionUse("TRAVEL_HANDLING_DEFAULT",
+                                           f"운반 상하차: 시나리오가 정하지 않아 기본값 {travel.handling()[0]}분", key))
+
+    def _layout_transport(self, key: str, travel, pickup: str | None, drop: str | None, speed_key: str):
+        """운반 1건 = 상하차 + (일을 받는 공간 ACCESS → 내려놓는 공간 ACCESS 경로 ÷ 속도)."""
+        if pickup is None or drop is None:
+            self.issue("LAYOUT_TRANSPORT_ENDS", f"{key}: 배치판으로 운반 시간을 재려면 운반 단계 앞뒤가 자산이 있는 공간이어야 합니다.",
+                       key)
+            return None
+        length = travel.length(pickup, "ACCESS", drop, "ACCESS")
+        if length is None:
+            self.issue("LAYOUT_PATH_UNREACHABLE", f"{key}: 배치판에 운반 경로가 없습니다(공간 ACCESS 포트가 점에 매핑되지 않았거나 "
+                                                  "이어진 통로·경로 없음).", key)
+            return None
+        handling = Fraction(str(travel.handling()[0]))
+        moving = travel.minutes(length, speed_key)
+        self._report_travel_defaults(travel, speed_key, True, key)
+        self.used.append(AssumptionUse(
+            "LAYOUT_TRAVEL", f"{key}: 운반 1건 = 상하차 {travel.handling()[0]}분 + 경로 {length}m ÷ {travel.speed(speed_key)[0]} km/h "
+                             f"= {float(handling + moving):.2f}분(배치판 {travel.layout_version_id})", key))
+        return handling + moving
+
+    def _edge_mode(self, a: str, b: str) -> str | None:
+        for origin, edge in self._in_edges.get(b, []):
+            if origin == a:
+                return (edge.get("movement_rule") or {}).get("mode")
+        return None
+
+    def _person_minutes(self, key: str, travel, length):
+        if length is None:
+            self.issue("LAYOUT_PATH_UNREACHABLE", f"{key}: 사람 이동(network_route) 경로가 배치판에 없습니다(포트가 점에 매핑되지 "
+                                                  "않았거나 이어진 통로·경로 없음).", key)
+            return None
+        self._report_travel_defaults(travel, PERSON, False, key)
+        return travel.minutes(length, PERSON)
+
+    def _step_walks(self, key: str, travel, candidates, in_edges, next_key):
+        """network_route 간선의 사람 이동: 앞 공간 → 고른 설비 IN(후보마다), 설비 OUT → 다음 공간."""
+        walk_in: dict[str, dict[str, Fraction]] = {}
+        for origin, edge in in_edges:
+            if (edge.get("movement_rule") or {}).get("mode") != NETWORK_ROUTE:
+                continue
+            space = self._space_of(origin)
+            if space is None:
+                continue  # 공간에서 오지 않는 사람 이동은 _space_walks가 건너뛴 것으로 보고한다
+            self._walked.add((origin, key))
+            walk_in[origin] = {}
+            for asset in candidates:
+                minutes = self._person_minutes(key, travel, travel.length(space, "ACCESS", asset, "IN"))
+                if minutes is not None:
+                    walk_in[origin][asset] = minutes
+        walk_out: dict[str, Fraction] = {}
+        target = self._space_of(next_key)
+        if target is not None and self._edge_mode(key, next_key) == NETWORK_ROUTE:
+            self._walked.add((key, next_key))
+            for asset in candidates:
+                minutes = self._person_minutes(key, travel, travel.length(asset, "OUT", target, "ACCESS"))
+                if minutes is not None:
+                    walk_out[asset] = minutes
+        return walk_in, walk_out
+
+    def _space_walks(self, route: list[str], succ: dict[str, list[str]]) -> dict[tuple[str, str], Fraction]:
+        """공간 → 공간 사람 이동(network_route). 그 밖의 network_route 간선(설비 → 설비, 위치 없는 노드를 거치는 간선 등)은
+        시간을 넣지 않고 사용한 가정으로 알린다."""
+        travel = self.assumptions.travel
+        walks: dict[tuple[str, str], Fraction] = {}
+        if travel is None:
+            return walks
+        for a in route:
+            for b in succ.get(a, []):
+                if self._edge_mode(a, b) != NETWORK_ROUTE or (a, b) in self._walked:
+                    continue
+                if self._space_of(a) is not None and self._space_of(b) is not None:
+                    minutes = self._person_minutes(b, travel, travel.length(self._space_of(a), "ACCESS",
+                                                                            self._space_of(b), "ACCESS"))
+                    if minutes is not None:
+                        walks[(a, b)] = minutes
+                else:
+                    self.used.append(AssumptionUse(
+                        "NETWORK_ROUTE_SKIPPED", f"{a} → {b}: 사람 이동 시간은 공간 ↔ 설비·공간 ↔ 공간 간선에만 넣습니다"
+                                                 "(이 간선은 시간 없이 이동).", b))
+        return walks
 
     def _transport_minutes(self, key: str, handler: HandlerDef, step: dict) -> Fraction | None:
         """수동 운반의 이동 시간(보빈 하나가 한 번 옮겨지는 시간, 상하차 포함은 값에 담는다).

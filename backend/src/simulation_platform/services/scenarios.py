@@ -31,6 +31,7 @@ from simulation_platform.domain.pagination import (
 )
 from simulation_platform.models import (
     Asset,
+    LayoutVersion,
     Product,
     Scenario,
     ScenarioAsset,
@@ -39,6 +40,7 @@ from simulation_platform.models import (
 )
 from simulation_platform.models.base import new_id
 from simulation_platform.repositories import catalog as catalog_repo
+from simulation_platform.repositories import layouts as layout_repo
 from simulation_platform.repositories import process as process_repo
 from simulation_platform.repositories import scenarios as repo
 from simulation_platform.schemas.common import Page
@@ -46,6 +48,7 @@ from simulation_platform.schemas.scenario import (
     AssetPinChangeOut,
     AssumptionUseOut,
     CompileIssueOut,
+    LayoutChangeOut,
     PrecheckIssue,
     PrecheckOut,
     ProcessChangeOut,
@@ -63,6 +66,7 @@ from simulation_platform.schemas.scenario import (
     ScenarioVersionPatch,
     ScenarioVersionSummary,
 )
+from simulation_platform.services.layouts import travel_snapshot
 from simulation_platform.services.projects import require_admin, require_project, require_write
 from simulation_platform.services.unit_of_work import audit, transaction
 
@@ -128,7 +132,8 @@ def _version_out(session: Session, version: ScenarioVersion) -> ScenarioVersionO
         approved_at=version.approved_at, created_at=version.created_at, updated_at=version.updated_at,
         row_version=version.row_version, products=products, assets=assets,
         stopping_rule=version.stopping_rule, assumption_reason=version.assumption_reason,
-        notes=version.notes, approved_by=version.approved_by)
+        notes=version.notes, approved_by=version.approved_by, layout_version_id=version.layout_version_id,
+        travel_rule=version.travel_rule or {})
 
 
 def _reload(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> ScenarioVersion:
@@ -177,6 +182,17 @@ def _check_assets(session: Session, project_id: uuid.UUID, assets: list[Scenario
         raise ValidationFailed("시나리오의 자산 버전 참조가 올바르지 않습니다.", errors)
 
 
+def _check_layout(session: Session, project_id: uuid.UUID, layout_version_id: uuid.UUID) -> None:
+    layout = session.get(LayoutVersion, layout_version_id)
+    if layout is None or layout.project_id != project_id:
+        raise ValidationFailed("시나리오의 배치판 참조가 올바르지 않습니다.", [ErrorDetail(
+            severity="error", rule_id="SCN-REF-005", field_path="/layout_version_id", message="이 프로젝트의 배치판이 아닙니다.")])
+    if layout.status != "approved":
+        raise ValidationFailed("시나리오의 배치판 참조가 올바르지 않습니다.", [ErrorDetail(
+            severity="error", rule_id="SCN-REF-006", field_path="/layout_version_id",
+            message=f"승인된 배치판만 고를 수 있습니다(현재 {layout.status}).")])
+
+
 def _write_products(session, version: ScenarioVersion, products: list[ScenarioProductDto], user_id) -> None:
     repo.replace_products(session, version.id)
     session.flush()
@@ -205,7 +221,9 @@ def _new_version(session, scenario: Scenario, base: ScenarioVersion | None, user
         base_version_id=None if base is None else base.id,
         stopping_rule=dict(DRAIN) if base is None else base.stopping_rule,
         assumption_reason=None if base is None else base.assumption_reason,
-        notes=None if base is None else base.notes, created_by=user_id)
+        notes=None if base is None else base.notes,
+        layout_version_id=None if base is None else base.layout_version_id,
+        travel_rule={} if base is None else base.travel_rule, created_by=user_id)
     session.add(version)
     session.flush()
     if base is not None:
@@ -342,6 +360,8 @@ def patch_version(session: Session, principal: Principal, project_id: uuid.UUID,
         _check_products(session, project_id, body.products)
     if "assets" in fields:
         _check_assets(session, project_id, body.assets)
+    if "layout_version_id" in fields and body.layout_version_id is not None:
+        _check_layout(session, project_id, body.layout_version_id)
     changed: list[str] = sorted(fields)
     with transaction(session, {}):
         if "products" in fields:
@@ -362,6 +382,10 @@ def patch_version(session: Session, principal: Principal, project_id: uuid.UUID,
             version.assumption_reason = body.assumption_reason
         if "notes" in fields:
             version.notes = body.notes
+        if "layout_version_id" in fields:
+            version.layout_version_id = body.layout_version_id
+        if "travel_rule" in fields:
+            version.travel_rule = body.travel_rule.model_dump(mode="json", exclude_none=True)
         _touch(version, principal)
         audit(session, organization_id=access.project.organization_id, project_id=project_id,
               actor_id=principal.user_id, action="scenario_version.update", entity_type="scenario_version",
@@ -399,7 +423,9 @@ def collect_inputs(session: Session, version: ScenarioVersion) -> tuple[list[rul
 
 def _run_precheck(session: Session, version: ScenarioVersion) -> rules.PrecheckResult:
     inputs, engine_assets = collect_inputs(session, version)
-    return rules.precheck(inputs, engine_assets, version.assumption_reason)
+    travel = (None if version.layout_version_id is None else
+              travel_snapshot(session, version.project_id, version.layout_version_id, version.travel_rule))
+    return rules.precheck(inputs, engine_assets, version.assumption_reason, travel)
 
 
 def _precheck_out(version: ScenarioVersion, result: rules.PrecheckResult) -> PrecheckOut:
@@ -506,7 +532,15 @@ def refresh_version(session: Session, principal: Principal, project_id: uuid.UUI
         change = "pinned" if old is None else "removed" if new is None else "updated"
         asset_changes.append(AssetPinChangeOut(asset_id=asset, asset_code=asset_codes.get(asset),
                                                from_revision_id=old, to_revision_id=new, change=change))
+    layout_change = None
+    if body.layout == "latest" and version.layout_version_id is not None:
+        latest = layout_repo.latest_approved(session, project_id)
+        if latest is not None and latest.id != version.layout_version_id:
+            layout_change = LayoutChangeOut(from_layout_version_id=version.layout_version_id,
+                                            to_layout_version_id=latest.id, to_version_no=latest.version_no)
     with transaction(session, {}):
+        if layout_change is not None:
+            version.layout_version_id = layout_change.to_layout_version_id
         for row, item in zip(rows, process_changes, strict=True):
             if item.status == "changed":
                 row.process_version_id = item.to_process_version_id
@@ -519,6 +553,9 @@ def refresh_version(session: Session, principal: Principal, project_id: uuid.UUI
               after={"processes": [{"product_id": str(c.product_id), "from": str(c.from_process_version_id),
                                     "to": str(c.to_process_version_id), "status": c.status} for c in process_changes],
                      "assets": [{"asset_id": str(c.asset_id), "change": c.change} for c in asset_changes],
-                     "mode": body.assets}, request_id=request_id)
+                     "mode": body.assets,
+                     "layout": None if layout_change is None else str(layout_change.to_layout_version_id)},
+              request_id=request_id)
     return ScenarioRefreshOut(version=_version_out(session, _reload(session, project_id, version.id)),
-                              process_changes=process_changes, asset_changes=asset_changes)
+                              process_changes=process_changes, asset_changes=asset_changes,
+                              layout_change=layout_change)

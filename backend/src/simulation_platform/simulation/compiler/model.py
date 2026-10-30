@@ -91,6 +91,14 @@ class StepModel:
     delay: DelayModel | None = None
     # 운반 단계의 운반 자원이 다른 곳에 있으면 일을 받은 곳까지 빈 차로 옮겨 가는 시간(분). None이면 위치를 따지지 않는다.
     carrier_move_minutes: Fraction | None = None
+    # 배치판이 있으면(CR be20) 빈 차 이동을 경로 ÷ 속도로 계산한다: 속도 키(운반 자원 종류), 일을 받는 공간·내려놓는 공간 asset.
+    carrier_travel: str | None = None
+    pickup_asset: str | None = None
+    drop_asset: str | None = None
+    # 사람 이동(간선 이동 조건 network_route, CR be20): 앞 공간 node_key → 고른 설비 asset → 걸어오는 분
+    walk_in: dict[str, dict[str, Fraction]] = field(default_factory=dict)
+    # 고른 설비 asset → 다음 공간까지 걸어가는 분
+    walk_out: dict[str, Fraction] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -134,6 +142,8 @@ class RuntimeModel:
     assumptions: tuple[AssumptionUse, ...] = ()
     # 저장공간 asset id → 자리 수(작업물 개수). None은 무제한(자산 버전이 unlimited이거나 시나리오 가정).
     spaces: dict[str, int | None] = field(default_factory=dict)
+    # 공간 → 공간 사람 이동(network_route, CR be20): (앞 node_key, 다음 node_key) → 분
+    walks: dict[tuple[str, str], Fraction] = field(default_factory=dict)
 
 
 class CompileError(Exception):

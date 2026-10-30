@@ -2988,6 +2988,31 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LayoutChangeOut": {
+        "properties": {
+          "from_layout_version_id": {
+            "format": "uuid",
+            "title": "From Layout Version Id",
+            "type": "string"
+          },
+          "to_layout_version_id": {
+            "format": "uuid",
+            "title": "To Layout Version Id",
+            "type": "string"
+          },
+          "to_version_no": {
+            "title": "To Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_layout_version_id",
+          "to_layout_version_id",
+          "to_version_no"
+        ],
+        "title": "LayoutChangeOut",
+        "type": "object"
+      },
       "LayoutContentIn": {
         "additionalProperties": false,
         "description": "배치판 내용 전체(보낸 내용으로 통째로 교체). 보내지 않은 목록은 빈 목록으로 저장된다.",
@@ -4801,6 +4826,157 @@
         "title": "MinutesOut",
         "type": "object"
       },
+      "MovePairOut": {
+        "properties": {
+          "from_asset_code": {
+            "title": "From Asset Code",
+            "type": "string"
+          },
+          "from_asset_id": {
+            "format": "uuid",
+            "title": "From Asset Id",
+            "type": "string"
+          },
+          "from_port_id": {
+            "format": "uuid",
+            "title": "From Port Id",
+            "type": "string"
+          },
+          "from_role": {
+            "title": "From Role",
+            "type": "string"
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
+          },
+          "points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PORT_NOT_MAPPED",
+                  "NO_CONNECTION"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "route_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Key"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fixed",
+                  "computed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "to_asset_code": {
+            "title": "To Asset Code",
+            "type": "string"
+          },
+          "to_asset_id": {
+            "format": "uuid",
+            "title": "To Asset Id",
+            "type": "string"
+          },
+          "to_port_id": {
+            "format": "uuid",
+            "title": "To Port Id",
+            "type": "string"
+          },
+          "to_role": {
+            "title": "To Role",
+            "type": "string"
+          },
+          "total_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "운반이면 이동 + 상하차, 사람 이동이면 이동 시간과 같다",
+            "title": "Total Min"
+          },
+          "travel_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "길이 ÷ 속도(분, 소수 둘째 자리). 갈 수 없으면 null",
+            "title": "Travel Min"
+          }
+        },
+        "required": [
+          "from_asset_id",
+          "from_asset_code",
+          "from_port_id",
+          "from_role",
+          "to_asset_id",
+          "to_asset_code",
+          "to_port_id",
+          "to_role",
+          "reachable"
+        ],
+        "title": "MovePairOut",
+        "type": "object"
+      },
       "MovementRule": {
         "additionalProperties": false,
         "properties": {
@@ -5905,6 +6081,201 @@
           "version"
         ],
         "title": "ProcessGraphItem",
+        "type": "object"
+      },
+      "ProcessLinksOut": {
+        "properties": {
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessMoveOut"
+            },
+            "title": "Moves",
+            "type": "array"
+          },
+          "process_version_id": {
+            "format": "uuid",
+            "title": "Process Version Id",
+            "type": "string"
+          },
+          "process_version_no": {
+            "title": "Process Version No",
+            "type": "integer"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "process_version_id",
+          "product_id",
+          "process_version_no",
+          "moves"
+        ],
+        "title": "ProcessLinksOut",
+        "type": "object"
+      },
+      "ProcessMoveOut": {
+        "properties": {
+          "carrier_asset_codes": {
+            "description": "운반 자원 후보(transport)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Carrier Asset Codes",
+            "type": "array"
+          },
+          "edge_keys": {
+            "description": "이 이동이 지나는 공정 간선",
+            "items": {
+              "type": "string"
+            },
+            "title": "Edge Keys",
+            "type": "array"
+          },
+          "from_label": {
+            "title": "From Label",
+            "type": "string"
+          },
+          "from_node_key": {
+            "title": "From Node Key",
+            "type": "string"
+          },
+          "handling_defaulted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handling Defaulted"
+          },
+          "handling_min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "운반 상하차 시간(분, transport만)",
+            "title": "Handling Min"
+          },
+          "kind": {
+            "description": "transport: 운반 단계(지게차·AMR 등 운반 자원), move: 사람 이동",
+            "enum": [
+              "transport",
+              "move"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "movement_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "사람 이동의 간선 이동 조건(unknown·manual_duration·network_route·direct_feed)",
+            "title": "Movement Mode"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "포트가 없어 쌍을 만들 수 없을 때 등",
+            "title": "Note"
+          },
+          "pairs": {
+            "description": "출발 위치 포트 × 도착 위치 포트(후보 설비가 여러 대면 여러 쌍)",
+            "items": {
+              "$ref": "#/components/schemas/MovePairOut"
+            },
+            "title": "Pairs",
+            "type": "array"
+          },
+          "speed_defaulted": {
+            "description": "시나리오가 정하지 않아 기본값(4 km/h)을 썼는가",
+            "title": "Speed Defaulted",
+            "type": "boolean"
+          },
+          "speed_key": {
+            "description": "속도 키: 사람 `person`, 운반 자원은 그 설비의 종류",
+            "title": "Speed Key",
+            "type": "string"
+          },
+          "speed_kmh": {
+            "title": "Speed Kmh",
+            "type": "string"
+          },
+          "step_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "운반 단계 key(transport)",
+            "title": "Step Key"
+          },
+          "step_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Label"
+          },
+          "to_label": {
+            "title": "To Label",
+            "type": "string"
+          },
+          "to_node_key": {
+            "title": "To Node Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "from_node_key",
+          "from_label",
+          "to_node_key",
+          "to_label",
+          "edge_keys",
+          "speed_key",
+          "speed_kmh",
+          "speed_defaulted",
+          "pairs"
+        ],
+        "title": "ProcessMoveOut",
         "type": "object"
       },
       "ProcessVersionCreate": {
@@ -8806,6 +9177,16 @@
             "title": "Assets",
             "type": "string"
           },
+          "layout": {
+            "default": "latest",
+            "description": "(0.19.0) latest: 배치판을 고른 초안이면 그 프로젝트의 최근 승인 배치판으로 바꾼다, keep: 그대로",
+            "enum": [
+              "latest",
+              "keep"
+            ],
+            "title": "Layout",
+            "type": "string"
+          },
           "product_ids": {
             "anyOf": [
               {
@@ -8834,6 +9215,17 @@
             },
             "title": "Asset Changes",
             "type": "array"
+          },
+          "layout_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutChangeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(0.19.0) 배치판을 바꿨으면 이전·새 버전"
           },
           "process_changes": {
             "items": {
@@ -9025,6 +9417,19 @@
             "title": "Id",
             "type": "string"
           },
+          "layout_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "실행에 쓰는 배치판(승인본). null이면 배치판 없음",
+            "title": "Layout Version Id"
+          },
           "notes": {
             "anyOf": [
               {
@@ -9082,6 +9487,9 @@
               }
             ],
             "title": "Stopping Rule"
+          },
+          "travel_rule": {
+            "$ref": "#/components/schemas/TravelRule"
           },
           "updated_at": {
             "anyOf": [
@@ -9152,6 +9560,19 @@
             ],
             "title": "Assumption Reason"
           },
+          "layout_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 프로젝트의 승인된 배치판. null로 지운다",
+            "title": "Layout Version Id"
+          },
           "notes": {
             "anyOf": [
               {
@@ -9204,6 +9625,16 @@
               }
             ],
             "title": "Stopping Rule"
+          },
+          "travel_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TravelRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "ScenarioVersionPatch",
@@ -9627,6 +10058,22 @@
         "title": "Single[list[PortOut]]",
         "type": "object"
       },
+      "Single_list_ProcessLinksOut__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessLinksOut"
+            },
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Single[list[ProcessLinksOut]]",
+        "type": "object"
+      },
       "SpaceIn": {
         "additionalProperties": false,
         "properties": {
@@ -9953,6 +10400,38 @@
           }
         },
         "title": "TimingRule",
+        "type": "object"
+      },
+      "TravelRule": {
+        "additionalProperties": false,
+        "description": "이동 설정(0.19.0, CR be20). 비워 두면 사용자 기본값(속도 4 km/h, 상하차 1분)을 쓰고 사용한 가정으로 보고한다.",
+        "properties": {
+          "carrier_handling_minutes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "운반(지게차·AMR) 1건의 상하차 시간(분). null이면 1분",
+            "title": "Carrier Handling Minutes"
+          },
+          "speeds_kmh": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "이동 수단별 속도(km/h). 키: 사람 `person`, 운반 자원은 그 설비의 종류(equipment_type, 예: 지게차·AMR). 없는 키는 4 km/h",
+            "propertyNames": {
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "title": "Speeds Kmh",
+            "type": "object"
+          }
+        },
+        "title": "TravelRule",
         "type": "object"
       },
       "ValidationError": {
@@ -13041,6 +13520,122 @@
           }
         },
         "summary": "Layout Paths",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/layout-versions/{version_id}/process-links": {
+      "get": {
+        "description": "공정 ↔ 배치판 연결(저장 안 함). 공정의 이동 구간마다(공간 ↔ 설비 사람 이동, 운반 단계) 출발·도착 위치의 포트 쌍과\n배치판 경로(`/paths`와 같은 계산)·길이·이동 시간(길이 ÷ 속도, 운반은 + 상하차)을 준다. 속도 기본값 4 km/h(사람·운반 자원),\n상하차 1분. 공정·배치판·이동 설정을 고치면 다음 조회부터 자동으로 바뀐다.",
+        "operationId": "layout_process_links_api_v1_projects__project_id__layout_versions__version_id__process_links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "공정 버전(반복). 생략하면 제품마다 현재 승인본",
+            "in": "query",
+            "name": "process_version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "공정 버전(반복). 생략하면 제품마다 현재 승인본",
+              "title": "Process Version Id"
+            }
+          },
+          {
+            "description": "이 시나리오의 이동 설정(속도·상하차)을 쓴다. 생략하면 기본값",
+            "in": "query",
+            "name": "scenario_version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 시나리오의 이동 설정(속도·상하차)을 쓴다. 생략하면 기본값",
+              "title": "Scenario Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Single_list_ProcessLinksOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Layout Process Links",
         "tags": [
           "layouts"
         ]
