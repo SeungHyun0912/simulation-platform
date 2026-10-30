@@ -223,3 +223,52 @@ class LayoutValidationOut(Out):
     error_count: int
     warning_count: int
     issues: list[LayoutIssueOut]
+
+
+# --- 공정 ↔ 배치판 연결(0.19.0, CR be20) ---------------------------------------------------------------
+class MovePairOut(Out):
+    from_asset_id: uuid.UUID
+    from_asset_code: str
+    from_port_id: uuid.UUID
+    from_role: str
+    to_asset_id: uuid.UUID
+    to_asset_code: str
+    to_port_id: uuid.UUID
+    to_role: str
+    reachable: bool
+    source: Literal["fixed", "computed"] | None = None
+    route_key: str | None = None
+    points: list[str] = Field(default_factory=list)
+    length_m: str | None = None
+    travel_min: str | None = Field(default=None, description="길이 ÷ 속도(분, 소수 둘째 자리). 갈 수 없으면 null")
+    total_min: str | None = Field(default=None, description="운반이면 이동 + 상하차, 사람 이동이면 이동 시간과 같다")
+    reason_code: Literal["PORT_NOT_MAPPED", "NO_CONNECTION"] | None = None
+    reason: str | None = None
+
+
+class ProcessMoveOut(Out):
+    kind: Literal["transport", "move"] = Field(description="transport: 운반 단계(지게차·AMR 등 운반 자원), move: 사람 이동")
+    from_node_key: str
+    from_label: str
+    to_node_key: str
+    to_label: str
+    step_key: str | None = Field(default=None, description="운반 단계 key(transport)")
+    step_label: str | None = None
+    edge_keys: list[str] = Field(description="이 이동이 지나는 공정 간선")
+    movement_mode: str | None = Field(default=None, description="사람 이동의 간선 이동 조건(unknown·manual_duration·network_route·direct_feed)")
+    carrier_asset_codes: list[str] = Field(default_factory=list, description="운반 자원 후보(transport)")
+    speed_key: str = Field(description="속도 키: 사람 `person`, 운반 자원은 그 설비의 종류")
+    speed_kmh: str
+    speed_defaulted: bool = Field(description="시나리오가 정하지 않아 기본값(4 km/h)을 썼는가")
+    handling_min: str | None = Field(default=None, description="운반 상하차 시간(분, transport만)")
+    handling_defaulted: bool | None = None
+    pairs: list[MovePairOut] = Field(description="출발 위치 포트 × 도착 위치 포트(후보 설비가 여러 대면 여러 쌍)")
+    note: str | None = Field(default=None, description="포트가 없어 쌍을 만들 수 없을 때 등")
+
+
+class ProcessLinksOut(Out):
+    process_version_id: uuid.UUID
+    product_id: uuid.UUID
+    product_code: str | None = None
+    process_version_no: int
+    moves: list[ProcessMoveOut]

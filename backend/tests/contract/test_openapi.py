@@ -98,6 +98,8 @@ EXPECTED = {
     ("post", "/api/v1/projects/{project_id}/layout-versions/{version_id}/approve"),
     # scope layouts 확장 (contract 0.18.0)
     ("post", "/api/v1/projects/{project_id}/layout-versions/{version_id}/paths"),
+    # scope layouts 확장 (contract 0.19.0)
+    ("get", "/api/v1/projects/{project_id}/layout-versions/{version_id}/process-links"),
 }
 
 

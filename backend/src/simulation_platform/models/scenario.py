@@ -56,6 +56,9 @@ class ScenarioVersion(IdMixin, MutableMixin, Base):
         ForeignKeyConstraint(["project_id", "base_version_id"],
                              ["scenario_version.project_id", "scenario_version.id"],
                              name="fk_scenario_version_base", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["project_id", "layout_version_id"], ["layout_version.project_id", "layout_version.id"],
+                             name="fk_scenario_version_layout", ondelete="RESTRICT"),
+        CheckConstraint("jsonb_typeof(travel_rule) = 'object'", name="ck_scenario_version_travel_rule"),
         UniqueConstraint("scenario_id", "version_no", name="uq_scenario_version_no"),
         UniqueConstraint("project_id", "id", name="uq_scenario_version_project_id"),
         CheckConstraint("status IN ('draft', 'approved')", name="ck_scenario_version_status"),
@@ -75,6 +78,9 @@ class ScenarioVersion(IdMixin, MutableMixin, Base):
     stopping_rule: Mapped[dict] = mapped_column(JSONB)
     assumption_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # 0013(CR be20): 실행에 쓰는 배치판(승인본, 선택)과 이동 설정(속도 km/h·상하차 분, 비면 사용자 기본값)
+    layout_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    travel_rule: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 

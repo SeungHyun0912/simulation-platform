@@ -7,12 +7,15 @@
 """
 
 import uuid
+from fractions import Fraction
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from simulation_platform.auth.principal import Principal
 from simulation_platform.domain import layout as rules
+from simulation_platform.domain import process_moves as moves_rules
+from simulation_platform.domain import travel
 from simulation_platform.domain.errors import (
     EditConflictError,
     ErrorDetail,
@@ -29,7 +32,10 @@ from simulation_platform.domain.pagination import (
     make_tag,
 )
 from simulation_platform.models import (
+    Asset,
     AssetPlacement,
+    AssetPort,
+    EquipmentDetail,
     LayoutAisle,
     LayoutAislePoint,
     LayoutPoint,
@@ -37,9 +43,13 @@ from simulation_platform.models import (
     LayoutRoute,
     LayoutRoutePoint,
     LayoutVersion,
+    ProcessVersion,
+    Product,
+    ScenarioVersion,
 )
 from simulation_platform.models.base import new_id
 from simulation_platform.repositories import layouts as repo
+from simulation_platform.repositories import process as process_repo
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.layout import (
     AisleOut,
@@ -51,10 +61,13 @@ from simulation_platform.schemas.layout import (
     LayoutVersionListItem,
     LayoutVersionOut,
     LayoutVersionPatch,
+    MovePairOut,
     PathOut,
     PathsIn,
     PlacementOut,
     PortPointOut,
+    ProcessLinksOut,
+    ProcessMoveOut,
     RouteOut,
 )
 from simulation_platform.services.projects import require_admin, require_project, require_write
@@ -367,38 +380,143 @@ def approve_version(session: Session, principal: Principal, project_id: uuid.UUI
 
 
 # --- 포트 → 포트 경로(CR be19) ---------------------------------------------------------------------------
-def paths(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID,
-          body: PathsIn) -> list[PathOut]:
-    """쌍마다 고정 경로(같은 출발·도착 포트로 저장된 경로)를 먼저 쓰고, 없으면 통로·고정 경로의 선분으로 만든 길 그물에서
-    최단 경로를 계산한다(저장하지 않음 → 점·통로를 고치면 다음 조회부터 자동으로 바뀐다)."""
-    require_project(session, principal, project_id)
-    version = _reload(session, project_id, version_id)
-    data = _as_dicts(session, version)
+def _resolver(data: dict):
+    """포트 → 포트 경로 계산기. 같은 출발·도착 포트로 저장된 고정 경로를 먼저 쓰고, 없으면 통로·고정 경로의 선분(양방향)으로
+    만든 길 그물에서 최단 경로를 계산한다. 반환: dict(reachable, source, route_key, points, length(Decimal|None), reason…)."""
     xy = {p["point_key"]: (p["x_m"], p["y_m"]) for p in data["points"]}
     mapped = {m["port_id"]: m["point_key"] for m in data["port_points"]}
     fixed = {}
     for r in sorted(data["routes"], key=lambda r: r["route_key"]):
         fixed.setdefault((r["from_port_id"], r["to_port_id"]), r)
     lines = [a["points"] for a in data["aisles"]] + [r["points"] for r in data["routes"]]
-    out = []
-    for pair in body.pairs:
-        base = {"from_port_id": pair.from_port_id, "to_port_id": pair.to_port_id}
-        route = fixed.get((pair.from_port_id, pair.to_port_id))
+    cache: dict[tuple, dict] = {}
+
+    def resolve(from_port, to_port) -> dict:
+        if (from_port, to_port) in cache:
+            return cache[(from_port, to_port)]
+        route = fixed.get((from_port, to_port))
         if route is not None:
-            out.append(PathOut(**base, reachable=True, source="fixed", route_key=route["route_key"],
-                               points=route["points"],
-                               length_m=rules.fmt(rules.length([xy[k] for k in route["points"]]))))
-            continue
-        start, end = mapped.get(pair.from_port_id), mapped.get(pair.to_port_id)
-        if start is None or end is None:
-            which = "출발" if start is None else "도착"
-            out.append(PathOut(**base, reachable=False, reason_code="PORT_NOT_MAPPED", reason=f"{which} 포트가 이 배치판의 점에 매핑되지 않았습니다."))
-            continue
-        found = rules.shortest_path(xy, lines, start, end)
-        if found is None:
-            out.append(PathOut(**base, reachable=False, reason_code="NO_CONNECTION",
-                               reason=f"점 {start}에서 {end}까지 이어진 통로·경로가 없습니다."))
-            continue
-        keys, total = found
-        out.append(PathOut(**base, reachable=True, source="computed", points=keys, length_m=rules.fmt(total)))
+            result = {"reachable": True, "source": "fixed", "route_key": route["route_key"], "points": route["points"],
+                      "length": rules.length([xy[k] for k in route["points"]])}
+        else:
+            start, end = mapped.get(from_port), mapped.get(to_port)
+            if start is None or end is None:
+                which = "출발" if start is None else "도착"
+                result = {"reachable": False, "reason_code": "PORT_NOT_MAPPED",
+                          "reason": f"{which} 포트가 이 배치판의 점에 매핑되지 않았습니다."}
+            else:
+                found = rules.shortest_path(xy, lines, start, end)
+                result = ({"reachable": False, "reason_code": "NO_CONNECTION",
+                           "reason": f"점 {start}에서 {end}까지 이어진 통로·경로가 없습니다."} if found is None else
+                          {"reachable": True, "source": "computed", "points": found[0], "length": found[1]})
+        cache[(from_port, to_port)] = result
+        return result
+
+    return resolve
+
+
+def _path_fields(result: dict) -> dict:
+    out = {k: v for k, v in result.items() if k != "length"}
+    out["length_m"] = rules.fmt(result.get("length"))
+    return out
+
+
+def paths(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID,
+          body: PathsIn) -> list[PathOut]:
+    """쌍마다 고정 경로(같은 출발·도착 포트로 저장된 경로)를 먼저 쓰고, 없으면 통로·고정 경로의 선분으로 만든 길 그물에서
+    최단 경로를 계산한다(저장하지 않음 → 점·통로를 고치면 다음 조회부터 자동으로 바뀐다)."""
+    require_project(session, principal, project_id)
+    version = _reload(session, project_id, version_id)
+    resolve = _resolver(_as_dicts(session, version))
+    return [PathOut(from_port_id=p.from_port_id, to_port_id=p.to_port_id, **_path_fields(resolve(p.from_port_id, p.to_port_id)))
+            for p in body.pairs]
+
+
+# --- 공정 ↔ 배치판 연결(CR be20) ----------------------------------------------------------------------
+MAX_PAIRS_PER_MOVE = 200
+
+
+def _ends(node: dict, ports: dict, *, outgoing: bool) -> list[tuple[uuid.UUID, AssetPort]]:
+    """이동의 한쪽 끝 포트: 공간은 ACCESS, 설비는 후보마다 OUT(출발)·IN(도착)."""
+    space = node["kind"] in moves_rules.SPACE_KINDS
+    role = "ACCESS" if space else ("OUT" if outgoing else "IN")
+    assets = [node["asset_id"]] if space else moves_rules.candidates(node)
+    return [(uuid.UUID(a), p) for a in assets for p in ports.get(uuid.UUID(a), {}).get(role, [])]
+
+
+def process_links(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID, *,
+                  process_version_ids: list[uuid.UUID] | None, scenario_version_id: uuid.UUID | None
+                  ) -> list[ProcessLinksOut]:
+    """공정의 이동 구간(공간 ↔ 설비, 운반 단계)마다 출발·도착 위치의 포트 쌍과 배치판 경로·길이·이동 시간을 계산한다(저장 안 함).
+    속도는 시나리오(`scenario_version_id`)의 이동 설정, 없으면 기본값 4 km/h, 상하차 1분."""
+    require_project(session, principal, project_id)
+    version = _reload(session, project_id, version_id)
+    rule: dict = {}
+    if scenario_version_id is not None:
+        scenario = session.get(ScenarioVersion, scenario_version_id)
+        if scenario is None or scenario.project_id != project_id:
+            raise NotFoundError("시나리오 버전을 찾을 수 없습니다.")
+        rule = scenario.travel_rule or {}
+    if process_version_ids:
+        versions = {v.id: v for v in session.scalars(select(ProcessVersion).where(
+            ProcessVersion.project_id == project_id, ProcessVersion.id.in_(process_version_ids)))}
+        if len(versions) != len(set(process_version_ids)):
+            raise NotFoundError("공정 버전을 찾을 수 없습니다.")
+        chosen = [versions[i] for i in dict.fromkeys(process_version_ids)]
+    else:  # 지정하지 않으면 제품마다 현재 승인본
+        products = list(session.scalars(select(Product).where(Product.project_id == project_id).order_by(Product.code)))
+        current = process_repo.summaries_for_products(session, project_id, [p.id for p in products])
+        chosen = [current[p.id][1] for p in products if current[p.id][1] is not None]
+    resolve = _resolver(_as_dicts(session, version))
+    product_codes = {p.id: p.code for p in session.scalars(select(Product).where(
+        Product.project_id == project_id, Product.id.in_({v.product_id for v in chosen})))} if chosen else {}
+    asset_rows = {a.id: a for a in session.scalars(select(Asset).where(Asset.project_id == project_id))}
+    kinds = {d.asset_id: d.equipment_type for d in session.scalars(select(EquipmentDetail).where(
+        EquipmentDetail.project_id == project_id))}
+    ports: dict[uuid.UUID, dict[str, list[AssetPort]]] = {}
+    for port in session.scalars(select(AssetPort).where(AssetPort.project_id == project_id).order_by(AssetPort.port_key)):
+        ports.setdefault(port.asset_id, {}).setdefault(port.role, []).append(port)
+    out = []
+    for pv in chosen:
+        nodes, edges = process_repo.load_graph(session, project_id, pv.id)
+        by_id = {n["id"]: n for n in nodes}
+        moves = []
+        for move in moves_rules.derive_moves(nodes, edges):
+            a, b = by_id[move.from_node], by_id[move.to_node]
+            step = by_id.get(move.step_node) if move.step_node else None
+            carriers = moves_rules.candidates(step) if step else []
+            key = (kinds.get(uuid.UUID(carriers[0])) if carriers else None) or travel.PERSON
+            kmh, kmh_default = travel.speed_kmh(rule, key)
+            handling, handling_default = travel.handling_minutes(rule) if step else (None, None)
+            starts, finishes = _ends(a, ports, outgoing=True), _ends(b, ports, outgoing=False)
+            pairs = []
+            for (fa, fp) in starts:
+                for (ta, tp) in finishes:
+                    if len(pairs) >= MAX_PAIRS_PER_MOVE:
+                        break
+                    result = resolve(fp.id, tp.id)
+                    minutes = None if not result["reachable"] else travel.travel_minutes(result["length"], kmh)
+                    total = None if minutes is None else minutes + (Fraction(str(handling)) if handling is not None else 0)
+                    pairs.append(MovePairOut(
+                        from_asset_id=fa, from_asset_code=asset_rows[fa].code, from_port_id=fp.id, from_role=fp.role,
+                        to_asset_id=ta, to_asset_code=asset_rows[ta].code, to_port_id=tp.id, to_role=tp.role,
+                        travel_min=None if minutes is None else travel.fmt_minutes(minutes),
+                        total_min=None if total is None else travel.fmt_minutes(total), **_path_fields(result)))
+            note = None
+            if not starts or not finishes:
+                note = f"{'출발' if not starts else '도착'} 위치에 {'OUT·ACCESS' if not starts else 'IN·ACCESS'} 포트가 없어 경로를 만들 수 없습니다."
+            elif len(starts) * len(finishes) > MAX_PAIRS_PER_MOVE:
+                note = f"포트 쌍이 많아 앞 {MAX_PAIRS_PER_MOVE}쌍만 계산했습니다."
+            moves.append(ProcessMoveOut(
+                kind=move.kind, from_node_key=a["node_key"], from_label=a["label"], to_node_key=b["node_key"],
+                to_label=b["label"], step_key=None if step is None else step["node_key"],
+                step_label=None if step is None else step["label"], edge_keys=move.edge_keys,
+                movement_mode=move.movement_mode,
+                carrier_asset_codes=[asset_rows[uuid.UUID(c)].code for c in carriers],
+                speed_key=key, speed_kmh=str(kmh), speed_defaulted=kmh_default,
+                handling_min=None if handling is None else str(handling), handling_defaulted=handling_default,
+                pairs=pairs, note=note))
+        out.append(ProcessLinksOut(process_version_id=pv.id, product_id=pv.product_id,
+                                   product_code=product_codes.get(pv.product_id), process_version_no=pv.version_no,
+                                   moves=moves))
     return out

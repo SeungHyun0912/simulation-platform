@@ -118,6 +118,17 @@ class FixedHorizonRule(StrictIn):
 StoppingRule = Annotated[DrainRule | FixedHorizonRule, Field(discriminator="mode")]
 
 
+class TravelRule(StrictIn):
+    """이동 설정(0.19.0, CR be20). 비워 두면 사용자 기본값(속도 4 km/h, 상하차 1분)을 쓰고 사용한 가정으로 보고한다."""
+
+    speeds_kmh: dict[Code, PositiveDecimal] = Field(
+        default_factory=dict,
+        description="이동 수단별 속도(km/h). 키: 사람 `person`, 운반 자원은 그 설비의 종류(equipment_type, 예: 지게차·AMR). "
+                    "없는 키는 4 km/h")
+    carrier_handling_minutes: NonNegativeDecimal | None = Field(
+        default=None, description="운반(지게차·AMR) 1건의 상하차 시간(분). null이면 1분")
+
+
 def _unique(values: list, message: str) -> None:
     if len(set(values)) != len(values):
         raise ValueError(message)
@@ -183,19 +194,23 @@ class ScenarioVersionOut(ScenarioVersionListItem):
     assumption_reason: str | None
     notes: str | None
     approved_by: uuid.UUID | None
+    layout_version_id: uuid.UUID | None = Field(default=None, description="실행에 쓰는 배치판(승인본). null이면 배치판 없음")
+    travel_rule: TravelRule = Field(default_factory=TravelRule)
 
 
 class ScenarioVersionPatch(PatchIn):
     """보낸 최상위 필드를 통째로 교체한다(초안만). `products`만 보내고 `assets`를 보내지 않으면, 공정이 참조하는
     자산 가운데 아직 고정되지 않은 것을 그 자산의 현재 승인 버전으로 채운다(이미 고정한 것은 그대로)."""
 
-    NON_NULLABLE: ClassVar[tuple[str, ...]] = ("products", "assets", "stopping_rule")
+    NON_NULLABLE: ClassVar[tuple[str, ...]] = ("products", "assets", "stopping_rule", "travel_rule")
 
     products: list[ScenarioProductDto] | None = Field(default=None, max_length=50)
     assets: list[ScenarioAssetDto] | None = Field(default=None, max_length=2000)
     stopping_rule: StoppingRule | None = None
     assumption_reason: FreeText | None = None
     notes: FreeText | None = None
+    layout_version_id: uuid.UUID | None = Field(default=None, description="이 프로젝트의 승인된 배치판. null로 지운다")
+    travel_rule: TravelRule | None = None
 
     @model_validator(mode="after")
     def _unique_refs(self):
@@ -256,6 +271,8 @@ class ScenarioRefreshIn(StrictIn):
     assets: Literal["latest", "keep"] = Field(
         default="latest", description="latest: 쓰는 자산을 현재 승인 버전으로 다시 고정하고 안 쓰는 고정은 뺀다, "
                                       "keep: 기존 고정은 두고 새로 쓰는 자산만 채운다")
+    layout: Literal["latest", "keep"] = Field(
+        default="latest", description="(0.19.0) latest: 배치판을 고른 초안이면 그 프로젝트의 최근 승인 배치판으로 바꾼다, keep: 그대로")
 
 
 class ProcessChangeOut(Out):
@@ -276,7 +293,14 @@ class AssetPinChangeOut(Out):
     change: Literal["pinned", "updated", "removed"]
 
 
+class LayoutChangeOut(Out):
+    from_layout_version_id: uuid.UUID
+    to_layout_version_id: uuid.UUID
+    to_version_no: int
+
+
 class ScenarioRefreshOut(Out):
     version: ScenarioVersionOut
     process_changes: list[ProcessChangeOut]
     asset_changes: list[AssetPinChangeOut]
+    layout_change: LayoutChangeOut | None = Field(default=None, description="(0.19.0) 배치판을 바꿨으면 이전·새 버전")
