@@ -15,9 +15,13 @@ REQUIRED = [
     "contracts/README.md", "contracts/contract-status.json",
     "contracts/03_domain_contracts.md", "contracts/04_api_contract.md",
     "docs/architecture/02_erd_database.md",
-    "docs/domain/08_catalog_processes.md",
     "docs/agents/OWNERSHIP.md", "docs/agents/TASK_BOARD.md",
 ]
+# 회사 내부 업무 데이터는 저장소에서 제외하고 로컬(data/local/README.md)에서만 관리한다. 문서가 이 경로를 링크해도 깨진 링크로 보지 않는다.
+PRIVATE = {
+    "docs/domain/08_catalog_processes.md", "docs/reference/original_specs_v1.zip",
+    "docs/reference/attachment_inventory.json", "docs/reference/source_file_manifest.json",
+}
 CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff]")
 LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 
@@ -77,7 +81,7 @@ def main():
             except ValueError:
                 errors.append(f"저장소 밖 링크: {relative} -> {target}")
                 continue
-            if not resolved.exists():
+            if not resolved.exists() and resolved.relative_to(ROOT).as_posix() not in PRIVATE:
                 errors.append(f"깨진 링크: {relative} -> {target}")
     status_path = ROOT / "contracts/contract-status.json"
     if status_path.exists():

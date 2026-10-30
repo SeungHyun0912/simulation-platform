@@ -42,3 +42,14 @@ data/local/*
 Thumbs.db
 .idea/
 .vscode/settings.json
+
+# 회사 내부 업무 데이터(실제 설비·공정 기준정보). 공개 저장소에 올리지 않고 로컬에서만 관리한다.
+# 백업 위치와 복원 방법은 data/local/README.md. 이미 올라간 과거 커밋에는 남아 있다.
+docs/domain/08_catalog_processes.md
+docs/reference/original_specs_v1.zip
+docs/reference/attachment_inventory.json
+docs/reference/source_file_manifest.json
+backend/scripts/seed_wire_factory.py
+backend/scripts/demo_run_wire_factory.py
+backend/tests/integration/test_seed_wire_factory.py
+backend/tests/integration/test_engine_real_catalog.py
