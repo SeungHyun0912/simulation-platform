@@ -9,6 +9,8 @@ from simulation_platform.models import (
     Asset,
     AssetPlacement,
     AssetPort,
+    LayoutAisle,
+    LayoutAislePoint,
     LayoutPoint,
     LayoutPortPoint,
     LayoutRoute,
@@ -17,7 +19,8 @@ from simulation_platform.models import (
 )
 from simulation_platform.repositories.keyset import apply_keyset
 
-CONTENT_TABLES = (LayoutRoutePoint, LayoutRoute, LayoutPortPoint, AssetPlacement, LayoutPoint)  # 지우는 순서(FK)
+CONTENT_TABLES = (LayoutAislePoint, LayoutAisle, LayoutRoutePoint, LayoutRoute, LayoutPortPoint, AssetPlacement,
+                  LayoutPoint)  # 지우는 순서(FK)
 
 
 def get_version(session: Session, project_id: uuid.UUID, version_id: uuid.UUID,
@@ -60,7 +63,9 @@ def content(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> d
             "placements": rows(AssetPlacement, AssetPlacement.asset_id),
             "port_points": rows(LayoutPortPoint, LayoutPortPoint.port_id),
             "routes": rows(LayoutRoute, LayoutRoute.route_key),
-            "route_points": rows(LayoutRoutePoint, LayoutRoutePoint.route_id, LayoutRoutePoint.seq)}
+            "route_points": rows(LayoutRoutePoint, LayoutRoutePoint.route_id, LayoutRoutePoint.seq),
+            "aisles": rows(LayoutAisle, LayoutAisle.aisle_key),
+            "aisle_points": rows(LayoutAislePoint, LayoutAislePoint.aisle_id, LayoutAislePoint.seq)}
 
 
 def delete_content(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> None:

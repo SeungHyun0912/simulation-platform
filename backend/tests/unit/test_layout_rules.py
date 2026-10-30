@@ -59,3 +59,43 @@ def test_validation_checks_route_ends_against_the_mapped_port_points():
     # field_path는 순번이 아니라 key 기준(응답 정렬과 무관): 경로 key, 포트 id, 자산 id, 점 key
     assert {i.field_path for i in unmapped} >= {"/routes/R1", "/port_points/out"}
     assert {i.field_path for i in good} == {"/points/P3"}
+
+
+# --- CR be19: 통로·길 그물 ---------------------------------------------------------------------------
+XY = {"P10": (D(0), D(0)), "P11": (D(10), D(0)), "P12": (D(20), D(0)),
+      "P21": (D(10), D(-10)), "P22": (D(10), D(10)), "A": (D(0), D(5)), "B": (D(20), D(5))}
+
+
+def test_a_cross_shares_its_center_point_and_paths_turn_there():
+    lines = [["P10", "P11", "P12"], ["P21", "P11", "P22"]]  # 방법 1: 가로·세로 통로가 가운데 P11을 공유
+    assert rules.shortest_path(XY, lines, "P10", "P22") == (["P10", "P11", "P22"], D("20.0"))
+    assert rules.unjoined_crossings(XY, lines) == []
+    apart = [["P10", "P12"], ["P21", "P22"]]  # 겹쳐 보이지만 공유 점이 없으면 이어지지 않는다
+    assert rules.shortest_path(XY, apart, "P10", "P22") is None
+    assert rules.unjoined_crossings(XY, apart) == [(("P10", "P12"), ("P21", "P22"))]
+
+
+def test_the_shortest_of_several_ways_is_chosen_and_both_directions_work():
+    lines = [["A", "P10", "P11", "P12", "B"], ["A", "B"]]  # 돌아가는 길(5+20+5=30)과 곧은 길(20)
+    assert rules.shortest_path(XY, lines, "A", "B") == (["A", "B"], D("20.0"))
+    assert rules.shortest_path(XY, lines, "B", "A") == (["B", "A"], D("20.0"))  # 양방향
+    assert rules.shortest_path(XY, lines, "A", "A") == (["A"], D("0.0"))
+    assert rules.shortest_path(XY, lines, "A", "nowhere") is None
+
+
+def test_aisles_are_checked_like_routes_when_saving():
+    issues = rules.save_errors(points=[point("P1"), point("P2")], placements=[], port_points=[], routes=[],
+                               known_assets=set(), known_ports=set(),
+                               aisles=[{"aisle_key": "W1", "points": ["P1"]},
+                                       {"aisle_key": "W1", "points": ["P1", "P1", "P9"]}])
+    assert {(i.rule_id, i.field_path) for i in issues} == {
+        ("LAY-SAVE-008", "/aisles/0/points"), ("LAY-SAVE-011", "/aisles/0/aisle_key"),
+        ("LAY-SAVE-011", "/aisles/1/aisle_key"), ("LAY-SAVE-009", "/aisles/1/points/1"),
+        ("LAY-SAVE-003", "/aisles/1/points/2")}
+
+
+def test_validation_warns_about_ports_off_the_network():
+    issues = rules.validate(canvas=(None, None), points={"P1": (D(0), D(0)), "P2": (D(1), D(0)), "P3": (D(5), D(5))},
+                            placements=[], port_points={"out": "P1", "in": "P3"}, port_assets={}, routes=[],
+                            aisles=[{"aisle_key": "W1", "points": ["P1", "P2"]}])
+    assert [(i.rule_id, i.field_path) for i in issues if i.rule_id == "LAY-009"] == [("LAY-009", "/port_points/in")]

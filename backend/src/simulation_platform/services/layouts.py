@@ -30,6 +30,8 @@ from simulation_platform.domain.pagination import (
 )
 from simulation_platform.models import (
     AssetPlacement,
+    LayoutAisle,
+    LayoutAislePoint,
     LayoutPoint,
     LayoutPortPoint,
     LayoutRoute,
@@ -40,6 +42,7 @@ from simulation_platform.models.base import new_id
 from simulation_platform.repositories import layouts as repo
 from simulation_platform.schemas.common import Page
 from simulation_platform.schemas.layout import (
+    AisleOut,
     LayoutContentIn,
     LayoutIssueOut,
     LayoutPointOut,
@@ -48,6 +51,8 @@ from simulation_platform.schemas.layout import (
     LayoutVersionListItem,
     LayoutVersionOut,
     LayoutVersionPatch,
+    PathOut,
+    PathsIn,
     PlacementOut,
     PortPointOut,
     RouteOut,
@@ -108,7 +113,11 @@ def _loaded(session: Session, version: LayoutVersion) -> dict:
     route_points: dict[uuid.UUID, list[str]] = {}
     for rp in rows["route_points"]:
         route_points.setdefault(rp.route_id, []).append(key_of[rp.point_id])
-    return {**rows, "ports": ports, "assets": assets, "key_of": key_of, "route_keys": route_points}
+    aisle_points: dict[uuid.UUID, list[str]] = {}
+    for ap in rows["aisle_points"]:
+        aisle_points.setdefault(ap.aisle_id, []).append(key_of[ap.point_id])
+    return {**rows, "ports": ports, "assets": assets, "key_of": key_of, "route_keys": route_points,
+            "aisle_keys": aisle_points}
 
 
 def _version_out(session: Session, version: LayoutVersion) -> LayoutVersionOut:
@@ -139,7 +148,11 @@ def _version_out(session: Session, version: LayoutVersion) -> LayoutVersionOut:
             from_asset_id=ports[r.from_port_id].asset_id, to_asset_id=ports[r.to_port_id].asset_id, mode=r.mode,
             points=data["route_keys"].get(r.id, []),
             length_m=rules.fmt(rules.length([xy[k] for k in data["route_keys"].get(r.id, [])])),
-            attributes=r.attributes) for r in data["routes"]])
+            attributes=r.attributes) for r in data["routes"]],
+        aisles=[AisleOut(
+            aisle_key=a.aisle_key, points=data["aisle_keys"].get(a.id, []),
+            length_m=rules.fmt(rules.length([xy[k] for k in data["aisle_keys"].get(a.id, [])])),
+            attributes=a.attributes) for a in data["aisles"]])
 
 
 def list_versions(session: Session, principal: Principal, project_id: uuid.UUID, *, limit: int | None,
@@ -161,7 +174,7 @@ def get_version(session: Session, principal: Principal, project_id: uuid.UUID, v
 
 # --- 쓰기 -------------------------------------------------------------------------------------
 def _write_content(session: Session, version: LayoutVersion, points: list[dict], placements: list[dict],
-                   port_points: list[dict], routes: list[dict], user_id) -> None:
+                   port_points: list[dict], routes: list[dict], user_id, aisles: list[dict] = ()) -> None:
     """반올림된 내용을 쓴다(점 key로 참조). 기존 내용은 먼저 지운다."""
     repo.delete_content(session, version.project_id, version.id)
     common = {"project_id": version.project_id, "layout_version_id": version.id, "created_by": user_id}
@@ -185,6 +198,12 @@ def _write_content(session: Session, version: LayoutVersion, points: list[dict],
         session.flush()
         for seq, key in enumerate(r["points"]):
             session.add(LayoutRoutePoint(route_id=route.id, seq=seq, point_id=ids[key], **common))
+    for a in aisles:
+        aisle = LayoutAisle(id=new_id(), aisle_key=a["aisle_key"], attributes=a["attributes"], **common)
+        session.add(aisle)
+        session.flush()
+        for seq, key in enumerate(a["points"]):
+            session.add(LayoutAislePoint(aisle_id=aisle.id, seq=seq, point_id=ids[key], **common))
     session.flush()
 
 
@@ -201,6 +220,8 @@ def _as_dicts(session: Session, version: LayoutVersion) -> dict[str, list[dict]]
         "routes": [{"route_key": r.route_key, "from_port_id": r.from_port_id, "to_port_id": r.to_port_id,
                     "mode": r.mode, "points": data["route_keys"].get(r.id, []), "attributes": r.attributes}
                    for r in data["routes"]],
+        "aisles": [{"aisle_key": a.aisle_key, "points": data["aisle_keys"].get(a.id, []), "attributes": a.attributes}
+                   for a in data["aisles"]],
         "port_assets": {p.id: p.asset_id for p in data["ports"].values()}}
 
 
@@ -228,7 +249,7 @@ def create_version(session: Session, principal: Principal, project_id: uuid.UUID
         if base is not None:
             copied = _as_dicts(session, base)
             _write_content(session, version, copied["points"], copied["placements"], copied["port_points"],
-                           copied["routes"], principal.user_id)
+                           copied["routes"], principal.user_id, copied["aisles"])
         audit(session, organization_id=access.project.organization_id, project_id=project_id,
               actor_id=principal.user_id, action="layout_version.create", entity_type="layout_version",
               entity_id=version.id, before=None,
@@ -272,7 +293,9 @@ def _rounded(body: LayoutContentIn) -> dict[str, list[dict]]:
                         "attributes": p.attributes} for p in body.placements],
         "port_points": [{"port_id": m.port_id, "point_key": m.point_key} for m in body.port_points],
         "routes": [{"route_key": r.route_key, "from_port_id": r.from_port_id, "to_port_id": r.to_port_id,
-                    "mode": r.mode, "points": list(r.points), "attributes": r.attributes} for r in body.routes]}
+                    "mode": r.mode, "points": list(r.points), "attributes": r.attributes} for r in body.routes],
+        "aisles": [{"aisle_key": a.aisle_key, "points": list(a.points), "attributes": a.attributes}
+                   for a in body.aisles]}
 
 
 def put_content(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID, expected: int,
@@ -291,7 +314,7 @@ def put_content(session: Session, principal: Principal, project_id: uuid.UUID, v
             severity=i.severity, rule_id=i.rule_id, field_path=i.field_path, message=i.message) for i in errors])
     with transaction(session, {}):
         _write_content(session, version, content["points"], content["placements"], content["port_points"],
-                       content["routes"], principal.user_id)
+                       content["routes"], principal.user_id, content["aisles"])
         _touch(version, principal)
         audit(session, organization_id=access.project.organization_id, project_id=project_id,
               actor_id=principal.user_id, action="layout_version.content", entity_type="layout_version",
@@ -308,7 +331,7 @@ def _issues(session: Session, version: LayoutVersion) -> list[rules.Issue]:
         points={p["point_key"]: (p["x_m"], p["y_m"]) for p in data["points"]},
         placements=data["placements"],
         port_points={m["port_id"]: m["point_key"] for m in data["port_points"]},
-        port_assets=data["port_assets"], routes=data["routes"])
+        port_assets=data["port_assets"], routes=data["routes"], aisles=data["aisles"])
 
 
 def validate(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID) -> LayoutValidationOut:
@@ -341,3 +364,41 @@ def approve_version(session: Session, principal: Principal, project_id: uuid.UUI
               entity_id=version.id, before={"status": "draft"},
               after={"status": "approved", "version_no": version.version_no}, request_id=request_id)
     return _version_out(session, _reload(session, project_id, version.id))
+
+
+# --- 포트 → 포트 경로(CR be19) ---------------------------------------------------------------------------
+def paths(session: Session, principal: Principal, project_id: uuid.UUID, version_id: uuid.UUID,
+          body: PathsIn) -> list[PathOut]:
+    """쌍마다 고정 경로(같은 출발·도착 포트로 저장된 경로)를 먼저 쓰고, 없으면 통로·고정 경로의 선분으로 만든 길 그물에서
+    최단 경로를 계산한다(저장하지 않음 → 점·통로를 고치면 다음 조회부터 자동으로 바뀐다)."""
+    require_project(session, principal, project_id)
+    version = _reload(session, project_id, version_id)
+    data = _as_dicts(session, version)
+    xy = {p["point_key"]: (p["x_m"], p["y_m"]) for p in data["points"]}
+    mapped = {m["port_id"]: m["point_key"] for m in data["port_points"]}
+    fixed = {}
+    for r in sorted(data["routes"], key=lambda r: r["route_key"]):
+        fixed.setdefault((r["from_port_id"], r["to_port_id"]), r)
+    lines = [a["points"] for a in data["aisles"]] + [r["points"] for r in data["routes"]]
+    out = []
+    for pair in body.pairs:
+        base = {"from_port_id": pair.from_port_id, "to_port_id": pair.to_port_id}
+        route = fixed.get((pair.from_port_id, pair.to_port_id))
+        if route is not None:
+            out.append(PathOut(**base, reachable=True, source="fixed", route_key=route["route_key"],
+                               points=route["points"],
+                               length_m=rules.fmt(rules.length([xy[k] for k in route["points"]]))))
+            continue
+        start, end = mapped.get(pair.from_port_id), mapped.get(pair.to_port_id)
+        if start is None or end is None:
+            which = "출발" if start is None else "도착"
+            out.append(PathOut(**base, reachable=False, reason=f"{which} 포트가 이 배치판의 점에 매핑되지 않았습니다."))
+            continue
+        found = rules.shortest_path(xy, lines, start, end)
+        if found is None:
+            out.append(PathOut(**base, reachable=False,
+                               reason=f"점 {start}에서 {end}까지 이어진 통로·경로가 없습니다."))
+            continue
+        keys, total = found
+        out.append(PathOut(**base, reachable=True, source="computed", points=keys, length_m=rules.fmt(total)))
+    return out

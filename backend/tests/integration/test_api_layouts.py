@@ -1,8 +1,9 @@
 """BE-21(CR be18): 배치판(점·배치·포트 매핑·경로) API를 실제 PostgreSQL로 검증한다."""
 
+import uuid
 from decimal import Decimal
 
-from helpers import create_project
+from helpers import create_project, equipment_body
 from sqlalchemy.exc import DBAPIError
 from test_api_scenarios import ctx, etag, ok  # noqa: F401
 
@@ -127,3 +128,52 @@ def test_patch_header_and_permissions(client, ctx, world):
     assert client.get(f"{ctx['base']}/layout-versions/{draft['id']}", headers=ctx["outsider"]).status_code == 404
     other, _ = create_project(client, world)
     assert client.get(f"{API}/projects/{other}/layout-versions/{draft['id']}", headers=ctx["admin"]).status_code == 404
+
+
+def test_aisles_make_a_network_and_paths_are_computed_to_each_candidate_machine(client, ctx):
+    """CR be19: 저장공간 → 후보 설비 2대(택1). 통로를 한 번 그리고 포트는 짧게 이으면 서버가 쌍마다 최단 경로를 계산한다.
+    같은 출발·도착 포트로 저장한 고정 경로가 있으면 그것을 먼저 쓴다."""
+    other = ok(client.post(f"{ctx['base']}/assets", json=equipment_body(f"EQ-{uuid.uuid4().hex[:6]}"),
+                           headers=ctx["admin"]), 201)["id"]
+    st, eq1, eq2 = ports_of(client, ctx, ctx["storage"]), ports_of(client, ctx, ctx["equipment"]), ports_of(client, ctx, other)
+    body = {
+        "points": [{"point_key": k, "x_m": x, "y_m": y} for k, x, y in (
+            ("P1", "2", "0"), ("P2", "10", "0"), ("P3", "20", "0"), ("P4", "10", "5"), ("P5", "20", "5"),
+            ("P6", "40", "40"))],
+        "port_points": [{"port_id": st["ACCESS"], "point_key": "P1"}, {"port_id": eq1["IN"], "point_key": "P4"},
+                        {"port_id": eq2["IN"], "point_key": "P5"}, {"port_id": eq1["OUT"], "point_key": "P6"}],
+        "aisles": [{"aisle_key": "W1", "points": ["P1", "P2", "P3"]}, {"aisle_key": "W2", "points": ["P2", "P4"]},
+                   {"aisle_key": "W3", "points": ["P3", "P5"], "attributes": {"note": "편조기 줄"}}],
+        "routes": []}
+    draft = new_draft(client, ctx)
+    saved = ok(put(client, ctx, draft, body))
+    assert [(a["aisle_key"], a["points"], a["length_m"]) for a in saved["aisles"]] == [
+        ("W1", ["P1", "P2", "P3"], "18.0"), ("W2", ["P2", "P4"], "5.0"), ("W3", ["P3", "P5"], "5.0")]
+    paths_url = f"{ctx['base']}/layout-versions/{draft['id']}/paths"
+    pairs = [{"from_port_id": st["ACCESS"], "to_port_id": eq1["IN"]}, {"from_port_id": st["ACCESS"], "to_port_id": eq2["IN"]},
+             {"from_port_id": eq1["IN"], "to_port_id": st["ACCESS"]}, {"from_port_id": eq1["OUT"], "to_port_id": eq2["IN"]},
+             {"from_port_id": eq2["OUT"], "to_port_id": eq1["IN"]}]
+    got = ok(client.post(paths_url, json={"pairs": pairs}, headers=ctx["viewer"]))
+    assert [(p["reachable"], p["source"], p["points"], p["length_m"]) for p in got[:3]] == [
+        (True, "computed", ["P1", "P2", "P4"], "13.0"), (True, "computed", ["P1", "P2", "P3", "P5"], "23.0"),
+        (True, "computed", ["P4", "P2", "P1"], "13.0")]  # 양방향
+    assert (got[3]["reachable"], got[3]["length_m"]) == (False, None) and "이어진" in got[3]["reason"]  # 고립된 점
+    assert got[4]["reachable"] is False and "매핑되지 않았" in got[4]["reason"]
+    check = ok(client.post(f"{ctx['base']}/layout-versions/{draft['id']}/validate", headers=ctx["viewer"]))
+    assert {(i["rule_id"], i["field_path"]) for i in check["issues"] if i["rule_id"] == "LAY-009"} == {
+        ("LAY-009", f"/port_points/{eq1['OUT']}")}
+    # 고정 경로를 저장하면 그 쌍은 고정 경로가 우선이다. 통로를 고치면 계산 경로가 다음 조회부터 바로 바뀐다.
+    body["routes"] = [{"route_key": "R1", "from_port_id": st["ACCESS"], "to_port_id": eq2["IN"], "points": ["P1", "P5"]}]
+    body["points"][1]["y_m"] = "3"  # P2를 옮긴다
+    saved = ok(put(client, ctx, saved, body))
+    got = ok(client.post(paths_url, json={"pairs": pairs[:2]}, headers=ctx["viewer"]))
+    assert (got[1]["source"], got[1]["route_key"], got[1]["points"], got[1]["length_m"]) == ("fixed", "R1", ["P1", "P5"], "18.7")
+    assert (got[0]["source"], got[0]["length_m"]) == ("computed", "10.5")  # √(8²+3²) + 2 = 8.54 + 2.0
+    assert client.post(paths_url, json={"pairs": []}, headers=ctx["viewer"]).status_code == 422
+    # 복사한 새 초안에도 통로가 따라온다
+    approved = ok(client.post(f"{ctx['base']}/layout-versions/{draft['id']}/approve",
+                              headers=etag(ctx, "admin", saved["row_version"])))
+    copy = new_draft(client, ctx)
+    assert [a["aisle_key"] for a in copy["aisles"]] == ["W1", "W2", "W3"] and copy["base_version_id"] == approved["id"]
+    bad = put(client, ctx, copy, {"points": body["points"], "aisles": [{"aisle_key": "W1", "points": ["P1", "P9"]}]})
+    assert bad.status_code == 422 and {d["rule_id"] for d in bad.json()["error"]["details"]} == {"LAY-SAVE-003"}
