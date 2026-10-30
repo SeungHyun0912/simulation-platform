@@ -42,6 +42,10 @@ export function useLayoutWriter(projectId: string) {
       async approve(versionId: string, version: number): Promise<Version> {
         return store((await client.post<Schemas["Single_LayoutVersionOut_"]>(`${base}/${versionId}/approve`, { ifMatch: version })).body.data);
       },
+      /** 포트 → 포트 경로 계산(0.18.0, 저장하지 않음, 조회자 가능). 저장된 배치판 기준. 1~500쌍. */
+      async paths(versionId: string, pairs: Schemas["PathPairIn"][]): Promise<Schemas["PathOut"][]> {
+        return (await client.post<Schemas["Single_list_PathOut__"]>(`${base}/${versionId}/paths`, { body: { pairs } })).body.data;
+      },
       async reload(versionId: string): Promise<Version> {
         return store((await client.get<Schemas["Single_LayoutVersionOut_"]>(`${base}/${versionId}`)).body.data);
       },

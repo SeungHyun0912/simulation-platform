@@ -20,12 +20,16 @@ import { clampZoom, type Viewport } from "../processes/flowLayout";
 import { canApprove, canEdit } from "../projects/projectView";
 import { useCurrentProject } from "../projects/useCurrentProject";
 import { LayoutCanvas, PX_PER_M, type CanvasMode } from "./LayoutCanvas";
+import { LayoutPathsSection } from "./LayoutPaths";
 import { LayoutTables, RouteDraftPanel, SelectionPanel, type RouteDraft } from "./LayoutPanels";
 import {
   addPlacement,
   addPoint,
   backgroundOf,
+  insertAislePoint,
   insertRoutePoint,
+  nextAisleKey,
+  upsertAisle,
   mapPort,
   nearestPoint,
   pointOfPort,
@@ -78,7 +82,7 @@ export function LayoutEditorPage() {
 }
 
 /** 경로 그리기 패널·상태 줄의 버튼은 Enter가 그 버튼을 누른다(끝내기 단축키를 가로채지 않음) */
-const DRAW_CONTROLS = `[aria-label="경로 그리기"], [aria-label="경로 그리기 상태"]`;
+const DRAW_CONTROLS = `[aria-label="경로 그리기"], [aria-label="경로 그리기 상태"], [aria-label="통로 그리기"], [aria-label="통로 그리기 상태"]`;
 
 function fitViewport(extent: { w: number; h: number }): Viewport {
   const zoom = clampZoom(Math.min(860 / (extent.w * PX_PER_M), 500 / (extent.h * PX_PER_M)));
@@ -105,6 +109,8 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   const [validation, setValidation] = useState<Schemas["LayoutValidationOut"] | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  /** 경로 보기에서 도면에 강조한 계산 경로 */
+  const [highlight, setHighlight] = useState<{ key: string | null; points: string[] }>({ key: null, points: [] });
 
   const draft = server.status === "draft";
   const editable = draft && canEdit(role);
@@ -204,7 +210,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
     let key: string | null = null;
     const created = [...d.created];
     let { fromPortId, toPortId } = d;
-    if (placementId) {
+    if (placementId && d.kind === "route") {
       const start = d.points.length === 0;
       const port = portFor(placementId, start);
       if (port) {
@@ -253,6 +259,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   function routeFinish() {
     const d = routeDraft;
     if (!d) return;
+    if (d.kind === "aisle") return aisleFinish(d);
     const pick = (pointKey: string | undefined, roles: string[]) => {
       const here = doc.portPoints.filter((m) => m.pointKey === pointKey).map((m) => assets.portById.get(m.portId)).filter((x): x is NonNullable<typeof x> => !!x);
       for (const role of roles) {
@@ -283,7 +290,22 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
     setRouteDraft(null);
     setMode("select");
   }
-  function insertOnRoute(routeKey: string, index: number, x: number, y: number) {
+  /** 통로 끝내기: 포트 없이 점 순서만. 기존 점을 다시 지나면 그 점에서 다른 통로와 이어진다(갈림길). */
+  function aisleFinish(d: RouteDraft) {
+    const key = d.key.trim() || (d.editingKey ?? nextAisleKey(doc));
+    const msg = d.points.length < 2 ? "점을 2개 이상 찍어야 통로가 됩니다." : key !== d.editingKey && doc.aisles.some((a) => a.key === key) ? "같은 이름의 통로가 있습니다." : null;
+    if (msg) return setRouteDraft({ ...d, message: msg });
+    const old = d.editingKey ? doc.aisles.find((a) => a.key === d.editingKey) : undefined;
+    const next = upsertAisle(doc, { key, points: d.points, attributes: old?.attributes ?? {} }, d.editingKey ?? undefined);
+    setPast((p) => [...p.slice(-99), d.base ?? doc]);
+    setFuture([]);
+    setDoc(next);
+    setValidation(null);
+    setSelected(`aisle:${key}`);
+    setRouteDraft(null);
+    setMode("select");
+  }
+  function insertOnLine(kind: "route" | "aisle", lineKey: string, index: number, x: number, y: number) {
     let next = doc;
     let key = nearestPoint(next, x, y, snapTol);
     if (!key) {
@@ -291,7 +313,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
       next = r.doc;
       key = r.key;
     }
-    change(insertRoutePoint(next, routeKey, index, key));
+    change(kind === "route" ? insertRoutePoint(next, lineKey, index, key) : insertAislePoint(next, lineKey, index, key));
     setSelected(`point:${key}`);
   }
 
@@ -396,9 +418,16 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
   }
 
   const startRoute = () => {
+    if (routeDraft && routeDraft.kind !== "route") routeCancel();
     setMode("route");
     setSelected(null);
-    setRouteDraft((d) => d ?? { editingKey: null, key: "", fromPortId: "", toPortId: "", mode: "", points: [], base: doc, created: [], message: null });
+    setRouteDraft((d) => (d?.kind === "route" ? d : { kind: "route", editingKey: null, key: "", fromPortId: "", toPortId: "", mode: "", points: [], base: doc, created: [], message: null }));
+  };
+  const startAisle = () => {
+    if (routeDraft && routeDraft.kind !== "aisle") routeCancel();
+    setMode("aisle");
+    setSelected(null);
+    setRouteDraft((d) => (d?.kind === "aisle" ? d : { kind: "aisle", editingKey: null, key: "", fromPortId: "", toPortId: "", mode: "", points: [], base: doc, created: [], message: null }));
   };
   const centerPlace = (assetId: string) => {
     change(addPlacement(doc, assetId, extent.w / 2, extent.h / 2));
@@ -469,6 +498,9 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
               <Button aria-pressed={mode === "route"} onClick={startRoute}>
                 경로 그리기
               </Button>
+              <Button aria-pressed={mode === "aisle"} onClick={startAisle}>
+                통로 그리기
+              </Button>
             </>
           )}
           <Button aria-label="확대" onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom * 1.25) }))}>
@@ -490,16 +522,20 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
           )}
         </FilterBar>
         {bgReason && <Note>{bgReason}</Note>}
-        {mode === "route" && routeDraft && editable && (
+        {(mode === "route" || mode === "aisle") && routeDraft && editable && (
           // 그리는 중 상태와 끝내기를 도면 바로 위에 둔다(패널이 도면 아래라 끝내지 못한 이유가 안 보였다)
-          <section aria-label="경로 그리기 상태">
+          <section aria-label={routeDraft.kind === "aisle" ? "통로 그리기 상태" : "경로 그리기 상태"}>
             <FilterBar>
-              <span>
-                경로 그리기 중 · 점 {routeDraft.points.length}개 · 출발 {routeDraft.fromPortId ? portText(assets.portById.get(routeDraft.fromPortId), routeDraft.fromPortId) : "미정"} · 도착{" "}
-                {routeDraft.toPortId ? portText(assets.portById.get(routeDraft.toPortId), routeDraft.toPortId) : "미정"}
-              </span>
+              {routeDraft.kind === "aisle" ? (
+                <span>통로 그리기 중 · 점 {routeDraft.points.length}개 · 기존 점을 다시 지나면 그 점에서 다른 통로와 이어집니다(갈림길)</span>
+              ) : (
+                <span>
+                  경로 그리기 중 · 점 {routeDraft.points.length}개 · 출발 {routeDraft.fromPortId ? portText(assets.portById.get(routeDraft.fromPortId), routeDraft.fromPortId) : "미정"} · 도착{" "}
+                  {routeDraft.toPortId ? portText(assets.portById.get(routeDraft.toPortId), routeDraft.toPortId) : "미정"}
+                </span>
+              )}
               <Button variant="primary" onClick={routeFinish} disabled={routeDraft.points.length < 2} title="Enter 또는 더블클릭">
-                경로 끝내기
+                {routeDraft.kind === "aisle" ? "통로 끝내기" : "경로 끝내기"}
               </Button>
               <Button onClick={routeRemoveLast} disabled={routeDraft.points.length === 0} title="Backspace">
                 마지막 점 빼기
@@ -509,18 +545,20 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
               </Button>
             </FilterBar>
             {routeDraft.message ? (
-              <StateNotice kind="error" title="경로를 끝내지 못했습니다">
+              <StateNotice kind="error" title={routeDraft.kind === "aisle" ? "통로를 끝내지 못했습니다" : "경로를 끝내지 못했습니다"}>
                 {routeDraft.message}
               </StateNotice>
             ) : (
               <Note>
-                끝내기: 더블클릭 · Enter · "경로 끝내기". 도착할 설비·공간을 누르면 도착 포트가 정해집니다(빈 곳만 누르면 출발·도착 포트를 아래 패널에서 고르세요).
+                {routeDraft.kind === "aisle"
+                  ? '끝내기: 더블클릭 · Enter · "통로 끝내기". 통로는 포트에 묶이지 않는 양방향 선이며, 겹쳐 보여도 같은 점을 지나지 않으면 이어지지 않습니다.'
+                  : '끝내기: 더블클릭 · Enter · "경로 끝내기". 도착할 설비·공간을 누르면 도착 포트가 정해집니다(빈 곳만 누르면 출발·도착 포트를 아래 패널에서 고르세요).'}
               </Note>
             )}
           </section>
         )}
         <Note>
-          범위 {extent.w.toFixed(1)} × {extent.h.toFixed(1)} m{server.canvas_width_m && server.canvas_height_m ? "(도면 크기)" : "(도면 크기를 몰라 점·배치를 담는 범위)"} · 점 {doc.points.length} · 배치 {doc.placements.length} · 경로 {doc.routes.length}
+          범위 {extent.w.toFixed(1)} × {extent.h.toFixed(1)} m{server.canvas_width_m && server.canvas_height_m ? "(도면 크기)" : "(도면 크기를 몰라 점·배치를 담는 범위)"} · 점 {doc.points.length} · 배치 {doc.placements.length} · 통로 {doc.aisles.length} · 경로 {doc.routes.length}
         </Note>
         <LayoutCanvas
           doc={doc}
@@ -535,6 +573,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
           selected={selected}
           errorTargets={errorTargets}
           routeDraft={routeDraft?.points ?? []}
+          highlight={highlight.points}
           onSelect={setSelected}
           onAddPoint={(x, y) => {
             const r = addPoint(doc, x, y);
@@ -544,7 +583,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
           onRoutePoint={routeAppend}
           onRouteClick={routeClick}
           onRouteFinish={routeFinish}
-          onInsertOnRoute={insertOnRoute}
+          onInsertOnLine={insertOnLine}
           onEditStart={() => {
             setPast((p) => [...p.slice(-99), doc]);
             setFuture([]);
@@ -552,7 +591,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
           onMovePoint={(key, x, y) => moveSilently(patchPoint(doc, key, { x, y }))}
           onMovePlacement={(assetId, x, y) => moveSilently(patchPlacement(doc, assetId, { x, y }))}
         />
-        {mode === "route" && routeDraft && editable && (
+        {(mode === "route" || mode === "aisle") && routeDraft && editable && (
           <RouteDraftPanel
             doc={doc}
             draft={routeDraft}
@@ -564,7 +603,7 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
             onCancel={routeCancel}
           />
         )}
-        {selected && mode !== "route" && (
+        {selected && mode !== "route" && mode !== "aisle" && (
           <SelectionPanel
             doc={doc}
             saved={server}
@@ -576,10 +615,29 @@ function LayoutEditor({ projectId, initial, assets, role }: { projectId: string;
             onSelect={setSelected}
             onRedrawRoute={(r) => {
               setMode("route");
-              setRouteDraft({ editingKey: r.key, key: r.key, fromPortId: r.fromPortId, toPortId: r.toPortId, mode: r.mode, points: [], base: doc, created: [], message: null });
+              setRouteDraft({ kind: "route", editingKey: r.key, key: r.key, fromPortId: r.fromPortId, toPortId: r.toPortId, mode: r.mode, points: [], base: doc, created: [], message: null });
+            }}
+            onRedrawAisle={(a) => {
+              setMode("aisle");
+              setRouteDraft({ kind: "aisle", editingKey: a.key, key: a.key, fromPortId: "", toPortId: "", mode: "", points: [], base: doc, created: [], message: null });
             }}
           />
         )}
+      </Section>
+
+      <Section id="sec-layout-paths" title="경로 보기(계산)">
+        <LayoutPathsSection
+          projectId={projectId}
+          versionId={server.id}
+          assets={assets}
+          dirty={contentDirty}
+          highlighted={highlight.key}
+          onHighlight={(key, points) => setHighlight({ key, points })}
+          onSelectPort={(portId) => {
+            setMode("select");
+            setSelected(`port:${portId}`);
+          }}
+        />
       </Section>
 
       <Section id="sec-layout-tables" title="표로 보기·붙여 넣기">

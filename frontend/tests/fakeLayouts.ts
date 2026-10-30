@@ -74,7 +74,17 @@ function build(state: FakeState, base: Schemas["LayoutVersionOut"], c: Schemas["
       };
     })
     .sort((a, b) => a.route_key.localeCompare(b.route_key));
-  return { ...base, points, placements, port_points, routes };
+  const lenOf = (keys: string[]) => {
+    let len = 0;
+    for (let i = 1; i < keys.length; i++) {
+      const a = at.get(keys[i - 1]!)!;
+      const b = at.get(keys[i]!)!;
+      len += Math.hypot(Number(b.x_m) - Number(a.x_m), Number(b.y_m) - Number(a.y_m));
+    }
+    return (Math.round(len * 10) / 10).toFixed(1);
+  };
+  const aisles = (c.aisles ?? []).map((a) => ({ aisle_key: a.aisle_key, points: [...a.points], attributes: a.attributes ?? {}, length_m: lenOf(a.points) })).sort((a, b) => a.aisle_key.localeCompare(b.aisle_key));
+  return { ...base, points, placements, port_points, routes, aisles };
 }
 
 const contentOf = (v: Schemas["LayoutVersionOut"]): Schemas["LayoutContentIn"] => ({
@@ -82,6 +92,7 @@ const contentOf = (v: Schemas["LayoutVersionOut"]): Schemas["LayoutContentIn"] =
   placements: v.placements.map((p) => ({ asset_id: p.asset_id, x_m: p.x_m, y_m: p.y_m, width_m: p.width_m, height_m: p.height_m, rotation_deg: p.rotation_deg, attributes: p.attributes })),
   port_points: v.port_points.map((m) => ({ port_id: m.port_id, point_key: m.point_key })),
   routes: v.routes.map((r) => ({ route_key: r.route_key, from_port_id: r.from_port_id, to_port_id: r.to_port_id, mode: r.mode, points: r.points, attributes: r.attributes })),
+  aisles: (v.aisles ?? []).map((a) => ({ aisle_key: a.aisle_key, points: a.points, attributes: a.attributes })),
 });
 
 function header(i: number, status: "draft" | "approved", project: string): Schemas["LayoutVersionOut"] {
@@ -167,7 +178,74 @@ function saveErrors(state: FakeState, c: Schemas["LayoutContentIn"]): Issue[] {
       if (j > 0 && r.points[j - 1] === k) e("009", `/routes/${i}/points/${j}`, "연달아 같은 점입니다.");
     });
   });
+  const akeys = new Set<string>();
+  (c.aisles ?? []).forEach((a, i) => {
+    if (akeys.has(a.aisle_key)) e("011", `/aisles/${i}/aisle_key`, `통로 key ${a.aisle_key}이(가) 중복됩니다.`);
+    akeys.add(a.aisle_key);
+    if (a.points.length < 2) e("008", `/aisles/${i}/points`, "통로 점이 2개 미만입니다.");
+    a.points.forEach((k, j) => {
+      if (!keys.has(k)) e("003", `/aisles/${i}/points/${j}`, `없는 점 ${k}입니다.`);
+      if (j > 0 && a.points[j - 1] === k) e("009", `/aisles/${i}/points/${j}`, "연달아 같은 점입니다.");
+    });
+  });
   return out;
+}
+
+/**
+ * 경로 계산(0.18.0): 같은 출발·도착으로 저장된 고정 경로가 있으면 그것(fixed), 없으면 통로·고정 경로의 이웃 점 쌍(양방향)으로 만든 그물에서 최단 경로(computed).
+ * 같은 길이는 점 key 순으로 결정적. 포트가 점에 없으면 PORT_NOT_MAPPED, 길이 없으면 NO_CONNECTION.
+ */
+export function computePaths(v: Schemas["LayoutVersionOut"], pairs: Schemas["PathPairIn"][]): Schemas["PathOut"][] {
+  const pointOf = new Map(v.port_points.map((m) => [m.port_id, m.point_key]));
+  const at = new Map(v.points.map((p) => [p.point_key, { x: Number(p.x_m), y: Number(p.y_m) }]));
+  const adj = new Map<string, Map<string, number>>();
+  const link = (a: string, b: string) => {
+    const pa = at.get(a)!;
+    const pb = at.get(b)!;
+    const d = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+    for (const [x, y] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      if (!adj.has(x)) adj.set(x, new Map());
+      adj.get(x)!.set(y, Math.min(d, adj.get(x)!.get(y) ?? Infinity));
+    }
+  };
+  for (const line of [...(v.aisles ?? []).map((a) => a.points), ...v.routes.map((r) => r.points)]) for (let i = 1; i < line.length; i++) link(line[i - 1]!, line[i]!);
+  const len = (keys: string[]) => {
+    let s2 = 0;
+    for (let i = 1; i < keys.length; i++) s2 += adj.get(keys[i - 1]!)?.get(keys[i]!) ?? 0;
+    return (Math.round(s2 * 10) / 10).toFixed(1);
+  };
+  return pairs.map(({ from_port_id, to_port_id }) => {
+    const base = { from_port_id, to_port_id };
+    const fixed = v.routes.find((r) => r.from_port_id === from_port_id && r.to_port_id === to_port_id);
+    if (fixed) return { ...base, reachable: true, source: "fixed", route_key: fixed.route_key, points: fixed.points, length_m: fixed.length_m, reason: null, reason_code: null };
+    const a = pointOf.get(from_port_id);
+    const b = pointOf.get(to_port_id);
+    if (!a || !b) return { ...base, reachable: false, source: null, route_key: null, points: [], length_m: null, reason: "포트가 점에 매핑되지 않았습니다.", reason_code: "PORT_NOT_MAPPED" };
+    // Dijkstra(작은 그물이라 단순 구현)
+    const dist = new Map<string, number>([[a, 0]]);
+    const prev = new Map<string, string>();
+    const done = new Set<string>();
+    while (true) {
+      let cur: string | null = null;
+      for (const [k, d] of dist) if (!done.has(k) && (cur === null || d < dist.get(cur)! || (d === dist.get(cur)! && k < cur))) cur = k;
+      if (cur === null || cur === b) break;
+      done.add(cur);
+      for (const [n, w] of adj.get(cur) ?? []) {
+        const nd = dist.get(cur)! + w;
+        if (nd < (dist.get(n) ?? Infinity)) {
+          dist.set(n, nd);
+          prev.set(n, cur);
+        }
+      }
+    }
+    if (!dist.has(b)) return { ...base, reachable: false, source: null, route_key: null, points: [], length_m: null, reason: "이어진 길이 없습니다.", reason_code: "NO_CONNECTION" };
+    const path = [b];
+    while (path[0] !== a) path.unshift(prev.get(path[0]!)!);
+    return { ...base, reachable: true, source: "computed", route_key: null, points: path, length_m: len(path), reason: null, reason_code: null };
+  });
 }
 
 export function validateLayout(v: Schemas["LayoutVersionOut"]): Schemas["LayoutValidationOut"] {
@@ -194,7 +272,7 @@ export function validateLayout(v: Schemas["LayoutVersionOut"]): Schemas["LayoutV
 }
 
 export function layoutRoute(req: FakeRequest, state: FakeState, h: Helpers): FakeResponse | null {
-  const m = new RegExp(`^/projects/${h.project}/layout-versions(?:/([^/]+)(?:/(content|validate|approve))?)?$`).exec(req.path);
+  const m = new RegExp(`^/projects/${h.project}/layout-versions(?:/([^/]+)(?:/(content|validate|approve|paths))?)?$`).exec(req.path);
   if (!m) return null;
   const L = state.layouts;
   const [, vid, action] = m;
@@ -229,6 +307,11 @@ export function layoutRoute(req: FakeRequest, state: FakeState, h: Helpers): Fak
   if (!v) return h.notFound();
   if (!action && req.method === "GET") return ok(v);
   if (action === "validate" && req.method === "POST") return { status: 200, body: { data: validateLayout(v) } };
+  if (action === "paths" && req.method === "POST") {
+    const pairs = ((req.body ?? {}) as Schemas["PathsIn"]).pairs ?? [];
+    if (pairs.length < 1 || pairs.length > 500) return h.invalid("/pairs", "1~500쌍이어야 합니다.");
+    return { status: 200, body: { data: computePaths(v, pairs) } };
+  }
 
   // 쓰기
   if (viewer || (action === "approve" && state.role !== "admin")) return h.forbidden();

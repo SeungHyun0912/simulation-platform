@@ -445,3 +445,111 @@ describe("경로 끝내기(사용자 보고: 계속 점만 추가됨)", () => {
     expect(screen.getByRole("table", { name: "경로 목록" })).toHaveTextContent("R2");
   });
 });
+
+describe("통로(W)·경로 계산(0.18.0)", () => {
+  it("통로 그리기: 빈 곳은 새 점, 기존 점은 그 점을 지나(갈림길) 통로를 만들고, 저장하면 aisles를 보낸다", async () => {
+    const user = userEvent.setup();
+    const { server } = open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "통로 그리기" }));
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(2) }); // P4
+    fireEvent.click(canvas(), { clientX: sx(13) + 3, clientY: sy(9) }); // 기존 P2(갈림길)
+    fireEvent.click(canvas(), { clientX: sx(30), clientY: sy(15) }); // P5
+    const bar = screen.getByRole("region", { name: "통로 그리기 상태" });
+    expect(bar).toHaveTextContent("점 3개");
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("region", { name: "통로 W1 속성" })).toHaveTextContent("다른 선과 이어지는 점(공유 점): P2");
+    expect(screen.getByRole("table", { name: "통로 목록" })).toHaveTextContent("P4 — P2 — P5");
+    await user.click(screen.getByRole("button", { name: "내용 저장" }));
+    await screen.findByText(/배치판 내용을 저장했습니다/, {}, slow);
+    expect(puts(server)[0]!.body.aisles).toEqual([{ aisle_key: "W1", points: ["P4", "P2", "P5"], attributes: {} }]);
+    expect(screen.getByRole("table", { name: "통로 목록" })).not.toHaveTextContent("저장 후 계산"); // 서버 length_m
+  });
+
+  it("서버에 있던 통로는 다른 것을 고쳐 저장해도 그대로 다시 보낸다(통째 교체라 빼면 지워짐)", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer();
+    const v2 = server.state.layouts.versions.find((v) => v.id === layoutVersionId(2))!;
+    v2.aisles = [{ aisle_key: "W7", points: ["P1", "P2"], attributes: { note: "x" }, length_m: "5.0" }];
+    open(editor(2), server);
+    await ready();
+    expect(screen.getByRole("button", { name: "통로 W7: P1 — P2" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "점 추가" }));
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(2) });
+    await user.click(screen.getByRole("button", { name: "내용 저장" }));
+    await screen.findByText(/배치판 내용을 저장했습니다/, {}, slow);
+    expect(puts(server)[0]!.body.aisles).toEqual([{ aisle_key: "W7", points: ["P1", "P2"], attributes: { note: "x" } }]);
+  });
+
+  it("통로 붙여 넣기: 통로 이름 + 점 이름들, 없는 점은 그 줄을 건너뛰고 알린다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByText("엑셀에서 붙여 넣기"));
+    fireEvent.change(screen.getByLabelText(/통로 붙여 넣기/), { target: { value: "W1\tP1 P2 P3\nW2, P3, P9" } });
+    await user.click(screen.getByRole("button", { name: "통로 반영" }));
+    expect(screen.getByRole("status", { name: "붙여 넣기 결과" })).toHaveTextContent("통로 1개 추가");
+    expect(screen.getByRole("status", { name: "붙여 넣기 결과" })).toHaveTextContent("없는 점 P9");
+    expect(screen.getByRole("table", { name: "통로 목록" })).toHaveTextContent("P1 — P2 — P3");
+  });
+
+  it("경로 보기: 출발 1 → 도착 여러 개를 계산해 고정·계산 경로·갈 수 없음(이유)을 보이고, 가장 짧은 경로를 도면에 강조한다", async () => {
+    const user = userEvent.setup();
+    const { server } = open(editor(2));
+    await ready();
+    const sec = screen.getByRole("region", { name: "경로 보기(계산)" });
+    const from = within(sec).getByLabelText("출발 포트");
+    await user.selectOptions(from, within(from).getByRole("option", { name: "ST-041 ACCESS-01(접근)" }));
+    const to = within(sec).getByLabelText(/도착 포트/);
+    await user.selectOptions(to, [
+      within(to).getByRole("option", { name: "EQ-001 OUT(산출)" }),
+      within(to).getByRole("option", { name: "EQ-002 IN(투입)" }),
+    ]);
+    await user.click(within(sec).getByRole("button", { name: "경로 계산(2쌍)" }));
+    const table = await within(sec).findByRole("table", { name: "경로 계산 결과" }, slow);
+    expect(server.writes().find((w) => w.path.endsWith("/paths"))!.body.pairs).toHaveLength(2);
+    expect(table).toHaveTextContent("갈 수 있음 · 통로로 계산"); // 고정 경로 R1의 반대 방향
+    expect(table).toHaveTextContent("17.0");
+    expect(table).toHaveTextContent("P3 → P2 → P1");
+    expect(table).toHaveTextContent("갈 수 없음: 포트가 점에 연결되지 않았습니다");
+    expect(within(table).getByRole("button", { name: "도착 포트 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "계산 경로 P3 → P2 → P1" })).toBeInTheDocument();
+    await user.click(within(table).getByRole("button", { name: /경로 도면에 표시/ }));
+    expect(screen.queryByRole("img", { name: /^계산 경로/ })).not.toBeInTheDocument();
+  });
+
+  it("저장하지 않은 변경이 있으면 경로 보기는 '저장된 내용 기준'임을 알린다", async () => {
+    const user = userEvent.setup();
+    open(editor(2));
+    await ready();
+    await user.click(screen.getByRole("button", { name: "점 추가" }));
+    fireEvent.click(canvas(), { clientX: sx(35), clientY: sy(2) });
+    expect(within(screen.getByRole("region", { name: "경로 보기(계산)" })).getByText("저장된 내용 기준")).toBeInTheDocument();
+  });
+
+  it("검증 경고가 통로·포트를 가리키면(/aisles/{key}, /port_points/{id}) 도면에 표시한다", async () => {
+    const user = userEvent.setup();
+    const server = createFakeServer((req, std) =>
+      req.path.endsWith("/validate")
+        ? {
+            status: 200,
+            body: {
+              data: {
+                layout_version_id: layoutVersionId(2),
+                approvable: true,
+                error_count: 0,
+                warning_count: 1,
+                issues: [{ rule_id: "LAY-008", severity: "warning", field_path: "/aisles/W7", message: "선분이 만나는데 공유 점이 없습니다." }],
+              },
+            },
+          }
+        : std(req),
+    );
+    server.state.layouts.versions.find((v) => v.id === layoutVersionId(2))!.aisles = [{ aisle_key: "W7", points: ["P1", "P3"], attributes: {}, length_m: "15.5" }];
+    open(editor(2), server);
+    await ready();
+    await user.click(screen.getByRole("button", { name: "검증" }));
+    expect(await screen.findByText(/공유 점이 없습니다/, {}, slow)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "통로 W7: P1 — P3 (오류 있음)" })).toBeInTheDocument();
+  });
+});

@@ -1,5 +1,8 @@
 import {
   addPoint,
+  pasteAisles,
+  removePoint as removePointFn,
+  renamePoint as renamePointFn,
   insertRoutePoint,
   nearestPoint,
   removeRoutePointAt,
@@ -30,6 +33,7 @@ const doc = (): LayoutDoc => ({
   placements: [{ assetId: "a1", x: "2.0", y: "2.0", width: "", height: "3.0", rotation: "", attributes: {} }],
   portPoints: [{ portId: "port-out", pointKey: "P2" }],
   routes: [{ key: "R1", fromPortId: "port-out", toPortId: "port-in", mode: "", points: ["P1", "P2", "P3"], attributes: {} }],
+  aisles: [],
 });
 
 describe("배치판 편집 모델", () => {
@@ -162,5 +166,28 @@ describe("key 규칙(Backend 안내: 1~64자, 배치판 안에서 유일)", () =
     expect(e[`point:${long}.key`]).toMatch(/64자 이하/);
     expect(e[`route:${"R".repeat(65)}.key`]).toMatch(/64자 이하/);
     expect(validateDoc({ ...doc(), points: [{ key: "P".repeat(64), x: "1", y: "1", attributes: {} }] })[`point:${"P".repeat(64)}.key`]).toBeUndefined();
+  });
+});
+
+describe("통로(0.18.0)", () => {
+  const withAisle = () => ({ ...doc(), aisles: [{ key: "W1", points: ["P1", "P2", "P3"], attributes: {} }] });
+  it("저장 본문에 통로를 항상 넣는다(없으면 빈 목록 — 통째 교체)", () => {
+    expect(toContentIn(doc()).aisles).toEqual([]);
+    expect(toContentIn(withAisle()).aisles).toEqual([{ aisle_key: "W1", points: ["P1", "P2", "P3"], attributes: {} }]);
+  });
+  it("점 이름 바꾸기·삭제가 통로에도 반영된다", () => {
+    expect(renamePointFn(withAisle(), "P2", "PX")!.aisles[0]!.points).toEqual(["P1", "PX", "P3"]);
+    expect(removePointFn(withAisle(), "P2").aisles[0]!.points).toEqual(["P1", "P3"]);
+  });
+  it("통로 오류 위치: 저장은 본문 순번, 검증은 key", () => {
+    const body = toContentIn(withAisle());
+    expect(saveIssueTarget("/aisles/0/points/1", body)).toBe("aisle:W1");
+    expect(validationIssueTarget("/aisles/W1")).toBe("aisle:W1");
+  });
+  it("통로 붙여 넣기와 화면 검사(점 2개 미만)", () => {
+    const r = pasteAisles(doc(), "통로\t점\nW1 P1 P2\nW2 P1\nW3 P1 P8");
+    expect(r.added).toBe(1);
+    expect(r.errors).toHaveLength(2);
+    expect(validateDoc({ ...doc(), aisles: [{ key: "W1", points: ["P1"], attributes: {} }] })["aisle:W1.points"]).toMatch(/2개 이상/);
   });
 });
