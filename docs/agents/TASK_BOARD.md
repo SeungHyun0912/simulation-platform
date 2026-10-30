@@ -38,6 +38,7 @@ BE-01은 테스트 증거가 있으나 검토자 확인 전이라 REVIEW입니�
 | BE-20 | root_causes 순위 규칙 결함 수정(묶인 후보 중 최고 순위), 병목 정의 버전 3, 계약 0.16.2 | Backend | **구현완료·검증대기** | BE-19 | cb5f52f 이후 / contract 0.16.2 | HANDOFF-backend-20261028-BE-20-root-cause-rank |
 | BE-21 | 배치판(점·배치·포트 매핑·점 순서 경로), migration 0011, 계약 0.17.0 | Backend | **구현완료·검증대기** | BE-20 | 8742d06 이후 / contract 0.17.0 | HANDOFF-backend-20261028-BE-21-layout |
 | BE-22 | 통로(W)와 포트 → 포트 최단 경로 계산, migration 0012, 계약 0.18.0 | Backend | **구현완료·검증대기** | BE-21 | dfbdb26 이후 / contract 0.18.0 | HANDOFF-backend-20261030-BE-22-aisles-paths |
+| BE-23 | 공정 ↔ 배치판 연결, 시나리오 배치판 선택·이동 설정(기본 4 km/h), migration 0013, 계약 0.19.0 | Backend | **구현완료·검증대기** | BE-22 | bb0fa53 이후 / contract 0.19.0 | HANDOFF-backend-20261030-BE-23-process-layout-travel |
 | FE-00 | 정적 화면 구조·입력 상태 설계 | Frontend | TODO | 문서 읽기·범위 배정 | 미지정 | 없음 |
 | FE-01 | 승인 계약 Mock·프로젝트/자산 화면 | Frontend | BLOCKED | WS-02 | 미지정 | 착수 가능(WS-02 완료). 안내서: HANDOFF-backend-20261023-BE-02-for-frontend, 변경 기록 contracts/CHANGELOG.md |
 | INT-01 | 최초 실제 연동·격리/충돌 테스트 | 조정자 | BLOCKED | BE-01, FE-01 | 미지정 | 없음 |

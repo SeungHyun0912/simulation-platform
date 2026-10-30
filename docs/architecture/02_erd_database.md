@@ -185,7 +185,7 @@ asset_revision은 승인을 위한 상태와 미정 필드를 보유할 수 있�
 | 테이블 | 업무 컬럼 | 주의 |
 |---|---|---|
 | scenario | project_id, name, description | 변경 이력의 root |
-| scenario_version | project_id, scenario_id, version_no, status, layout_version_id NULL, calendar_rule, arrival_rules, initial_wip, stopping_rule, assumptions, engine_options | 승인 후 불변 |
+| scenario_version | project_id, scenario_id, version_no, status, layout_version_id NULL **(구현 0013, 승인 배치판)**, travel_rule **(구현 0013, 속도 km/h·상하차 분, 비면 기본 4 km/h·1분)**, calendar_rule, arrival_rules, initial_wip, stopping_rule, assumptions, engine_options | 승인 후 불변 |
 | scenario_product | project_id, scenario_version_id, product_id, process_version_id, production_plan, priority | product와 version 일치 |
 | scenario_asset | project_id, scenario_version_id, asset_id, asset_revision_id, availability_override | revision의 asset 일치 |
 | simulation_run | project_id, scenario_version_id, status, requested_by, requested_at, seed, replicate_index, engine_version, input_hash, idempotency_key, selected_attempt_id NULL | 프로젝트+요청자+key 고유 |

@@ -250,6 +250,7 @@ FE 세션은 **작업을 시작하기 전에** 아래를 순서대로 수행하�
 ---
 
 ## Backend 공지 로그
+- 2026-10-30(33차): **계약 0.19.0**(추가만, 타입 재생성) — `GET /layout-versions/{v}/process-links`(공정 이동 구간 → 포트 쌍 → 경로·길이·이동 시간, 운반/사람 구분), 시나리오 버전 `layout_version_id`(승인 배치판)·`travel_rule`(속도 km/h: `person`·운반 자원 종류, 상하차 분 — 비면 기본 4 km/h·1분), 갱신 `layout` 옵션·`layout_change`. 엔진 결과는 아직 불변. 상세는 04 §5.1·§7.1·CHANGELOG 0.19.0. 개발 DB migration 0013 적용.
 - 2026-10-30(32차): **계약 0.18.0**(추가만, 타입 재생성) — 배치판에 통로 `aisles[]`(포트 없는 점 순서, 양방향, 교차는 가운데 점 공유)와 `POST /layout-versions/{v}/paths`(포트 → 포트 경로: 고정 경로 우선, 없으면 통로 그물 최단 경로, 저장 안 함). PUT `/content`에 aisles를 함께 보내야 지워지지 않는다. 검증 경고 LAY-008·009. 상세는 04 §7.1·CHANGELOG 0.18.0. 개발 DB migration 0012 적용, 개발 API 재시작.
 - 2026-10-28(31차): **계약 0.17.0**(새 scope `layouts`, 추가만, 타입 재생성) — 배치판 API 7개(`/layout-versions` 목록·생성·조회·수정, `/content` 통째로 교체, `/validate`, `/approve`). 좌표계 고정: m, **도면 왼쪽 위 원점, y 아래쪽**(이미지 좌표), 설비·공간 x·y는 **중심**, 소수 첫째 자리 반올림. 점(P1…) + 포트(IN/OUT/ACCESS) → 점 매핑 + 경로 = 점 key 배열(응답에 계산한 `length_m`). 포트 id는 `GET /assets/{id}`의 `ports[]`. 상세는 04 §7.1·CHANGELOG 0.17.0. 개발 DB는 migration 0011 적용, 개발 API 재시작 완료.
 - 2026-10-28(30차): **계약 0.16.2**(결함 수정, 필드 변경 없음, `rank` 설명이 바뀌어 해시 변경 → 타입 재생성) — FE 보고대로 `root_causes` 1위와 headline 근본 원인이 달랐다. 순위를 "묶인 후보 중 가장 높은 전체 순위"로 바꿔 1위가 늘 headline과 같다. 병목 `definition_version` "3". 화면 안내 문장은 04 §5.10: "순위는 묶인 병목 후보 중 가장 높은 순위를 기준으로 매깁니다(1위는 가장 큰 정체의 근본 원인)."
